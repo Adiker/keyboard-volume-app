@@ -118,9 +118,11 @@ class VolumeController:
     # ------------------------------------------------------------------
 
     def change_volume(self, app_name: str, delta: float) -> float | None:
-        """Change volume by delta in a single pulsectl call (~0.5ms).
-        Returns new volume (0.0–1.0) or None if app not found / not active.
+        """Change volume by delta. Fast path: active sink input (~0.5ms).
+        Slow path fallback: idle PipeWire node via pw-dump + pw-cli (~30ms).
+        Returns new volume (0.0–1.0) or None if app not found anywhere.
         """
+        # Fast path: active sink input
         for si in self._pulse.sink_input_list():
             name = si.proplist.get("application.name") or si.proplist.get("media.name", "")
             binary = si.proplist.get("application.process.binary", "")
@@ -130,10 +132,19 @@ class VolumeController:
             new_vol = max(0.0, min(1.0, current + delta))
             self._pulse.volume_set_all_chans(si, new_vol)
             return new_vol
+
+        # Slow path: app is paused/idle — find its PipeWire node directly
+        node = self._find_pw_node_for_app(app_name)
+        if node:
+            node_id, current_vol, _ = node
+            new_vol = max(0.0, min(1.0, current_vol + delta))
+            if self._set_pw_node_volume(node_id, new_vol):
+                return new_vol
         return None
 
     def toggle_mute(self, app_name: str) -> tuple[bool, float] | None:
         """Toggle mute. Returns (new_mute_state, current_volume) or None if not found."""
+        # Fast path: active sink input
         for si in self._pulse.sink_input_list():
             name = si.proplist.get("application.name") or si.proplist.get("media.name", "")
             binary = si.proplist.get("application.process.binary", "")
@@ -143,7 +154,84 @@ class VolumeController:
             self._pulse.sink_input_mute(si.index, new_mute)
             vol = self._pulse.volume_get_all_chans(si)
             return (bool(new_mute), vol)
+
+        # Slow path: idle PipeWire node
+        node = self._find_pw_node_for_app(app_name)
+        if node:
+            node_id, vol, muted = node
+            new_muted = not muted
+            if self._set_pw_node_mute(node_id, new_muted):
+                return (new_muted, vol)
         return None
+
+    # ------------------------------------------------------------------
+    # PipeWire node fallback (for paused/idle apps with no active sink input)
+    # ------------------------------------------------------------------
+
+    def _find_pw_node_for_app(self, app_name: str) -> tuple[int, float, bool] | None:
+        """Find an idle PipeWire stream node by app name/binary.
+        Returns (node_id, volume, muted) or None.
+        """
+        try:
+            result = subprocess.run(
+                ["pw-dump"], capture_output=True, text=True, timeout=2
+            )
+            data = json.loads(result.stdout)
+        except Exception:
+            return None
+
+        best: tuple[int, float, bool] | None = None
+        for obj in data:
+            if "Node" not in obj.get("type", ""):
+                continue
+            info = obj.get("info", {})
+            props = info.get("props", {})
+            name = props.get("application.name", "")
+            binary = props.get("application.process.binary", "")
+            if name != app_name and binary != app_name:
+                continue
+            # Only stream nodes (not hardware sinks/sources)
+            media_class = props.get("media.class", "")
+            if not media_class.startswith("Stream/"):
+                continue
+
+            params = info.get("params", {})
+            prop_list = params.get("Props", [])
+            vol, muted = 1.0, False
+            if prop_list and isinstance(prop_list, list):
+                p = prop_list[0]
+                vol = float(p.get("volume", 1.0))
+                muted = bool(p.get("mute", False))
+
+            entry = (int(obj["id"]), vol, muted)
+            # Prefer output streams (playback) over input streams (capture)
+            if "Output" in media_class:
+                return entry
+            best = entry  # keep as fallback if only input found
+
+        return best
+
+    def _set_pw_node_volume(self, node_id: int, volume: float) -> bool:
+        try:
+            subprocess.run(
+                ["pw-cli", "set-param", str(node_id), "Props",
+                 f"{{ volume: {volume:.6f} }}"],
+                capture_output=True, timeout=1,
+            )
+            return True
+        except Exception:
+            return False
+
+    def _set_pw_node_mute(self, node_id: int, muted: bool) -> bool:
+        try:
+            subprocess.run(
+                ["pw-cli", "set-param", str(node_id), "Props",
+                 f"{{ mute: {'true' if muted else 'false'} }}"],
+                capture_output=True, timeout=1,
+            )
+            return True
+        except Exception:
+            return False
 
     def close(self):
         self._pulse.close()
