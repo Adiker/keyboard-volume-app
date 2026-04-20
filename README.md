@@ -1,6 +1,6 @@
 # keyboard-volume-app
 
-Per-application volume control via keyboard on Linux (KDE Plasma + PipeWire). Replaces the need for AutoHotkey scripts on Windows — pick an audio app from the tray, scroll the volume wheel, see an OSD overlay.
+A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls the volume of a single chosen application via keyboard — without touching the system master volume. Pick an audio app from the tray icon, use the media volume wheel, and get an OSD overlay with the current level.
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey)
@@ -87,7 +87,7 @@ cp keyboard-volume-app.desktop ~/.config/autostart/
 
 1. **Select audio app** — left-click the tray icon → pick an app from the list. Apps currently playing audio are listed first; idle apps (connected to PipeWire but paused) appear below.
 2. **Volume wheel** — scroll up/down to change the selected app's volume by the configured step.
-3. **Mute** — press the mute key to toggle mute on the selected app. The OSD shows the current volume and a 🔇 indicator.
+3. **Mute** — press the dedicated mute key on your keyboard (the media key that would normally mute the system) to toggle mute on the selected app only. The OSD appears showing the current volume level with a 🔇 indicator when muted.
 4. **Refresh app list** — tray menu → *Odśwież listę aplikacji* to re-scan running audio apps.
 5. **Change input device** — tray menu → *Zmień urządzenie wejściowe...* to pick a different keyboard without restarting.
 6. **Settings** — tray menu → *Ustawienia...* to configure:
