@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import subprocess
+import time
 import pulsectl
 
 # System processes to exclude from the app list
@@ -15,6 +16,9 @@ _SYSTEM_BINARIES = {
 _SKIP_APP_NAMES = {
     "ringrtc", "WEBRTC VoiceEngine", "Chromium input",
 }
+
+# How long to cache the pw-dump app list (seconds)
+_LIST_CACHE_TTL = 5.0
 
 
 class AudioApp:
@@ -36,15 +40,25 @@ class AudioApp:
 class VolumeController:
     def __init__(self):
         self._pulse = pulsectl.Pulse("keyboard-volume-app")
+        self._list_cache: list[AudioApp] = []
+        self._list_cache_ts: float = 0.0
 
-    # --- listing ---
+    # ------------------------------------------------------------------
+    # Tray menu — full list including idle apps (pw-dump, cached)
+    # ------------------------------------------------------------------
 
-    def list_apps(self) -> list[AudioApp]:
-        """Return all audio-capable apps: active streams + idle PipeWire clients."""
-        apps: dict[str, AudioApp] = {}      # keyed by name
-        active_binaries: set[str] = set()   # track binaries with active streams
+    def list_apps(self, force_refresh: bool = False) -> list[AudioApp]:
+        """Return all audio-capable apps: active streams + idle PipeWire clients.
+        Result is cached for _LIST_CACHE_TTL seconds to avoid repeated pw-dump calls.
+        """
+        now = time.monotonic()
+        if not force_refresh and (now - self._list_cache_ts) < _LIST_CACHE_TTL:
+            return self._list_cache
 
-        # 1. Active sink inputs (currently playing)
+        apps: dict[str, AudioApp] = {}
+        active_binaries: set[str] = set()
+
+        # 1. Active sink inputs (fast pulsectl IPC)
         for si in self._pulse.sink_input_list():
             name = (
                 si.proplist.get("application.name")
@@ -58,17 +72,19 @@ class VolumeController:
             if binary:
                 active_binaries.add(binary)
 
-        # 2. Idle PipeWire clients (connected but not actively playing)
+        # 2. Idle PipeWire clients (slow subprocess — cached)
         for name, binary in self._list_pipewire_clients():
             if name in _SKIP_APP_NAMES:
                 continue
-            # Skip if we already have this binary as an active stream
             if binary in active_binaries:
                 continue
             if name not in apps:
                 apps[name] = AudioApp(None, name, binary, 1.0, False)
 
-        return sorted(apps.values(), key=lambda a: (not a.active, a.name.lower()))
+        result = sorted(apps.values(), key=lambda a: (not a.active, a.name.lower()))
+        self._list_cache = result
+        self._list_cache_ts = now
+        return result
 
     def _list_pipewire_clients(self) -> list[tuple[str, str]]:
         """Get app names from PipeWire client list via pw-dump."""
@@ -97,54 +113,36 @@ class VolumeController:
 
         return list(seen.items())
 
-    def find_app(self, app_name: str) -> AudioApp | None:
-        for app in self.list_apps():
-            if app.name == app_name or app.binary == app_name:
-                return app
-        return None
-
-    # --- volume ---
-
-    def get_volume(self, app_name: str) -> float | None:
-        app = self.find_app(app_name)
-        if app is None:
-            return None
-        if not app.active:
-            return app.volume  # return stored value for idle apps
-        return app.volume
-
-    def set_volume(self, app_name: str, volume: float) -> float | None:
-        """Set volume (0.0–1.0). Returns actual new volume or None if app not found."""
-        app = self.find_app(app_name)
-        if app is None:
-            return None
-        volume = max(0.0, min(1.0, volume))
-        if not app.active:
-            # App is idle — nothing to set right now, return clamped value
-            return volume
-        for si in self._pulse.sink_input_list():
-            if si.index == app.index:
-                self._pulse.volume_set_all_chans(si, volume)
-                return volume
-        return None
+    # ------------------------------------------------------------------
+    # Hot path — volume change (no pw-dump, single sink_input_list call)
+    # ------------------------------------------------------------------
 
     def change_volume(self, app_name: str, delta: float) -> float | None:
-        """Change volume by delta (e.g. +0.05 / -0.05). Returns new volume or None."""
-        current = self.get_volume(app_name)
-        if current is None:
-            return None
-        return self.set_volume(app_name, current + delta)
-
-    def toggle_mute(self, app_name: str) -> bool | None:
-        """Toggle mute. Returns new mute state or None if app not found / idle."""
-        app = self.find_app(app_name)
-        if app is None or not app.active:
-            return None
+        """Change volume by delta in a single pulsectl call (~0.5ms).
+        Returns new volume (0.0–1.0) or None if app not found / not active.
+        """
         for si in self._pulse.sink_input_list():
-            if si.index == app.index:
-                new_mute = 0 if si.mute else 1
-                self._pulse.sink_input_mute(si.index, new_mute)
-                return bool(new_mute)
+            name = si.proplist.get("application.name") or si.proplist.get("media.name", "")
+            binary = si.proplist.get("application.process.binary", "")
+            if name != app_name and binary != app_name:
+                continue
+            current = self._pulse.volume_get_all_chans(si)
+            new_vol = max(0.0, min(1.0, current + delta))
+            self._pulse.volume_set_all_chans(si, new_vol)
+            return new_vol
+        return None
+
+    def toggle_mute(self, app_name: str) -> tuple[bool, float] | None:
+        """Toggle mute. Returns (new_mute_state, current_volume) or None if not found."""
+        for si in self._pulse.sink_input_list():
+            name = si.proplist.get("application.name") or si.proplist.get("media.name", "")
+            binary = si.proplist.get("application.process.binary", "")
+            if name != app_name and binary != app_name:
+                continue
+            new_mute = 0 if si.mute else 1
+            self._pulse.sink_input_mute(si.index, new_mute)
+            vol = self._pulse.volume_get_all_chans(si)
+            return (bool(new_mute), vol)
         return None
 
     def close(self):

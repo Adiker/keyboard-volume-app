@@ -62,10 +62,10 @@ class App(QObject):
         app_name = self.tray.current_app()
         if not app_name:
             return
-        muted = self.volume_ctrl.toggle_mute(app_name)
-        vol = self.volume_ctrl.get_volume(app_name)
-        if vol is not None:
-            self.osd.show_volume(app_name, vol, muted=bool(muted))
+        result = self.volume_ctrl.toggle_mute(app_name)
+        if result is not None:
+            muted, vol = result
+            self.osd.show_volume(app_name, vol, muted=muted)
 
     # --- device change ---
 
