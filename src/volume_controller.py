@@ -42,6 +42,9 @@ class VolumeController:
         self._pulse = pulsectl.Pulse("keyboard-volume-app")
         self._list_cache: list[AudioApp] = []
         self._list_cache_ts: float = 0.0
+        # Last known volume per app — used as baseline when the app has no active stream
+        self._app_volumes: dict[str, float] = {}
+        self._app_mutes: dict[str, bool] = {}
 
     # ------------------------------------------------------------------
     # Tray menu — full list including idle apps (pw-dump, cached)
@@ -118,11 +121,14 @@ class VolumeController:
     # ------------------------------------------------------------------
 
     def change_volume(self, app_name: str, delta: float) -> float | None:
-        """Change volume by delta. Fast path: active sink input (~0.5ms).
-        Slow path fallback: idle PipeWire node via pw-dump + pw-cli (~30ms).
-        Returns new volume (0.0–1.0) or None if app not found anywhere.
+        """Change volume by delta. Tries multiple backends in order:
+        1. Active sink input via pulsectl (~0.5ms)
+        2. PulseAudio stream restore database (applies on next resume)
+        3. Idle PipeWire node via pw-dump + pw-cli (~30ms)
+        4. Last known volume (OSD feedback only — app is fully disconnected)
+        Returns new volume (0.0–1.0).
         """
-        # Fast path: active sink input
+        # 1. Fast path: active sink input
         for si in self._pulse.sink_input_list():
             name = si.proplist.get("application.name") or si.proplist.get("media.name", "")
             binary = si.proplist.get("application.process.binary", "")
@@ -131,20 +137,35 @@ class VolumeController:
             current = self._pulse.volume_get_all_chans(si)
             new_vol = max(0.0, min(1.0, current + delta))
             self._pulse.volume_set_all_chans(si, new_vol)
+            self._app_volumes[app_name] = new_vol
+            self._app_mutes[app_name] = bool(si.mute)
             return new_vol
 
-        # Slow path: app is paused/idle — find its PipeWire node directly
+        # 2. Stream restore: persists across pause/resume for PA-compatible apps
+        vol = self._stream_restore_change_volume(app_name, delta)
+        if vol is not None:
+            self._app_volumes[app_name] = vol
+            return vol
+
+        # 3. PipeWire node: for native PW apps that keep a node while idle
         node = self._find_pw_node_for_app(app_name)
         if node:
             node_id, current_vol, _ = node
             new_vol = max(0.0, min(1.0, current_vol + delta))
             if self._set_pw_node_volume(node_id, new_vol):
+                self._app_volumes[app_name] = new_vol
                 return new_vol
-        return None
+
+        # 4. Last resort: compute from last known volume — gives OSD feedback
+        #    even when the app is fully disconnected from PipeWire.
+        base = self._app_volumes.get(app_name, 1.0)
+        new_vol = max(0.0, min(1.0, base + delta))
+        self._app_volumes[app_name] = new_vol
+        return new_vol
 
     def toggle_mute(self, app_name: str) -> tuple[bool, float] | None:
         """Toggle mute. Returns (new_mute_state, current_volume) or None if not found."""
-        # Fast path: active sink input
+        # 1. Fast path: active sink input
         for si in self._pulse.sink_input_list():
             name = si.proplist.get("application.name") or si.proplist.get("media.name", "")
             binary = si.proplist.get("application.process.binary", "")
@@ -153,15 +174,68 @@ class VolumeController:
             new_mute = 0 if si.mute else 1
             self._pulse.sink_input_mute(si.index, new_mute)
             vol = self._pulse.volume_get_all_chans(si)
+            self._app_volumes[app_name] = vol
+            self._app_mutes[app_name] = bool(new_mute)
             return (bool(new_mute), vol)
 
-        # Slow path: idle PipeWire node
+        # 2. Stream restore
+        result = self._stream_restore_toggle_mute(app_name)
+        if result is not None:
+            new_muted, vol = result
+            self._app_mutes[app_name] = new_muted
+            return result
+
+        # 3. PipeWire node
         node = self._find_pw_node_for_app(app_name)
         if node:
             node_id, vol, muted = node
             new_muted = not muted
             if self._set_pw_node_mute(node_id, new_muted):
+                self._app_mutes[app_name] = new_muted
                 return (new_muted, vol)
+
+        # 4. Last resort: flip stored mute state
+        muted = self._app_mutes.get(app_name, False)
+        vol = self._app_volumes.get(app_name, 1.0)
+        new_muted = not muted
+        self._app_mutes[app_name] = new_muted
+        return (new_muted, vol)
+
+    # ------------------------------------------------------------------
+    # PulseAudio stream restore fallback
+    # (persists volume across pause/resume via module-stream-restore)
+    # ------------------------------------------------------------------
+
+    def _stream_restore_change_volume(self, app_name: str, delta: float) -> float | None:
+        """Change volume in the stream restore database. Returns new volume or None."""
+        target = f"sink-input-by-application-name:{app_name}"
+        try:
+            for entry in self._pulse.stream_restore_list():
+                if entry.name != target:
+                    continue
+                current = self._pulse.volume_get_all_chans(entry)
+                new_vol = max(0.0, min(1.0, current + delta))
+                self._pulse.volume_set_all_chans(entry, new_vol)
+                self._pulse.stream_restore_write(entry, apply_immediately=True)
+                return new_vol
+        except Exception:
+            pass
+        return None
+
+    def _stream_restore_toggle_mute(self, app_name: str) -> tuple[bool, float] | None:
+        """Toggle mute in the stream restore database. Returns (new_muted, vol) or None."""
+        target = f"sink-input-by-application-name:{app_name}"
+        try:
+            for entry in self._pulse.stream_restore_list():
+                if entry.name != target:
+                    continue
+                vol = self._pulse.volume_get_all_chans(entry)
+                new_muted = not bool(entry.mute)
+                entry.mute = int(new_muted)
+                self._pulse.stream_restore_write(entry, apply_immediately=True)
+                return (new_muted, vol)
+        except Exception:
+            pass
         return None
 
     # ------------------------------------------------------------------
