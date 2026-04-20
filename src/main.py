@@ -1,5 +1,15 @@
 from __future__ import annotations
+import os
 import sys
+
+# On Wayland, Qt cannot position windows via move() — the compositor ignores it.
+# Force XWayland so the OSD overlay appears at the user-configured coordinates.
+# Only applied automatically; the user can override with QT_QPA_PLATFORM=wayland.
+if (os.environ.get("WAYLAND_DISPLAY")
+        and os.environ.get("XDG_SESSION_TYPE") == "wayland"
+        and not os.environ.get("QT_QPA_PLATFORM")):
+    os.environ["QT_QPA_PLATFORM"] = "xcb"
+
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import QObject
 

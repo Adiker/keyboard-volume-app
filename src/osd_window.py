@@ -101,17 +101,29 @@ class OSDWindow(QWidget):
 
         self._label_name.setText(app_name)
         self._bar.setValue(pct)
-        if muted:
-            self._label_pct.setText(f"{pct}%  🔇")
-        else:
-            self._label_pct.setText(f"{pct}%")
+        self._label_pct.setText(f"{pct}%  🔇" if muted else f"{pct}%")
 
-        self.move(osd["x"], osd["y"])
+        self._move_to(osd["x"], osd["y"])
         self.show()
         self.raise_()
+        # Re-apply via native QWindow after show() — Wayland creates the surface
+        # only after show(), so setPosition() here is more reliable than move() before.
+        wh = self.windowHandle()
+        if wh:
+            wh.setPosition(osd["x"], osd["y"])
 
         self._hide_timer.start(osd["timeout_ms"])
 
     def reload_styles(self):
-        """Call after config changes to refresh colors."""
+        """Call after config changes to refresh colors and position."""
         self._apply_styles()
+        osd = self.config.osd
+        self._move_to(osd["x"], osd["y"])
+        if self.isVisible():
+            wh = self.windowHandle()
+            if wh:
+                wh.setPosition(osd["x"], osd["y"])
+
+    def _move_to(self, x: int, y: int):
+        self.move(x, y)
+        self.setGeometry(x, y, self.width(), self.height())
