@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from src.config import Config
+from src.i18n import tr
 
 
 def _get_volume_devices() -> list[tuple[str, str]]:
@@ -27,12 +28,13 @@ def _get_volume_devices() -> list[tuple[str, str]]:
 
 
 class DeviceSelectorDialog(QDialog):
-    def __init__(self, config: Config, parent=None):
+    def __init__(self, config: Config, first_run: bool = False, parent=None):
         super().__init__(parent)
         self.config = config
         self.selected_path: str | None = None
 
-        self.setWindowTitle("Wybierz urządzenie wejściowe")
+        title_key = "device.title.first_run" if first_run else "device.title"
+        self.setWindowTitle(tr(title_key))
         self.setMinimumWidth(460)
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
 
@@ -43,9 +45,7 @@ class DeviceSelectorDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
-        layout.addWidget(QLabel(
-            "Urządzenia z klawiszami głośności (Volume Up / Volume Down):"
-        ))
+        layout.addWidget(QLabel(tr("device.label")))
 
         self._list = QListWidget()
         self._list.setAlternatingRowColors(True)
@@ -53,7 +53,7 @@ class DeviceSelectorDialog(QDialog):
         layout.addWidget(self._list)
 
         btn_row = QHBoxLayout()
-        refresh_btn = QPushButton("Odśwież")
+        refresh_btn = QPushButton(tr("device.btn.refresh"))
         refresh_btn.clicked.connect(self._populate)
         btn_row.addWidget(refresh_btn)
         btn_row.addStretch()
@@ -70,7 +70,7 @@ class DeviceSelectorDialog(QDialog):
         self._list.clear()
         devices = _get_volume_devices()
         if not devices:
-            self._list.addItem(QListWidgetItem("Brak dostępnych urządzeń"))
+            self._list.addItem(QListWidgetItem(tr("device.no_devices")))
             return
         for path, description in devices:
             item = QListWidgetItem(description)

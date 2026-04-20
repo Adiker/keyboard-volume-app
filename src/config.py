@@ -8,6 +8,7 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 DEFAULTS = {
     "input_device": None,
     "selected_app": None,
+    "language": "en",
     "osd": {
         "x": 50,
         "y": 1150,
@@ -61,6 +62,15 @@ class Config:
     @selected_app.setter
     def selected_app(self, value: str | None):
         self._data["selected_app"] = value
+        self.save()
+
+    @property
+    def language(self) -> str:
+        return self._data.get("language", "en")
+
+    @language.setter
+    def language(self, value: str):
+        self._data["language"] = value
         self.save()
 
     @property

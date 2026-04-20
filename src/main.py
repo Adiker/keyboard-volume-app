@@ -9,12 +9,14 @@ from src.osd_window import OSDWindow
 from src.tray_app import TrayApp
 from src.input_handler import InputHandler
 from src.device_selector import DeviceSelectorDialog
+from src.i18n import set_language, tr
 
 
 class App(QObject):
     def __init__(self):
         super().__init__()
         self.config = Config()
+        set_language(self.config.language)
         self.volume_ctrl = VolumeController()
         self.osd = OSDWindow(self.config)
         self.input_handler = InputHandler()
@@ -34,6 +36,7 @@ class App(QObject):
         # Tray
         self.tray.device_change_requested.connect(self._on_device_change_requested)
         self.tray.settings_changed.connect(self.osd.reload_styles)
+        self.tray.settings_changed.connect(self.tray.rebuild_menu)
 
     def _init_device(self):
         if self.config.input_device:
@@ -70,19 +73,15 @@ class App(QObject):
     # --- device change ---
 
     def _on_device_change_requested(self, startup: bool = False):
-        dlg = DeviceSelectorDialog(self.config)
-        if startup:
-            dlg.setWindowTitle("Wybierz urządzenie wejściowe (pierwsze uruchomienie)")
+        dlg = DeviceSelectorDialog(self.config, first_run=startup)
         result = dlg.exec()
         if result and dlg.selected_path:
             self.input_handler.start_device(dlg.selected_path)
         elif startup:
-            # User cancelled at startup — warn and continue without input
             QMessageBox.warning(
                 None,
-                "Brak urządzenia",
-                "Nie wybrano urządzenia wejściowego.\n"
-                "Możesz wybrać je później z menu tray → \"Zmień urządzenie wejściowe...\"",
+                tr("warn.no_device.title"),
+                tr("warn.no_device.text"),
             )
 
     def cleanup(self):

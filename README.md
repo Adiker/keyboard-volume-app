@@ -2,6 +2,8 @@
 
 A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls the volume of a single chosen application via keyboard — without touching the system master volume. Pick an audio app from the tray icon, use the media volume wheel, and get an OSD overlay with the current level.
 
+**[Polska wersja README](README.pl.md)**
+
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey)
 ![Desktop](https://img.shields.io/badge/Desktop-KDE%20Plasma-blue)
@@ -17,9 +19,10 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists all apps connected to PipeWire, not just those currently playing audio
-- **Mute toggle** — mutes/unmutes the selected app and shows the state in the OSD
+- **Mute toggle** — press the dedicated mute key on your keyboard (the media key that would normally mute the system) to toggle mute on the selected app only. The OSD appears showing the current volume level with a 🔇 indicator when muted.
 - **Persistent config** — all settings saved to `~/.config/keyboard-volume-app/config.json`
 - **KDE autostart** — ships with a `.desktop` file for automatic startup with the desktop session
+- **PL / EN interface** — switch language in Settings
 
 ---
 
@@ -88,9 +91,10 @@ cp keyboard-volume-app.desktop ~/.config/autostart/
 1. **Select audio app** — left-click the tray icon → pick an app from the list. Apps currently playing audio are listed first; idle apps (connected to PipeWire but paused) appear below.
 2. **Volume wheel** — scroll up/down to change the selected app's volume by the configured step.
 3. **Mute** — press the dedicated mute key on your keyboard (the media key that would normally mute the system) to toggle mute on the selected app only. The OSD appears showing the current volume level with a 🔇 indicator when muted.
-4. **Refresh app list** — tray menu → *Odśwież listę aplikacji* to re-scan running audio apps.
-5. **Change input device** — tray menu → *Zmień urządzenie wejściowe...* to pick a different keyboard without restarting.
-6. **Settings** — tray menu → *Ustawienia...* to configure:
+4. **Refresh app list** — tray menu → *Refresh app list* to re-scan running audio apps.
+5. **Change input device** — tray menu → *Change input device...* to pick a different keyboard without restarting.
+6. **Settings** — tray menu → *Settings...* to configure:
+   - Interface language (English / Polski)
    - OSD display timeout (ms)
    - OSD screen position (X / Y)
    - Volume step per keypress (%)
@@ -106,6 +110,7 @@ Config file: `~/.config/keyboard-volume-app/config.json`
 {
   "input_device": "/dev/input/event3",
   "selected_app": "youtube-music",
+  "language": "en",
   "osd": {
     "x": 50,
     "y": 1150,
@@ -129,6 +134,7 @@ keyboard-volume-app/
 ├── src/
 │   ├── main.py              # Entry point, wires all modules together
 │   ├── config.py            # JSON config read/write
+│   ├── i18n.py              # PL/EN translations and tr() helper
 │   ├── volume_controller.py # pulsectl — per-app volume and mute
 │   ├── input_handler.py     # evdev QThread — global key capture
 │   ├── osd_window.py        # PyQt6 OSD overlay
@@ -138,6 +144,8 @@ keyboard-volume-app/
 ├── resources/
 │   └── icon.png
 ├── keyboard-volume-app.desktop
+├── README.md                # English
+├── README.pl.md             # Polski
 └── requirements.txt
 ```
 
