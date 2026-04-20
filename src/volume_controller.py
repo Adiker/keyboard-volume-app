@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import subprocess
+import threading
 import time
 import pulsectl
 
@@ -40,11 +41,26 @@ class AudioApp:
 class VolumeController:
     def __init__(self):
         self._pulse = pulsectl.Pulse("keyboard-volume-app")
+        self._pulse_watcher = pulsectl.Pulse("keyboard-volume-app-watcher")
         self._list_cache: list[AudioApp] = []
         self._list_cache_ts: float = 0.0
-        # Last known volume per app — used as baseline when the app has no active stream
+
+        # Last successfully applied volume/mute per app
         self._app_volumes: dict[str, float] = {}
         self._app_mutes: dict[str, bool] = {}
+
+        # Volumes/mutes to apply the next time the app reconnects to PipeWire.
+        # Populated when all live backends fail (app fully disconnected).
+        # Applied by the watcher thread when a new sink input appears.
+        self._lock = threading.Lock()
+        self._pending_volumes: dict[str, float] = {}
+        self._pending_mutes: dict[str, bool] = {}
+
+        self._stopping = False
+        self._watcher_thread = threading.Thread(
+            target=self._watch_sink_inputs, daemon=True
+        )
+        self._watcher_thread.start()
 
     # ------------------------------------------------------------------
     # Tray menu — full list including idle apps (pw-dump, cached)
@@ -117,7 +133,7 @@ class VolumeController:
         return list(seen.items())
 
     # ------------------------------------------------------------------
-    # Hot path — volume change (no pw-dump, single sink_input_list call)
+    # Hot path — volume change
     # ------------------------------------------------------------------
 
     def change_volume(self, app_name: str, delta: float) -> float | None:
@@ -125,7 +141,7 @@ class VolumeController:
         1. Active sink input via pulsectl (~0.5ms)
         2. PulseAudio stream restore database (applies on next resume)
         3. Idle PipeWire node via pw-dump + pw-cli (~30ms)
-        4. Last known volume (OSD feedback only — app is fully disconnected)
+        4. Last known volume — stores desired vol so watcher applies it on reconnect
         Returns new volume (0.0–1.0).
         """
         # 1. Fast path: active sink input
@@ -139,12 +155,18 @@ class VolumeController:
             self._pulse.volume_set_all_chans(si, new_vol)
             self._app_volumes[app_name] = new_vol
             self._app_mutes[app_name] = bool(si.mute)
+            # Clear any pending override — app is live again
+            with self._lock:
+                self._pending_volumes.pop(app_name, None)
+                self._pending_mutes.pop(app_name, None)
             return new_vol
 
         # 2. Stream restore: persists across pause/resume for PA-compatible apps
         vol = self._stream_restore_change_volume(app_name, delta)
         if vol is not None:
             self._app_volumes[app_name] = vol
+            with self._lock:
+                self._pending_volumes.pop(app_name, None)
             return vol
 
         # 3. PipeWire node: for native PW apps that keep a node while idle
@@ -154,13 +176,17 @@ class VolumeController:
             new_vol = max(0.0, min(1.0, current_vol + delta))
             if self._set_pw_node_volume(node_id, new_vol):
                 self._app_volumes[app_name] = new_vol
+                with self._lock:
+                    self._pending_volumes.pop(app_name, None)
                 return new_vol
 
-        # 4. Last resort: compute from last known volume — gives OSD feedback
-        #    even when the app is fully disconnected from PipeWire.
+        # 4. App fully disconnected — compute desired volume and store for watcher.
+        #    The watcher thread will apply it the moment the app reconnects.
         base = self._app_volumes.get(app_name, 1.0)
         new_vol = max(0.0, min(1.0, base + delta))
         self._app_volumes[app_name] = new_vol
+        with self._lock:
+            self._pending_volumes[app_name] = new_vol
         return new_vol
 
     def toggle_mute(self, app_name: str) -> tuple[bool, float] | None:
@@ -176,6 +202,9 @@ class VolumeController:
             vol = self._pulse.volume_get_all_chans(si)
             self._app_volumes[app_name] = vol
             self._app_mutes[app_name] = bool(new_mute)
+            with self._lock:
+                self._pending_volumes.pop(app_name, None)
+                self._pending_mutes.pop(app_name, None)
             return (bool(new_mute), vol)
 
         # 2. Stream restore
@@ -183,6 +212,8 @@ class VolumeController:
         if result is not None:
             new_muted, vol = result
             self._app_mutes[app_name] = new_muted
+            with self._lock:
+                self._pending_mutes.pop(app_name, None)
             return result
 
         # 3. PipeWire node
@@ -192,18 +223,84 @@ class VolumeController:
             new_muted = not muted
             if self._set_pw_node_mute(node_id, new_muted):
                 self._app_mutes[app_name] = new_muted
+                with self._lock:
+                    self._pending_mutes.pop(app_name, None)
                 return (new_muted, vol)
 
-        # 4. Last resort: flip stored mute state
+        # 4. Store desired mute for watcher; use last known vol for OSD
         muted = self._app_mutes.get(app_name, False)
         vol = self._app_volumes.get(app_name, 1.0)
         new_muted = not muted
         self._app_mutes[app_name] = new_muted
+        with self._lock:
+            self._pending_mutes[app_name] = new_muted
         return (new_muted, vol)
 
     # ------------------------------------------------------------------
+    # Reconnect watcher — applies pending volume when app comes back
+    # ------------------------------------------------------------------
+
+    def _watch_sink_inputs(self):
+        """Background thread: watches for new PipeWire sink inputs and
+        immediately applies any pending volume/mute stored while the app
+        was fully disconnected.
+        """
+        got_event = False
+
+        def callback(ev):
+            nonlocal got_event
+            if (ev.facility == pulsectl.PulseEventFacilityEnum.sink_input
+                    and ev.t == pulsectl.PulseEventTypeEnum.new):
+                got_event = True
+                raise pulsectl.PulseLoopStop()
+
+        try:
+            self._pulse_watcher.event_mask_set("sink_input")
+            self._pulse_watcher.event_callback_set(callback)
+            while not self._stopping:
+                got_event = False
+                self._pulse_watcher.event_listen(timeout=5)
+                if got_event:
+                    # Give PipeWire a moment to finish registering the stream
+                    time.sleep(0.1)
+                    self._apply_pending_volumes()
+        except Exception:
+            pass
+
+    def _apply_pending_volumes(self):
+        """Apply stored pending volumes/mutes to any newly appeared sink inputs."""
+        with self._lock:
+            if not self._pending_volumes and not self._pending_mutes:
+                return
+            pending_vols = dict(self._pending_volumes)
+            pending_mutes = dict(self._pending_mutes)
+
+        applied: set[str] = set()
+        try:
+            for si in self._pulse_watcher.sink_input_list():
+                name = si.proplist.get("application.name") or si.proplist.get("media.name", "")
+                binary = si.proplist.get("application.process.binary", "")
+                for app_name in list(pending_vols.keys()):
+                    if name != app_name and binary != app_name:
+                        continue
+                    vol = pending_vols[app_name]
+                    self._pulse_watcher.volume_set_all_chans(si, vol)
+                    if app_name in pending_mutes:
+                        self._pulse_watcher.sink_input_mute(
+                            si.index, int(pending_mutes[app_name])
+                        )
+                    applied.add(app_name)
+        except Exception:
+            pass
+
+        if applied:
+            with self._lock:
+                for app_name in applied:
+                    self._pending_volumes.pop(app_name, None)
+                    self._pending_mutes.pop(app_name, None)
+
+    # ------------------------------------------------------------------
     # PulseAudio stream restore fallback
-    # (persists volume across pause/resume via module-stream-restore)
     # ------------------------------------------------------------------
 
     def _stream_restore_change_volume(self, app_name: str, delta: float) -> float | None:
@@ -264,7 +361,6 @@ class VolumeController:
             binary = props.get("application.process.binary", "")
             if name != app_name and binary != app_name:
                 continue
-            # Only stream nodes (not hardware sinks/sources)
             media_class = props.get("media.class", "")
             if not media_class.startswith("Stream/"):
                 continue
@@ -278,10 +374,9 @@ class VolumeController:
                 muted = bool(p.get("mute", False))
 
             entry = (int(obj["id"]), vol, muted)
-            # Prefer output streams (playback) over input streams (capture)
             if "Output" in media_class:
                 return entry
-            best = entry  # keep as fallback if only input found
+            best = entry
 
         return best
 
@@ -308,4 +403,9 @@ class VolumeController:
             return False
 
     def close(self):
+        self._stopping = True
+        try:
+            self._pulse_watcher.close()
+        except Exception:
+            pass
         self._pulse.close()
