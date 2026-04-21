@@ -19,6 +19,11 @@ DEFAULTS = {
         "color_bar": "#0078D7",
     },
     "volume_step": 5,
+    "hotkeys": {
+        "volume_up": 115,   # KEY_VOLUMEUP
+        "volume_down": 114, # KEY_VOLUMEDOWN
+        "mute": 113,        # KEY_MUTE
+    },
 }
 
 
@@ -81,6 +86,18 @@ class Config:
     @volume_step.setter
     def volume_step(self, value: int):
         self._data["volume_step"] = max(1, min(50, int(value)))
+        self.save()
+
+    # Hotkeys
+
+    @property
+    def hotkeys(self) -> dict:
+        return self._data["hotkeys"]
+
+    def set_hotkeys(self, volume_up: int, volume_down: int, mute: int):
+        self._data["hotkeys"]["volume_up"] = volume_up
+        self._data["hotkeys"]["volume_down"] = volume_down
+        self._data["hotkeys"]["mute"] = mute
         self.save()
 
     # OSD helpers

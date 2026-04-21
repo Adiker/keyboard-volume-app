@@ -47,14 +47,29 @@ class App(QObject):
         self.tray.device_change_requested.connect(self._on_device_change_requested)
         self.tray.settings_changed.connect(self.osd.reload_styles)
         self.tray.settings_changed.connect(self.tray.rebuild_menu)
+        self.tray.settings_changed.connect(self._on_hotkeys_maybe_changed)
         self.tray.osd_preview_requested.connect(self.osd.show_preview)
         self.tray.osd_preview_finished.connect(self.osd.hide_preview)
 
     def _init_device(self):
+        hotkeys = self.config.hotkeys
+        self.input_handler.set_hotkeys(
+            hotkeys["volume_up"], hotkeys["volume_down"], hotkeys["mute"]
+        )
         if self.config.input_device:
             self.input_handler.start_device(self.config.input_device)
         else:
             self._on_device_change_requested(startup=True)
+
+    def _on_hotkeys_maybe_changed(self):
+        hotkeys = self.config.hotkeys
+        new_codes = (hotkeys["volume_up"], hotkeys["volume_down"], hotkeys["mute"])
+        if new_codes == self.input_handler.current_hotkeys():
+            return
+        self.input_handler.stop()
+        self.input_handler.set_hotkeys(*new_codes)
+        if self.config.input_device:
+            self.input_handler.start_device(self.config.input_device)
 
     # --- volume actions ---
 

@@ -2,10 +2,12 @@ from __future__ import annotations
 from PyQt6.QtWidgets import (
     QApplication, QDialog, QFormLayout, QSpinBox,
     QPushButton, QHBoxLayout, QVBoxLayout,
-    QDialogButtonBox, QColorDialog, QComboBox,
+    QDialogButtonBox, QColorDialog, QComboBox, QLabel,
 )
 from PyQt6.QtGui import QColor
 from PyQt6.QtCore import Qt, pyqtSignal
+
+from evdev import ecodes
 
 from src.config import Config
 from src.i18n import tr, set_language, LANGUAGES
@@ -34,6 +36,71 @@ class ColorButton(QPushButton):
         chosen = QColorDialog.getColor(QColor(self._color), self, "")
         if chosen.isValid():
             self.set_color(chosen.name())
+
+
+class KeyCaptureDialog(QDialog):
+    """Modal dialog that captures a single key press and converts it to an evdev code."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(tr("settings.hotkey.capture_title"))
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self.setMinimumWidth(300)
+        self._code: int | None = None
+
+        layout = QVBoxLayout(self)
+        label = QLabel(tr("settings.hotkey.capture_prompt"))
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(label)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            self.reject()
+            return
+        # nativeScanCode() returns the X11 keycode; evdev code = X11 keycode - 8
+        x11_code = event.nativeScanCode()
+        if x11_code > 8:
+            evdev_code = x11_code - 8
+            if evdev_code in ecodes.KEY:
+                self._code = evdev_code
+                self.accept()
+                return
+        event.accept()
+
+    def captured_code(self) -> int | None:
+        return self._code
+
+
+class HotkeyCapture(QPushButton):
+    """Button displaying the currently assigned key. Click to reassign."""
+
+    def __init__(self, code: int, parent=None):
+        super().__init__(parent)
+        self._code = code
+        self.setMinimumWidth(120)
+        self._update_display()
+        self.clicked.connect(self._capture)
+
+    @staticmethod
+    def _key_display_name(code: int) -> str:
+        name = ecodes.KEY.get(code)
+        if name is None:
+            return str(code)
+        if isinstance(name, list):
+            name = name[0]
+        return name[4:] if name.startswith("KEY_") else name
+
+    def _update_display(self):
+        self.setText(self._key_display_name(self._code))
+
+    def evdev_code(self) -> int:
+        return self._code
+
+    def _capture(self):
+        dlg = KeyCaptureDialog(self)
+        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.captured_code() is not None:
+            self._code = dlg.captured_code()
+            self._update_display()
 
 
 class SettingsDialog(QDialog):
@@ -118,6 +185,21 @@ class SettingsDialog(QDialog):
         self._color_bar = ColorButton(osd["color_bar"])
         form.addRow(tr("settings.color_bar"), self._color_bar)
 
+        # --- Hotkeys section ---
+        section_label = QLabel(tr("settings.hotkeys_section"))
+        section_label.setStyleSheet("font-weight: bold; margin-top: 8px;")
+        form.addRow(section_label)
+
+        hotkeys = self.config.hotkeys
+        self._hk_up = HotkeyCapture(hotkeys["volume_up"])
+        form.addRow(tr("settings.hotkey.volume_up"), self._hk_up)
+
+        self._hk_down = HotkeyCapture(hotkeys["volume_down"])
+        form.addRow(tr("settings.hotkey.volume_down"), self._hk_down)
+
+        self._hk_mute = HotkeyCapture(hotkeys["mute"])
+        form.addRow(tr("settings.hotkey.mute"), self._hk_mute)
+
         layout.addLayout(form)
 
         buttons = QDialogButtonBox(
@@ -154,4 +236,11 @@ class SettingsDialog(QDialog):
             color_bar=self._color_bar.color(),
         )
         self.config.volume_step = self._step.value()
+
+        self.config.set_hotkeys(
+            volume_up=self._hk_up.evdev_code(),
+            volume_down=self._hk_down.evdev_code(),
+            mute=self._hk_mute.evdev_code(),
+        )
+
         self.accept()

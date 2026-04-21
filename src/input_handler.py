@@ -5,16 +5,15 @@ from evdev import ecodes
 from PyQt6.QtCore import QThread, pyqtSignal
 
 
-def _find_sibling_devices(primary_path: str) -> list[str]:
+def _find_sibling_devices(primary_path: str, hotkey_codes: set[int]) -> list[str]:
     """
     Return all evdev devices that belong to the same physical device
-    as primary_path (matched by phys prefix) AND have volume keys.
+    as primary_path (matched by phys prefix) AND expose at least one
+    of the configured hotkey codes.
     This is needed because keyboards often expose multiple event nodes
     (e.g. main keyboard + Consumer Control) — we must grab all of them
-    to fully intercept volume keys from the OS/desktop.
+    to fully intercept the chosen keys from the OS/desktop.
     """
-    volume_keys = {ecodes.KEY_VOLUMEUP, ecodes.KEY_VOLUMEDOWN, ecodes.KEY_MUTE}
-
     try:
         dev = evdev.InputDevice(primary_path)
         primary_phys: str = dev.phys or ""
@@ -36,7 +35,7 @@ def _find_sibling_devices(primary_path: str) -> list[str]:
             caps = d.capabilities()
             keys = set(caps.get(ecodes.EV_KEY, []))
             d.close()
-            if phys.startswith(phys_prefix) and (volume_keys & keys):
+            if phys.startswith(phys_prefix) and (hotkey_codes & keys):
                 siblings.append(path)
         except (PermissionError, OSError):
             pass
@@ -53,6 +52,17 @@ class InputHandler(QThread):
         super().__init__(parent)
         self._device_path: str | None = None
         self._running = False
+        self._key_up: int = ecodes.KEY_VOLUMEUP
+        self._key_down: int = ecodes.KEY_VOLUMEDOWN
+        self._key_mute: int = ecodes.KEY_MUTE
+
+    def set_hotkeys(self, up: int, down: int, mute: int):
+        self._key_up = up
+        self._key_down = down
+        self._key_mute = mute
+
+    def current_hotkeys(self) -> tuple[int, int, int]:
+        return self._key_up, self._key_down, self._key_mute
 
     def start_device(self, path: str):
         """Stop current device (if any) and start reading from new path."""
@@ -70,7 +80,8 @@ class InputHandler(QThread):
         if not self._device_path:
             return
 
-        siblings = _find_sibling_devices(self._device_path)
+        hotkey_codes = {self._key_up, self._key_down, self._key_mute}
+        siblings = _find_sibling_devices(self._device_path, hotkey_codes)
         devices: list[evdev.InputDevice] = []
 
         for path in siblings:
@@ -86,6 +97,9 @@ class InputHandler(QThread):
             return
 
         fd_map = {d.fd: d for d in devices}
+        key_up = self._key_up
+        key_down = self._key_down
+        key_mute = self._key_mute
 
         try:
             while self._running:
@@ -98,11 +112,11 @@ class InputHandler(QThread):
                                 continue
                             if event.value != 1:  # key-down only
                                 continue
-                            if event.code == ecodes.KEY_VOLUMEUP:
+                            if event.code == key_up:
                                 self.volume_up.emit()
-                            elif event.code == ecodes.KEY_VOLUMEDOWN:
+                            elif event.code == key_down:
                                 self.volume_down.emit()
-                            elif event.code == ecodes.KEY_MUTE:
+                            elif event.code == key_mute:
                                 self.volume_mute.emit()
                     except OSError:
                         self._running = False

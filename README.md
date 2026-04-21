@@ -18,6 +18,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Per-app volume control** — changes the volume of only the selected application, not the system master
 - **Global key capture** — reads directly from an evdev input device, works regardless of which window is focused
 - **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) so the desktop never intercepts the keys
+- **Configurable hotkeys** — reassign Volume Up, Volume Down and Mute to any key via Settings; defaults are the dedicated media keys
 - **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists all apps connected to PipeWire, not just those currently playing audio
@@ -87,6 +88,9 @@ cp keyboard-volume-app.desktop ~/.config/autostart/
    - OSD screen position (X / Y)
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
+   - **Hotkeys** — click a key button and press any key to rebind Volume Up, Volume Down or Mute
+
+> **Hotkey capture note:** the app grabs its configured keys at the evdev level, so those exact keys won't be visible to Qt while the app is running. To reassign *currently active* hotkeys, first bind them to temporary placeholders (e.g. F9/F10/F11), save and reopen Settings, then set the final keys.
 
 ### Configuration
 
@@ -98,6 +102,7 @@ Config file: `~/.config/keyboard-volume-app/config.json`
   "selected_app": "youtube-music",
   "language": "en",
   "osd": {
+    "screen": 0,
     "x": 50,
     "y": 1150,
     "timeout_ms": 1200,
@@ -105,9 +110,16 @@ Config file: `~/.config/keyboard-volume-app/config.json`
     "color_text": "#FFFFFF",
     "color_bar": "#0078D7"
   },
-  "volume_step": 5
+  "volume_step": 5,
+  "hotkeys": {
+    "volume_up": 115,
+    "volume_down": 114,
+    "mute": 113
+  }
 }
 ```
+
+Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113). The Settings dialog lets you change them interactively — manual editing of the JSON is also possible, but the GUI is the recommended way.
 
 ### Project structure
 
@@ -155,6 +167,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Sterowanie głośnością per aplikacja** — zmienia głośność wyłącznie wybranej aplikacji, nie ruszając głośności systemowej
 - **Globalne przechwytywanie klawiszy** — odczytuje zdarzenia bezpośrednio z urządzenia evdev, działa niezależnie od tego, które okno jest aktywne
 - **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury (np. główna klawiatura + interfejs Consumer Control), aby system nie przechwytywał klawiszy głośności
+- **Konfigurowalne skróty** — przypisz Głośność w górę, Głośność w dół i Wyciszenie do dowolnego klawisza przez Ustawienia; domyślnie są to dedykowane klawisze multimedialne
 - **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; znika automatycznie po upływie skonfigurowanego czasu
 - **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego oraz dostęp do ustawień z menu ikony tray
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera wszystkie aplikacje podłączone do PipeWire, nie tylko te aktualnie odtwarzające dźwięk
@@ -224,6 +237,9 @@ cp keyboard-volume-app.desktop ~/.config/autostart/
    - Pozycję OSD na ekranie (X / Y)
    - Krok zmiany głośności na jedno naciśnięcie klawisza (%)
    - Kolory OSD (tło, tekst, pasek)
+   - **Skróty klawiszowe** — kliknij przycisk z nazwą klawisza i naciśnij dowolny klawisz, by przypisać go do Głośności w górę, Głośności w dół lub Wyciszenia
+
+> **Uwaga dot. przechwytywania klawiszy:** aplikacja blokuje aktualnie skonfigurowane klawisze na poziomie evdev, więc te właśnie klawisze nie są widoczne dla Qt podczas działania programu. Aby zmienić *aktywne* skróty, najpierw przypisz je do tymczasowych klawiszy (np. F9/F10/F11), zapisz i otwórz Ustawienia ponownie, by ustawić docelowe klawisze.
 
 ### Konfiguracja
 
@@ -235,6 +251,7 @@ Plik konfiguracyjny: `~/.config/keyboard-volume-app/config.json`
   "selected_app": "youtube-music",
   "language": "pl",
   "osd": {
+    "screen": 0,
     "x": 50,
     "y": 1150,
     "timeout_ms": 1200,
@@ -242,9 +259,16 @@ Plik konfiguracyjny: `~/.config/keyboard-volume-app/config.json`
     "color_text": "#FFFFFF",
     "color_bar": "#0078D7"
   },
-  "volume_step": 5
+  "volume_step": 5,
+  "hotkeys": {
+    "volume_up": 115,
+    "volume_down": 114,
+    "mute": 113
+  }
 }
 ```
+
+Wartości skrótów to kody klawiszy evdev (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113). Zalecanym sposobem zmiany jest dialog Ustawień — ręczna edycja JSON jest możliwa, ale nie jest konieczna.
 
 Wszystkie pola są zapisywane automatycznie przez aplikację — ręczna edycja jest opcjonalna.
 
