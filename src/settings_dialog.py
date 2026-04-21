@@ -86,7 +86,7 @@ class HotkeyCapture(QPushButton):
         name = ecodes.KEY.get(code)
         if name is None:
             return str(code)
-        if isinstance(name, list):
+        if isinstance(name, (list, tuple)):
             name = name[0]
         return name[4:] if name.startswith("KEY_") else name
 
