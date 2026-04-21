@@ -56,7 +56,37 @@ def _get_libX11():
     if _libX11 is None:
         name = ctypes.util.find_library("X11")
         if name:
-            _libX11 = ctypes.cdll.LoadLibrary(name)
+            lib = ctypes.cdll.LoadLibrary(name)
+            # Must be called before any other Xlib calls when multiple threads
+            # use X11 — also prevents crashes from Qt's own X11 usage.
+            lib.XInitThreads()
+            # Set return types for functions that return pointers or non-int
+            lib.XOpenDisplay.restype = ctypes.c_void_p
+            lib.XOpenDisplay.argtypes = [ctypes.c_char_p]
+            lib.XDefaultScreen.restype = ctypes.c_int
+            lib.XDefaultScreen.argtypes = [ctypes.c_void_p]
+            lib.XRootWindow.restype = ctypes.c_ulong
+            lib.XRootWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            lib.XConnectionNumber.restype = ctypes.c_int
+            lib.XConnectionNumber.argtypes = [ctypes.c_void_p]
+            lib.XGrabKey.restype = ctypes.c_int
+            lib.XGrabKey.argtypes = [
+                ctypes.c_void_p, ctypes.c_int, ctypes.c_uint,
+                ctypes.c_ulong, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ]
+            lib.XUngrabKey.restype = ctypes.c_int
+            lib.XUngrabKey.argtypes = [
+                ctypes.c_void_p, ctypes.c_int, ctypes.c_uint, ctypes.c_ulong,
+            ]
+            lib.XPending.restype = ctypes.c_int
+            lib.XPending.argtypes = [ctypes.c_void_p]
+            lib.XNextEvent.restype = ctypes.c_int
+            lib.XNextEvent.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+            lib.XFlush.restype = ctypes.c_int
+            lib.XFlush.argtypes = [ctypes.c_void_p]
+            lib.XCloseDisplay.restype = ctypes.c_int
+            lib.XCloseDisplay.argtypes = [ctypes.c_void_p]
+            _libX11 = lib
     return _libX11
 
 
@@ -80,11 +110,12 @@ class _XKeyEvent(ctypes.Structure):
     ]
 
 
+# XEvent is 192 bytes on 64-bit Linux; use a raw buffer large enough.
 class _XEvent(ctypes.Union):
     _fields_ = [
         ("type",    ctypes.c_int),
         ("xkey",    _XKeyEvent),
-        ("pad",     ctypes.c_long * 24),
+        ("pad",     ctypes.c_byte * 192),
     ]
 
 
