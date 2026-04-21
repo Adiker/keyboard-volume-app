@@ -120,8 +120,22 @@ class _XEvent(ctypes.Union):
 
 
 _KeyPress = 2
-_AnyModifier = 1 << 15
 _GrabModeAsync = 1
+_Mod2Mask = 1 << 4   # NumLock
+_LockMask = 1 << 1   # CapsLock
+_Mod5Mask = 1 << 5   # ScrollLock
+
+# Grab each key 8× — once per combination of the three "irrelevant" modifiers
+# (NumLock, CapsLock, ScrollLock). This is the standard xbindkeys approach.
+_IGNORED_MOD_COMBOS: list[int] = [
+    mask
+    for bits in range(8)
+    for mask in [
+        ((_Mod2Mask if bits & 1 else 0)
+         | (_LockMask if bits & 2 else 0)
+         | (_Mod5Mask if bits & 4 else 0))
+    ]
+]
 
 
 class X11HotkeyThread(QThread):
@@ -159,20 +173,19 @@ class X11HotkeyThread(QThread):
         root = lib.XRootWindow(dpy, screen)
         conn_fd = lib.XConnectionNumber(dpy)
 
-        # Register each hotkey
+        # Register each hotkey for all combinations of ignored modifiers
         grabbed_codes = []
         for evdev_code in self._codes:
             x11_keycode = evdev_code + 8
-            ret = lib.XGrabKey(
-                dpy,
-                x11_keycode,
-                _AnyModifier,
-                root,
-                False,
-                _GrabModeAsync,
-                _GrabModeAsync,
-            )
-            if ret:
+            ok = True
+            for mod in _IGNORED_MOD_COMBOS:
+                ret = lib.XGrabKey(
+                    dpy, x11_keycode, mod, root,
+                    False, _GrabModeAsync, _GrabModeAsync,
+                )
+                if not ret:
+                    ok = False
+            if ok:
                 grabbed_codes.append(x11_keycode)
                 print(f"[X11HotkeyThread] Grabbed X11 keycode {x11_keycode} (evdev {evdev_code})")
             else:
@@ -198,7 +211,8 @@ class X11HotkeyThread(QThread):
                             self.hotkey_triggered.emit(evdev_code)
         finally:
             for kc in grabbed_codes:
-                lib.XUngrabKey(dpy, kc, _AnyModifier, root)
+                for mod in _IGNORED_MOD_COMBOS:
+                    lib.XUngrabKey(dpy, kc, mod, root)
             lib.XCloseDisplay(dpy)
             print("[X11HotkeyThread] Stopped, all keys ungrabbed")
 
