@@ -41,9 +41,15 @@ class ColorButton(QPushButton):
 
 class KeyCaptureDialog(QDialog):
     """
-    Modal dialog that waits for one key press via evdev (exclusive grab).
-    Grabs all sibling devices so the OS cannot intercept media keys.
-    Press Escape or click Cancel to abort without capturing.
+    Modal dialog that waits for one key press.
+
+    Two parallel capture paths:
+    - KeyCaptureThread (evdev, exclusive grab) — catches media keys that the
+      OS would otherwise intercept (Consumer Control interface).
+    - keyPressEvent (Qt/X11) — catches regular keyboard keys forwarded by
+      XWayland; these are not grabbed by our thread so Qt sees them normally.
+
+    Whichever path fires first wins. Press Escape or Cancel to abort.
     """
 
     def __init__(self, device_path: str | None, parent=None):
@@ -52,6 +58,7 @@ class KeyCaptureDialog(QDialog):
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setMinimumWidth(300)
         self._code: int | None = None
+        self._done = False          # guard: only the first capture wins
         self._thread: KeyCaptureThread | None = None
 
         layout = QVBoxLayout(self)
@@ -69,11 +76,41 @@ class KeyCaptureDialog(QDialog):
             self._thread.cancelled.connect(self._do_cancel)
             self._thread.start()
 
+    # --- evdev path (media keys) ---
+
     def _on_captured(self, code: int):
+        if self._done:
+            return
+        self._done = True
         self._code = code
+        if self._thread and self._thread.isRunning():
+            self._thread.cancel()
         self.accept()
 
+    # --- Qt/X11 path (regular keyboard keys) ---
+
+    def keyPressEvent(self, event):
+        if self._done:
+            event.accept()
+            return
+        if event.key() == Qt.Key.Key_Escape:
+            self._do_cancel()
+            return
+        # nativeScanCode() is the X11 keycode; evdev code = X11 keycode - 8
+        x11_code = event.nativeScanCode()
+        if x11_code > 8:
+            evdev_code = x11_code - 8
+            if evdev_code in ecodes.KEY:
+                self._on_captured(evdev_code)
+                return
+        event.accept()
+
+    # --- cancel ---
+
     def _do_cancel(self):
+        if self._done:
+            return
+        self._done = True
         if self._thread and self._thread.isRunning():
             self._thread.cancel()
         self.reject()
