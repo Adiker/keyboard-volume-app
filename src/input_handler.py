@@ -1,5 +1,8 @@
 from __future__ import annotations
+import ctypes
+import ctypes.util
 import select
+import time
 import evdev
 from evdev import ecodes
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -40,6 +43,133 @@ def find_sibling_devices(primary_path: str) -> list[str]:
             pass
 
     return siblings if siblings else [primary_path]
+
+
+# ---------------------------------------------------------------------------
+# X11 structures and constants (ctypes)
+# ---------------------------------------------------------------------------
+
+_libX11 = None
+
+def _get_libX11():
+    global _libX11
+    if _libX11 is None:
+        name = ctypes.util.find_library("X11")
+        if name:
+            _libX11 = ctypes.cdll.LoadLibrary(name)
+    return _libX11
+
+
+class _XKeyEvent(ctypes.Structure):
+    _fields_ = [
+        ("type",        ctypes.c_int),
+        ("serial",      ctypes.c_ulong),
+        ("send_event",  ctypes.c_int),
+        ("display",     ctypes.c_void_p),
+        ("window",      ctypes.c_ulong),
+        ("root",        ctypes.c_ulong),
+        ("subwindow",   ctypes.c_ulong),
+        ("time",        ctypes.c_ulong),
+        ("x",           ctypes.c_int),
+        ("y",           ctypes.c_int),
+        ("x_root",      ctypes.c_int),
+        ("y_root",      ctypes.c_int),
+        ("state",       ctypes.c_uint),
+        ("keycode",     ctypes.c_uint),
+        ("same_screen", ctypes.c_int),
+    ]
+
+
+class _XEvent(ctypes.Union):
+    _fields_ = [
+        ("type",    ctypes.c_int),
+        ("xkey",    _XKeyEvent),
+        ("pad",     ctypes.c_long * 24),
+    ]
+
+
+_KeyPress = 2
+_AnyModifier = 1 << 15
+_GrabModeAsync = 1
+
+
+class X11HotkeyThread(QThread):
+    """
+    Registers XGrabKey on the X11 root window for a set of evdev key codes
+    and emits hotkey_triggered(evdev_code) whenever one fires.
+
+    This covers keys that the evdev InputHandler cannot see because
+    KWin/libinput holds an exclusive EVIOCGRAB on the main keyboard
+    interface (e.g. F-keys, numpad, KEY_MUTE on the main matrix).
+    """
+    hotkey_triggered = pyqtSignal(int)
+
+    def __init__(self, evdev_codes: list[int], parent=None):
+        super().__init__(parent)
+        self._codes = list(evdev_codes)
+        self._running = True
+
+    def stop_thread(self):
+        self._running = False
+        self.wait(2000)
+
+    def run(self):
+        lib = _get_libX11()
+        if lib is None:
+            print("[X11HotkeyThread] libX11 not found, X11 hotkeys disabled")
+            return
+
+        dpy = lib.XOpenDisplay(None)
+        if not dpy:
+            print("[X11HotkeyThread] XOpenDisplay failed")
+            return
+
+        screen = lib.XDefaultScreen(dpy)
+        root = lib.XRootWindow(dpy, screen)
+        conn_fd = lib.XConnectionNumber(dpy)
+
+        # Register each hotkey
+        grabbed_codes = []
+        for evdev_code in self._codes:
+            x11_keycode = evdev_code + 8
+            ret = lib.XGrabKey(
+                dpy,
+                x11_keycode,
+                _AnyModifier,
+                root,
+                False,
+                _GrabModeAsync,
+                _GrabModeAsync,
+            )
+            if ret:
+                grabbed_codes.append(x11_keycode)
+                print(f"[X11HotkeyThread] Grabbed X11 keycode {x11_keycode} (evdev {evdev_code})")
+            else:
+                print(f"[X11HotkeyThread] XGrabKey failed for keycode {x11_keycode}")
+
+        lib.XFlush(dpy)
+
+        event = _XEvent()
+
+        try:
+            while self._running:
+                # Check if events are pending via select
+                readable, _, _ = select.select([conn_fd], [], [], 0.1)
+                if not readable:
+                    continue
+
+                while lib.XPending(dpy):
+                    lib.XNextEvent(dpy, ctypes.byref(event))
+                    if event.type == _KeyPress:
+                        kc = event.xkey.keycode
+                        evdev_code = kc - 8
+                        if evdev_code in self._codes:
+                            self.hotkey_triggered.emit(evdev_code)
+        finally:
+            for kc in grabbed_codes:
+                lib.XUngrabKey(dpy, kc, _AnyModifier, root)
+            lib.XCloseDisplay(dpy)
+            print("[X11HotkeyThread] Stopped, all keys ungrabbed")
 
 
 class KeyCaptureThread(QThread):
@@ -121,6 +251,9 @@ class InputHandler(QThread):
         self._key_up: int = ecodes.KEY_VOLUMEUP
         self._key_down: int = ecodes.KEY_VOLUMEDOWN
         self._key_mute: int = ecodes.KEY_MUTE
+        self._x11: X11HotkeyThread | None = None
+        # Per-code timestamp for dedup between evdev and X11 paths (100 ms window)
+        self._last_trigger_ms: dict[int, float] = {}
 
     @property
     def device_path(self) -> str | None:
@@ -139,7 +272,33 @@ class InputHandler(QThread):
         self.stop()
         self._device_path = path
         self._running = True
+        self._start_x11()
         self.start()
+
+    def _start_x11(self):
+        """Start (or restart) the X11HotkeyThread for currently configured hotkeys."""
+        if self._x11 is not None and self._x11.isRunning():
+            self._x11.stop_thread()
+            self._x11 = None
+
+        codes = [self._key_up, self._key_down, self._key_mute]
+        self._x11 = X11HotkeyThread(codes)
+        self._x11.hotkey_triggered.connect(self._on_x11_hotkey)
+        self._x11.start()
+
+    def _on_x11_hotkey(self, evdev_code: int):
+        now = time.monotonic() * 1000
+        last = self._last_trigger_ms.get(evdev_code, 0.0)
+        if now - last < 100:
+            return
+        self._last_trigger_ms[evdev_code] = now
+
+        if evdev_code == self._key_up:
+            self.volume_up.emit()
+        elif evdev_code == self._key_down:
+            self.volume_down.emit()
+        elif evdev_code == self._key_mute:
+            self.volume_mute.emit()
 
     def restart(self):
         """Restart grabbing the same device with the current hotkey configuration."""
@@ -148,6 +307,9 @@ class InputHandler(QThread):
 
     def stop(self):
         self._running = False
+        if self._x11 is not None and self._x11.isRunning():
+            self._x11.stop_thread()
+            self._x11 = None
         self.quit()
         self.wait(2000)
 
@@ -186,6 +348,11 @@ class InputHandler(QThread):
                                 continue
                             if event.value != 1:  # key-down only
                                 continue
+                            now = time.monotonic() * 1000
+                            last = self._last_trigger_ms.get(event.code, 0.0)
+                            if now - last < 100:
+                                continue
+                            self._last_trigger_ms[event.code] = now
                             if event.code == key_up:
                                 self.volume_up.emit()
                             elif event.code == key_down:
