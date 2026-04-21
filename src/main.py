@@ -47,6 +47,8 @@ class App(QObject):
         self.tray.device_change_requested.connect(self._on_device_change_requested)
         self.tray.settings_changed.connect(self.osd.reload_styles)
         self.tray.settings_changed.connect(self.tray.rebuild_menu)
+        self.tray.osd_preview_requested.connect(self.osd.show_preview)
+        self.tray.osd_preview_finished.connect(self.osd.hide_preview)
 
     def _init_device(self):
         if self.config.input_device:

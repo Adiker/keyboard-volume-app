@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QDialogButtonBox, QColorDialog, QComboBox,
 )
 from PyQt6.QtGui import QColor
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from src.config import Config
 from src.i18n import tr, set_language, LANGUAGES
@@ -37,6 +37,9 @@ class ColorButton(QPushButton):
 
 
 class SettingsDialog(QDialog):
+    # Emitted live as the user adjusts screen/x/y: (screen_idx, x, y)
+    position_preview = pyqtSignal(int, int, int)
+
     def __init__(self, config: Config, parent=None):
         super().__init__(parent)
         self.config = config
@@ -123,6 +126,18 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self._save_and_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+        # Live preview — emit whenever position fields change
+        self._screen.currentIndexChanged.connect(self._emit_preview)
+        self._osd_x.valueChanged.connect(self._emit_preview)
+        self._osd_y.valueChanged.connect(self._emit_preview)
+
+    def _emit_preview(self):
+        self.position_preview.emit(
+            self._screen.currentData(),
+            self._osd_x.value(),
+            self._osd_y.value(),
+        )
 
     def _save_and_accept(self):
         lang_code = self._lang.currentData()

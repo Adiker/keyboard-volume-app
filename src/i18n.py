@@ -25,6 +25,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.language":        "Language:",
         "settings.osd_screen":      "OSD screen:",
         "settings.screen_primary":  "primary",
+        # osd
+        "osd.preview":              "OSD Preview",
         # warnings
         "warn.no_device.title":     "No device selected",
         "warn.no_device.text":      (
@@ -56,6 +58,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.language":        "Język:",
         "settings.osd_screen":      "Ekran OSD:",
         "settings.screen_primary":  "główny",
+        # osd
+        "osd.preview":              "Podgląd OSD",
         # warnings
         "warn.no_device.title":     "Brak urządzenia",
         "warn.no_device.text":      (

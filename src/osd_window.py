@@ -3,12 +3,14 @@ from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QProgressBar, QVBoxLa
 from PyQt6.QtCore import Qt, QTimer
 
 from src.config import Config
+from src.i18n import tr
 
 
 class OSDWindow(QWidget):
     def __init__(self, config: Config):
         super().__init__()
         self.config = config
+        self._preview_mode = False
         self._hide_timer = QTimer(self)
         self._hide_timer.setSingleShot(True)
         self._hide_timer.timeout.connect(self.hide)
@@ -92,8 +94,38 @@ class OSDWindow(QWidget):
 
     # --- public API ---
 
+    def show_preview(self, screen_idx: int, x: int, y: int):
+        """Show OSD at the given position without auto-hiding (used by settings dialog)."""
+        self._preview_mode = True
+        self._hide_timer.stop()
+
+        self._label_name.setText(tr("osd.preview"))
+        self._bar.setValue(60)
+        self._label_pct.setText("60%")
+
+        screens = QApplication.screens()
+        if screen_idx >= len(screens):
+            screen_idx = 0
+        geo = screens[screen_idx].geometry()
+        abs_x, abs_y = geo.x() + x, geo.y() + y
+
+        self.move(abs_x, abs_y)
+        self.setGeometry(abs_x, abs_y, self.width(), self.height())
+        self.show()
+        self.raise_()
+        wh = self.windowHandle()
+        if wh:
+            wh.setPosition(abs_x, abs_y)
+
+    def hide_preview(self):
+        """Hide the preview OSD if it is in preview mode."""
+        if self._preview_mode:
+            self._preview_mode = False
+            self.hide()
+
     def show_volume(self, app_name: str, volume: float, muted: bool = False):
         """Display OSD. volume is 0.0–1.0."""
+        self._preview_mode = False
         osd = self.config.osd
         pct = round(volume * 100)
 

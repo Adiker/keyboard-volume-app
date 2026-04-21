@@ -15,6 +15,8 @@ class TrayApp(QObject):
     app_changed = pyqtSignal(str)
     device_change_requested = pyqtSignal()
     settings_changed = pyqtSignal()
+    osd_preview_requested = pyqtSignal(int, int, int)   # screen, x, y
+    osd_preview_finished = pyqtSignal()
 
     def __init__(self, config: Config, volume_ctrl: VolumeController, parent=None):
         super().__init__(parent)
@@ -98,6 +100,8 @@ class TrayApp(QObject):
     def _open_settings(self):
         from src.settings_dialog import SettingsDialog
         dlg = SettingsDialog(self.config)
+        dlg.position_preview.connect(self.osd_preview_requested)
+        dlg.finished.connect(lambda _: self.osd_preview_finished.emit())
         if dlg.exec():
             self.settings_changed.emit()
 
