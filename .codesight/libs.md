@@ -1,0 +1,23 @@
+# Libraries
+
+- `src/config.py` — class Config
+- `src/device_selector.py` — class DeviceSelectorDialog
+- `src/i18n.py`
+  - function set_language: (code) -> None
+  - function current_language: () -> str
+  - function tr: (key) -> str
+- `src/input_handler.py`
+  - function find_sibling_devices: (primary_path) -> list[str]
+  - function find_capture_devices: (primary_path) -> list[str]
+  - function find_hotkey_devices: (primary_path, hotkey_codes) -> list[tuple[str, bool]]
+  - class KeyCaptureThread
+  - class InputHandler
+- `src/main.py` — function main: (), class App
+- `src/osd_window.py` — class OSDWindow
+- `src/settings_dialog.py`
+  - class ColorButton
+  - class KeyCaptureDialog
+  - class HotkeyCapture
+  - class SettingsDialog
+- `src/tray_app.py` — class TrayApp
+- `src/volume_controller.py` — class AudioApp, class VolumeController
