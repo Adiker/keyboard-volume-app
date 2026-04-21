@@ -235,6 +235,7 @@ class InputHandler(QThread):
         candidates = find_hotkey_devices(self._device_path, hotkeys)
         devices: list[evdev.InputDevice] = []
         grabbed_fds: set[int] = set()
+        uinput_devices: dict[int, evdev.UInput] = {}  # fd → UInput re-injector
 
         for path, exclusive_grab in candidates:
             try:
@@ -242,6 +243,25 @@ class InputHandler(QThread):
                 if exclusive_grab:
                     d.grab()
                     grabbed_fds.add(d.fd)
+                    try:
+                        _UINPUT_TYPES = frozenset({
+                            ecodes.EV_KEY, ecodes.EV_REL, ecodes.EV_ABS,
+                            ecodes.EV_MSC, ecodes.EV_REP,
+                        })
+                        caps = {k: v for k, v in d.capabilities().items()
+                                if k in _UINPUT_TYPES}
+                        ui = evdev.UInput(
+                            events=caps,
+                            name=f"kva-reinj-{d.name}",
+                            vendor=d.info.vendor,
+                            product=d.info.product,
+                            version=d.info.version,
+                            bustype=d.info.bustype,
+                        )
+                        uinput_devices[d.fd] = ui
+                        print(f"[InputHandler] Created uinput for {path!r}")
+                    except (PermissionError, OSError) as e:
+                        print(f"[InputHandler] Cannot create uinput for {path!r}: {e}")
                 devices.append(d)
                 mode = "grabbed" if exclusive_grab else "passive"
                 print(f"[InputHandler] Opened {path!r} ({d.name}) [{mode}]")
@@ -263,30 +283,49 @@ class InputHandler(QThread):
                     dev = fd_map[fd]
                     try:
                         for event in dev.read():
-                            if event.type != ecodes.EV_KEY:
-                                continue
+                            is_grabbed = dev.fd in grabbed_fds
+                            ui = uinput_devices.get(dev.fd)
 
-                            is_hotkey = event.code in (key_up, key_down, key_mute)
-                            if is_hotkey:
-                                # swallow all states (down/repeat/up) for assigned hotkeys
-                                if event.value != 1:  # key-down only for triggering
-                                    continue
-                                now = time.monotonic() * 1000
-                                last = self._last_trigger_ms.get(event.code, 0.0)
-                                if now - last < 100:
-                                    continue
-                                self._last_trigger_ms[event.code] = now
-                                if event.code == key_up:
-                                    self.volume_up.emit()
-                                elif event.code == key_down:
-                                    self.volume_down.emit()
-                                elif event.code == key_mute:
-                                    self.volume_mute.emit()
-                                continue
+                            if event.type == ecodes.EV_KEY:
+                                is_hotkey = event.code in (key_up, key_down, key_mute)
+                                if is_hotkey:
+                                    # swallow all states (down/repeat/up) for assigned hotkeys
+                                    if event.value == 1:  # key-down only for triggering
+                                        now = time.monotonic() * 1000
+                                        last = self._last_trigger_ms.get(event.code, 0.0)
+                                        if now - last >= 100:
+                                            self._last_trigger_ms[event.code] = now
+                                            if event.code == key_up:
+                                                self.volume_up.emit()
+                                            elif event.code == key_down:
+                                                self.volume_down.emit()
+                                            elif event.code == key_mute:
+                                                self.volume_mute.emit()
+                                    continue  # never re-inject hotkey events
+                                # non-hotkey EV_KEY → re-inject for grabbed devices
+                                if is_grabbed and ui is not None:
+                                    try:
+                                        ui.write(event.type, event.code, event.value)
+                                    except OSError:
+                                        pass
+                            else:
+                                # EV_SYN, EV_MSC, EV_REP, etc. → re-inject for grabbed devices;
+                                # EV_SYN flows naturally after EV_KEY written above
+                                if is_grabbed and ui is not None:
+                                    try:
+                                        ui.write(event.type, event.code, event.value)
+                                    except OSError:
+                                        pass
                     except OSError:
                         self._running = False
                         break
         finally:
+            for ui in uinput_devices.values():
+                try:
+                    ui.close()
+                except OSError:
+                    pass
+            uinput_devices.clear()
             for d in devices:
                 try:
                     if d.fd in grabbed_fds:
