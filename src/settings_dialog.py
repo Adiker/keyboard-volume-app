@@ -1,6 +1,6 @@
 from __future__ import annotations
 from PyQt6.QtWidgets import (
-    QDialog, QFormLayout, QSpinBox,
+    QApplication, QDialog, QFormLayout, QSpinBox,
     QPushButton, QHBoxLayout, QVBoxLayout,
     QDialogButtonBox, QColorDialog, QComboBox,
 )
@@ -61,6 +61,21 @@ class SettingsDialog(QDialog):
         self._lang.setCurrentIndex(current_idx)
         form.addRow(tr("settings.language"), self._lang)
 
+        # OSD screen
+        self._screen = QComboBox()
+        screens = QApplication.screens()
+        primary = QApplication.primaryScreen()
+        for i, scr in enumerate(screens):
+            geo = scr.geometry()
+            label = f"{i + 1}:  {geo.width()}×{geo.height()}"
+            if scr is primary:
+                label += f"  ({tr('settings.screen_primary')})"
+            self._screen.addItem(label, i)
+        saved_screen = osd.get("screen", 0)
+        if saved_screen < len(screens):
+            self._screen.setCurrentIndex(saved_screen)
+        form.addRow(tr("settings.osd_screen"), self._screen)
+
         # OSD timeout
         self._timeout = QSpinBox()
         self._timeout.setRange(300, 10000)
@@ -69,7 +84,7 @@ class SettingsDialog(QDialog):
         self._timeout.setValue(osd["timeout_ms"])
         form.addRow(tr("settings.osd_timeout"), self._timeout)
 
-        # OSD position
+        # OSD position (relative to selected screen)
         pos_row = QHBoxLayout()
         self._osd_x = QSpinBox()
         self._osd_x.setRange(0, 7680)
@@ -115,6 +130,7 @@ class SettingsDialog(QDialog):
         set_language(lang_code)
 
         self.config.set_osd(
+            screen=self._screen.currentData(),
             timeout_ms=self._timeout.value(),
             x=self._osd_x.value(),
             y=self._osd_y.value(),

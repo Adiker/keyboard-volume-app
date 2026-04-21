@@ -10,6 +10,7 @@ DEFAULTS = {
     "selected_app": None,
     "language": "en",
     "osd": {
+        "screen": 0,
         "x": 50,
         "y": 1150,
         "timeout_ms": 1200,

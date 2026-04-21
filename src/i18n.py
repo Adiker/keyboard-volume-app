@@ -23,6 +23,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.color_text":      "Text color:",
         "settings.color_bar":       "Bar color:",
         "settings.language":        "Language:",
+        "settings.osd_screen":      "OSD screen:",
+        "settings.screen_primary":  "primary",
         # warnings
         "warn.no_device.title":     "No device selected",
         "warn.no_device.text":      (
@@ -52,6 +54,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.color_text":      "Kolor tekstu:",
         "settings.color_bar":       "Kolor paska:",
         "settings.language":        "Język:",
+        "settings.osd_screen":      "Ekran OSD:",
+        "settings.screen_primary":  "główny",
         # warnings
         "warn.no_device.title":     "Brak urządzenia",
         "warn.no_device.text":      (

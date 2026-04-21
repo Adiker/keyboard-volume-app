@@ -1,7 +1,6 @@
 from __future__ import annotations
-from PyQt6.QtWidgets import QWidget, QLabel, QProgressBar, QVBoxLayout
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QProgressBar, QVBoxLayout
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QColor
 
 from src.config import Config
 
@@ -84,7 +83,6 @@ class OSDWindow(QWidget):
         """)
         self._label_name.setObjectName("name_label")
         self._label_pct.setObjectName("pct_label")
-        # Re-apply after setting object names
         self._label_name.setStyleSheet(
             f"font-size: 11pt; font-weight: bold; color: #{text}; background: transparent;"
         )
@@ -103,27 +101,35 @@ class OSDWindow(QWidget):
         self._bar.setValue(pct)
         self._label_pct.setText(f"{pct}%  🔇" if muted else f"{pct}%")
 
-        self._move_to(osd["x"], osd["y"])
+        abs_x, abs_y = self._abs_pos()
+        self.move(abs_x, abs_y)
+        self.setGeometry(abs_x, abs_y, self.width(), self.height())
         self.show()
         self.raise_()
-        # Re-apply via native QWindow after show() — Wayland creates the surface
-        # only after show(), so setPosition() here is more reliable than move() before.
+        # Re-apply via native QWindow after show() — needed on Wayland (XWayland)
         wh = self.windowHandle()
         if wh:
-            wh.setPosition(osd["x"], osd["y"])
+            wh.setPosition(abs_x, abs_y)
 
         self._hide_timer.start(osd["timeout_ms"])
 
     def reload_styles(self):
         """Call after config changes to refresh colors and position."""
         self._apply_styles()
-        osd = self.config.osd
-        self._move_to(osd["x"], osd["y"])
+        abs_x, abs_y = self._abs_pos()
+        self.move(abs_x, abs_y)
+        self.setGeometry(abs_x, abs_y, self.width(), self.height())
         if self.isVisible():
             wh = self.windowHandle()
             if wh:
-                wh.setPosition(osd["x"], osd["y"])
+                wh.setPosition(abs_x, abs_y)
 
-    def _move_to(self, x: int, y: int):
-        self.move(x, y)
-        self.setGeometry(x, y, self.width(), self.height())
+    def _abs_pos(self) -> tuple[int, int]:
+        """Return absolute screen coordinates for the OSD based on config screen + offset."""
+        osd = self.config.osd
+        screens = QApplication.screens()
+        screen_idx = osd.get("screen", 0)
+        if screen_idx >= len(screens):
+            screen_idx = 0
+        geo = screens[screen_idx].geometry()
+        return geo.x() + osd["x"], geo.y() + osd["y"]
