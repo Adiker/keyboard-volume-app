@@ -5,7 +5,7 @@ from evdev import ecodes
 from PyQt6.QtCore import QThread, pyqtSignal
 
 
-def _find_sibling_devices(primary_path: str) -> list[str]:
+def find_sibling_devices(primary_path: str) -> list[str]:
     """
     Return all evdev devices that belong to the same physical device
     as primary_path (matched by phys prefix) AND expose at least one
@@ -42,6 +42,73 @@ def _find_sibling_devices(primary_path: str) -> list[str]:
     return siblings if siblings else [primary_path]
 
 
+class KeyCaptureThread(QThread):
+    """
+    Grabs sibling devices of the given path and waits for one key-down
+    event. Emits key_captured(code) with the raw evdev key code.
+    KEY_ESC is treated as cancel — captured but not emitted, and
+    cancelled() is emitted instead.
+    """
+    key_captured = pyqtSignal(int)
+    cancelled = pyqtSignal()
+
+    def __init__(self, device_path: str, parent=None):
+        super().__init__(parent)
+        self._device_path = device_path
+        self._running = True
+
+    def cancel(self):
+        self._running = False
+        self.wait(1000)
+
+    def run(self):
+        siblings = find_sibling_devices(self._device_path)
+        devices: list[evdev.InputDevice] = []
+        for path in siblings:
+            try:
+                d = evdev.InputDevice(path)
+                d.grab()
+                devices.append(d)
+                print(f"[CaptureThread] Grabbed {path!r} ({d.name})")
+            except (PermissionError, OSError) as e:
+                print(f"[CaptureThread] Cannot grab {path!r}: {e}")
+
+        if not devices:
+            self.cancelled.emit()
+            return
+
+        fd_map = {d.fd: d for d in devices}
+        try:
+            while self._running:
+                readable, _, _ = select.select(fd_map.keys(), [], [], 0.1)
+                for fd in readable:
+                    dev = fd_map[fd]
+                    try:
+                        for event in dev.read():
+                            if event.type != ecodes.EV_KEY:
+                                continue
+                            if event.value != 1:  # key-down only
+                                continue
+                            self._running = False
+                            if event.code == ecodes.KEY_ESC:
+                                self.cancelled.emit()
+                            else:
+                                self.key_captured.emit(event.code)
+                            return
+                    except OSError:
+                        self._running = False
+                        self.cancelled.emit()
+                        return
+        finally:
+            for d in devices:
+                try:
+                    d.ungrab()
+                    d.close()
+                    print(f"[CaptureThread] Released {d.path!r}")
+                except OSError:
+                    pass
+
+
 class InputHandler(QThread):
     volume_up = pyqtSignal()
     volume_down = pyqtSignal()
@@ -54,6 +121,10 @@ class InputHandler(QThread):
         self._key_up: int = ecodes.KEY_VOLUMEUP
         self._key_down: int = ecodes.KEY_VOLUMEDOWN
         self._key_mute: int = ecodes.KEY_MUTE
+
+    @property
+    def device_path(self) -> str | None:
+        return self._device_path
 
     def set_hotkeys(self, up: int, down: int, mute: int):
         self._key_up = up
@@ -84,7 +155,7 @@ class InputHandler(QThread):
         if not self._device_path:
             return
 
-        siblings = _find_sibling_devices(self._device_path)
+        siblings = find_sibling_devices(self._device_path)
         devices: list[evdev.InputDevice] = []
 
         for path in siblings:

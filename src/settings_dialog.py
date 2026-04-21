@@ -11,6 +11,7 @@ from evdev import ecodes
 
 from src.config import Config
 from src.i18n import tr, set_language, LANGUAGES
+from src.input_handler import KeyCaptureThread
 
 
 class ColorButton(QPushButton):
@@ -39,33 +40,48 @@ class ColorButton(QPushButton):
 
 
 class KeyCaptureDialog(QDialog):
-    """Modal dialog that captures a single key press and converts it to an evdev code."""
+    """
+    Modal dialog that waits for one key press via evdev (exclusive grab).
+    Grabs all sibling devices so the OS cannot intercept media keys.
+    Press Escape or click Cancel to abort without capturing.
+    """
 
-    def __init__(self, parent=None):
+    def __init__(self, device_path: str | None, parent=None):
         super().__init__(parent)
         self.setWindowTitle(tr("settings.hotkey.capture_title"))
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         self.setMinimumWidth(300)
         self._code: int | None = None
+        self._thread: KeyCaptureThread | None = None
 
         layout = QVBoxLayout(self)
         label = QLabel(tr("settings.hotkey.capture_prompt"))
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(label)
 
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key.Key_Escape:
-            self.reject()
-            return
-        # nativeScanCode() returns the X11 keycode; evdev code = X11 keycode - 8
-        x11_code = event.nativeScanCode()
-        if x11_code > 8:
-            evdev_code = x11_code - 8
-            if evdev_code in ecodes.KEY:
-                self._code = evdev_code
-                self.accept()
-                return
-        event.accept()
+        cancel_btn = QPushButton(tr("settings.hotkey.capture_cancel"))
+        cancel_btn.clicked.connect(self._do_cancel)
+        layout.addWidget(cancel_btn)
+
+        if device_path:
+            self._thread = KeyCaptureThread(device_path)
+            self._thread.key_captured.connect(self._on_captured)
+            self._thread.cancelled.connect(self._do_cancel)
+            self._thread.start()
+
+    def _on_captured(self, code: int):
+        self._code = code
+        self.accept()
+
+    def _do_cancel(self):
+        if self._thread and self._thread.isRunning():
+            self._thread.cancel()
+        self.reject()
+
+    def closeEvent(self, event):
+        if self._thread and self._thread.isRunning():
+            self._thread.cancel()
+        super().closeEvent(event)
 
     def captured_code(self) -> int | None:
         return self._code
@@ -101,7 +117,8 @@ class HotkeyCapture(QPushButton):
         if self._input_handler:
             self._input_handler.stop()
         try:
-            dlg = KeyCaptureDialog(self)
+            device_path = self._input_handler.device_path if self._input_handler else None
+            dlg = KeyCaptureDialog(device_path, self)
             if dlg.exec() == QDialog.DialogCode.Accepted and dlg.captured_code() is not None:
                 self._code = dlg.captured_code()
                 self._update_display()

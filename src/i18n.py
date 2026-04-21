@@ -30,7 +30,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.hotkey.volume_down":      "Volume down:",
         "settings.hotkey.mute":             "Mute:",
         "settings.hotkey.capture_title":    "Capture key",
-        "settings.hotkey.capture_prompt":   "Press the key you want to bind.\nEsc — cancel.",
+        "settings.hotkey.capture_prompt":   "Press the key you want to bind.\nEsc or Cancel to abort.",
+        "settings.hotkey.capture_cancel":   "Cancel",
         # osd
         "osd.preview":              "OSD Preview",
         # warnings
@@ -69,7 +70,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "settings.hotkey.volume_down":      "Głośność w dół:",
         "settings.hotkey.mute":             "Wyciszenie:",
         "settings.hotkey.capture_title":    "Przypisz klawisz",
-        "settings.hotkey.capture_prompt":   "Naciśnij klawisz, który chcesz przypisać.\nEsc — anuluj.",
+        "settings.hotkey.capture_prompt":   "Naciśnij klawisz, który chcesz przypisać.\nEsc lub Anuluj, by przerwać.",
+        "settings.hotkey.capture_cancel":   "Anuluj",
         # osd
         "osd.preview":              "Podgląd OSD",
         # warnings
