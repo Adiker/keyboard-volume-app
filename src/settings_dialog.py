@@ -74,9 +74,10 @@ class KeyCaptureDialog(QDialog):
 class HotkeyCapture(QPushButton):
     """Button displaying the currently assigned key. Click to reassign."""
 
-    def __init__(self, code: int, parent=None):
+    def __init__(self, code: int, input_handler=None, parent=None):
         super().__init__(parent)
         self._code = code
+        self._input_handler = input_handler
         self.setMinimumWidth(120)
         self._update_display()
         self.clicked.connect(self._capture)
@@ -97,19 +98,26 @@ class HotkeyCapture(QPushButton):
         return self._code
 
     def _capture(self):
-        dlg = KeyCaptureDialog(self)
-        if dlg.exec() == QDialog.DialogCode.Accepted and dlg.captured_code() is not None:
-            self._code = dlg.captured_code()
-            self._update_display()
+        if self._input_handler:
+            self._input_handler.stop()
+        try:
+            dlg = KeyCaptureDialog(self)
+            if dlg.exec() == QDialog.DialogCode.Accepted and dlg.captured_code() is not None:
+                self._code = dlg.captured_code()
+                self._update_display()
+        finally:
+            if self._input_handler:
+                self._input_handler.restart()
 
 
 class SettingsDialog(QDialog):
     # Emitted live as the user adjusts screen/x/y: (screen_idx, x, y)
     position_preview = pyqtSignal(int, int, int)
 
-    def __init__(self, config: Config, parent=None):
+    def __init__(self, config: Config, input_handler=None, parent=None):
         super().__init__(parent)
         self.config = config
+        self._input_handler = input_handler
         self.setWindowTitle(tr("settings.title"))
         self.setMinimumWidth(360)
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
@@ -191,13 +199,13 @@ class SettingsDialog(QDialog):
         form.addRow(section_label)
 
         hotkeys = self.config.hotkeys
-        self._hk_up = HotkeyCapture(hotkeys["volume_up"])
+        self._hk_up = HotkeyCapture(hotkeys["volume_up"], self._input_handler)
         form.addRow(tr("settings.hotkey.volume_up"), self._hk_up)
 
-        self._hk_down = HotkeyCapture(hotkeys["volume_down"])
+        self._hk_down = HotkeyCapture(hotkeys["volume_down"], self._input_handler)
         form.addRow(tr("settings.hotkey.volume_down"), self._hk_down)
 
-        self._hk_mute = HotkeyCapture(hotkeys["mute"])
+        self._hk_mute = HotkeyCapture(hotkeys["mute"], self._input_handler)
         form.addRow(tr("settings.hotkey.mute"), self._hk_mute)
 
         layout.addLayout(form)

@@ -5,14 +5,14 @@ from evdev import ecodes
 from PyQt6.QtCore import QThread, pyqtSignal
 
 
-def _find_sibling_devices(primary_path: str, hotkey_codes: set[int]) -> list[str]:
+def _find_sibling_devices(primary_path: str) -> list[str]:
     """
     Return all evdev devices that belong to the same physical device
     as primary_path (matched by phys prefix) AND expose at least one
-    of the configured hotkey codes.
-    This is needed because keyboards often expose multiple event nodes
-    (e.g. main keyboard + Consumer Control) — we must grab all of them
-    to fully intercept the chosen keys from the OS/desktop.
+    EV_KEY capability.
+    We grab every sibling node so that no key event from this keyboard
+    can be intercepted by the OS/desktop, regardless of which keys are
+    configured as hotkeys.
     """
     try:
         dev = evdev.InputDevice(primary_path)
@@ -32,10 +32,9 @@ def _find_sibling_devices(primary_path: str, hotkey_codes: set[int]) -> list[str
         try:
             d = evdev.InputDevice(path)
             phys = d.phys or ""
-            caps = d.capabilities()
-            keys = set(caps.get(ecodes.EV_KEY, []))
+            has_keys = bool(d.capabilities().get(ecodes.EV_KEY))
             d.close()
-            if phys.startswith(phys_prefix) and (hotkey_codes & keys):
+            if phys.startswith(phys_prefix) and has_keys:
                 siblings.append(path)
         except (PermissionError, OSError):
             pass
@@ -71,6 +70,11 @@ class InputHandler(QThread):
         self._running = True
         self.start()
 
+    def restart(self):
+        """Restart grabbing the same device with the current hotkey configuration."""
+        if self._device_path:
+            self.start_device(self._device_path)
+
     def stop(self):
         self._running = False
         self.quit()
@@ -80,8 +84,7 @@ class InputHandler(QThread):
         if not self._device_path:
             return
 
-        hotkey_codes = {self._key_up, self._key_down, self._key_mute}
-        siblings = _find_sibling_devices(self._device_path, hotkey_codes)
+        siblings = _find_sibling_devices(self._device_path)
         devices: list[evdev.InputDevice] = []
 
         for path in siblings:

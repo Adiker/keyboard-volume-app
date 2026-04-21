@@ -30,7 +30,7 @@ class App(QObject):
         self.volume_ctrl = VolumeController()
         self.osd = OSDWindow(self.config)
         self.input_handler = InputHandler()
-        self.tray = TrayApp(self.config, self.volume_ctrl)
+        self.tray = TrayApp(self.config, self.volume_ctrl, self.input_handler)
 
         self._connect_signals()
         self._init_device()

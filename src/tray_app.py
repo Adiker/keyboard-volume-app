@@ -18,10 +18,11 @@ class TrayApp(QObject):
     osd_preview_requested = pyqtSignal(int, int, int)   # screen, x, y
     osd_preview_finished = pyqtSignal()
 
-    def __init__(self, config: Config, volume_ctrl: VolumeController, parent=None):
+    def __init__(self, config: Config, volume_ctrl: VolumeController, input_handler=None, parent=None):
         super().__init__(parent)
         self.config = config
         self.volume_ctrl = volume_ctrl
+        self._input_handler = input_handler
 
         self._tray = QSystemTrayIcon(QIcon(str(ICON_PATH)))
         self._tray.setToolTip("Keyboard Volume App")
@@ -99,7 +100,7 @@ class TrayApp(QObject):
 
     def _open_settings(self):
         from src.settings_dialog import SettingsDialog
-        dlg = SettingsDialog(self.config)
+        dlg = SettingsDialog(self.config, self._input_handler)
         dlg.position_preview.connect(self.osd_preview_requested)
         dlg.finished.connect(lambda _: self.osd_preview_finished.emit())
         if dlg.exec():
