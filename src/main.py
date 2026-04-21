@@ -50,6 +50,9 @@ class App(QObject):
         self.tray.settings_changed.connect(self._on_hotkeys_maybe_changed)
         self.tray.osd_preview_requested.connect(self.osd.show_preview)
         self.tray.osd_preview_finished.connect(self.osd.hide_preview)
+        self.tray.osd_style_preview_requested.connect(self.osd.apply_preview_colors)
+        self.tray.osd_preview_held_requested.connect(self.osd.show_preview_held)
+        self.tray.osd_preview_released.connect(self.osd.release_preview)
 
     def _init_device(self):
         hotkeys = self.config.hotkeys

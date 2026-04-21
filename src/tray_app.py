@@ -17,6 +17,9 @@ class TrayApp(QObject):
     settings_changed = pyqtSignal()
     osd_preview_requested = pyqtSignal(int, int, int)   # screen, x, y
     osd_preview_finished = pyqtSignal()
+    osd_style_preview_requested = pyqtSignal(str, str, str, int)  # color_bg, color_text, color_bar, opacity
+    osd_preview_held_requested = pyqtSignal(int, int, int)  # screen, x, y
+    osd_preview_released = pyqtSignal(int)                  # timeout_ms
 
     def __init__(self, config: Config, volume_ctrl: VolumeController, input_handler=None, parent=None):
         super().__init__(parent)
@@ -102,9 +105,13 @@ class TrayApp(QObject):
         from src.settings_dialog import SettingsDialog
         dlg = SettingsDialog(self.config, self._input_handler)
         dlg.position_preview.connect(self.osd_preview_requested)
+        dlg.style_preview.connect(self.osd_style_preview_requested)
+        dlg.preview_held_requested.connect(self.osd_preview_held_requested)
+        dlg.preview_released.connect(self.osd_preview_released)
         dlg.finished.connect(lambda _: self.osd_preview_finished.emit())
-        if dlg.exec():
-            self.settings_changed.emit()
+        dlg.exec()
+        # Always reload styles: applies new colors on OK, reverts preview colors on Cancel
+        self.settings_changed.emit()
 
     def rebuild_menu(self):
         """Rebuild the tray menu — call after language change."""

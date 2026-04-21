@@ -17,6 +17,8 @@ from src.input_handler import KeyCaptureThread
 class ColorButton(QPushButton):
     """Button that shows a color picker and stores the selected hex color."""
 
+    color_changed = pyqtSignal(str)
+
     def __init__(self, color: str, parent=None):
         super().__init__(parent)
         self.setFixedWidth(80)
@@ -34,9 +36,12 @@ class ColorButton(QPushButton):
         return self._color
 
     def _pick(self):
-        chosen = QColorDialog.getColor(QColor(self._color), self, "")
+        # Use the top-level window as parent so QColorDialog doesn't inherit
+        # the button's background-color stylesheet as its own palette.
+        chosen = QColorDialog.getColor(QColor(self._color), self.window(), "")
         if chosen.isValid():
             self.set_color(chosen.name())
+            self.color_changed.emit(chosen.name())
 
 
 class KeyCaptureDialog(QDialog):
@@ -167,6 +172,12 @@ class HotkeyCapture(QPushButton):
 class SettingsDialog(QDialog):
     # Emitted live as the user adjusts screen/x/y: (screen_idx, x, y)
     position_preview = pyqtSignal(int, int, int)
+    # Emitted live as the user changes any color or opacity: (color_bg, color_text, color_bar, opacity)
+    style_preview = pyqtSignal(str, str, str, int)
+    # Emitted while Preview button is held: (screen_idx, x, y)
+    preview_held_requested = pyqtSignal(int, int, int)
+    # Emitted when Preview button is released: (timeout_ms,)
+    preview_released = pyqtSignal(int)
 
     def __init__(self, config: Config, input_handler=None, parent=None):
         super().__init__(parent)
@@ -247,6 +258,14 @@ class SettingsDialog(QDialog):
         self._color_bar = ColorButton(osd["color_bar"])
         form.addRow(tr("settings.color_bar"), self._color_bar)
 
+        # Opacity
+        self._opacity = QSpinBox()
+        self._opacity.setRange(0, 100)
+        self._opacity.setSingleStep(5)
+        self._opacity.setSuffix(" %")
+        self._opacity.setValue(osd.get("opacity", 85))
+        form.addRow(tr("settings.opacity"), self._opacity)
+
         # --- Hotkeys section ---
         section_label = QLabel(tr("settings.hotkeys_section"))
         section_label.setStyleSheet("font-weight: bold; margin-top: 8px;")
@@ -264,6 +283,11 @@ class SettingsDialog(QDialog):
 
         layout.addLayout(form)
 
+        preview_btn = QPushButton(tr("settings.preview_btn"))
+        preview_btn.pressed.connect(self._on_preview_pressed)
+        preview_btn.released.connect(self._on_preview_released)
+        layout.addWidget(preview_btn)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -276,12 +300,39 @@ class SettingsDialog(QDialog):
         self._osd_x.valueChanged.connect(self._emit_preview)
         self._osd_y.valueChanged.connect(self._emit_preview)
 
+        # Live style preview — emit whenever any color or opacity changes
+        self._color_bg.color_changed.connect(lambda _: self._emit_style_preview())
+        self._color_text.color_changed.connect(lambda _: self._emit_style_preview())
+        self._color_bar.color_changed.connect(lambda _: self._emit_style_preview())
+        self._opacity.valueChanged.connect(lambda _: self._emit_style_preview())
+
+    def _on_preview_pressed(self):
+        self._emit_style_preview()
+        self.preview_held_requested.emit(
+            self._screen.currentData(),
+            self._osd_x.value(),
+            self._osd_y.value(),
+        )
+
+    def _on_preview_released(self):
+        self.preview_released.emit(self._timeout.value())
+
     def _emit_preview(self):
         self.position_preview.emit(
             self._screen.currentData(),
             self._osd_x.value(),
             self._osd_y.value(),
         )
+
+    def _emit_style_preview(self):
+        self.style_preview.emit(
+            self._color_bg.color(),
+            self._color_text.color(),
+            self._color_bar.color(),
+            self._opacity.value(),
+        )
+        # Also show the OSD at the current position so the user sees the effect immediately.
+        self._emit_preview()
 
     def _save_and_accept(self):
         lang_code = self._lang.currentData()
@@ -293,6 +344,7 @@ class SettingsDialog(QDialog):
             timeout_ms=self._timeout.value(),
             x=self._osd_x.value(),
             y=self._osd_y.value(),
+            opacity=self._opacity.value(),
             color_bg=self._color_bg.color(),
             color_text=self._color_text.color(),
             color_bar=self._color_bar.color(),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QProgressBar, QVBoxLayout
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor, QPainter
 
 from src.config import Config
 from src.i18n import tr
@@ -11,6 +12,7 @@ class OSDWindow(QWidget):
         super().__init__()
         self.config = config
         self._preview_mode = False
+        self._bg_color = QColor("#1A1A1A")
         self._hide_timer = QTimer(self)
         self._hide_timer.setSingleShot(True)
         self._hide_timer.timeout.connect(self.hide)
@@ -36,6 +38,7 @@ class OSDWindow(QWidget):
 
         self._label_name = QLabel("", self)
         self._label_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label_name.setObjectName("name_label")
 
         self._bar = QProgressBar(self)
         self._bar.setRange(0, 100)
@@ -44,6 +47,7 @@ class OSDWindow(QWidget):
 
         self._label_pct = QLabel("", self)
         self._label_pct.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label_pct.setObjectName("pct_label")
 
         layout.addWidget(self._label_name)
         layout.addWidget(self._bar)
@@ -51,15 +55,21 @@ class OSDWindow(QWidget):
 
     def _apply_styles(self):
         osd = self.config.osd
-        bg = osd["color_bg"].lstrip("#")
-        text = osd["color_text"].lstrip("#")
-        bar = osd["color_bar"].lstrip("#")
+        self._apply_color_styles(
+            osd["color_bg"], osd["color_text"], osd["color_bar"],
+            osd.get("opacity", 85),
+        )
 
+    def _apply_color_styles(self, color_bg: str, color_text: str, color_bar: str, opacity: int = 85):
+        self._bg_color = QColor(color_bg)
+        self._bg_color.setAlpha(round(opacity / 100 * 255))
+        text = color_text.lstrip("#")
+        bar = color_bar.lstrip("#")
+
+        # Background is drawn in paintEvent — do NOT include background-color or
+        # border-radius in the stylesheet here, as WA_TranslucentBackground causes
+        # Qt to skip stylesheet background painting for top-level windows.
         self.setStyleSheet(f"""
-            QWidget {{
-                background-color: #{bg};
-                border-radius: 8px;
-            }}
             QLabel {{
                 color: #{text};
                 background: transparent;
@@ -83,19 +93,43 @@ class OSDWindow(QWidget):
                 border-radius: 3px;
             }}
         """)
-        self._label_name.setObjectName("name_label")
-        self._label_pct.setObjectName("pct_label")
         self._label_name.setStyleSheet(
             f"font-size: 11pt; font-weight: bold; color: #{text}; background: transparent;"
         )
         self._label_pct.setStyleSheet(
             f"font-size: 9pt; color: #{text}; background: transparent;"
         )
+        self.update()
+
+    def apply_preview_colors(self, color_bg: str, color_text: str, color_bar: str, opacity: int = 85):
+        """Temporarily apply colors without saving — used for live preview in settings dialog."""
+        self._apply_color_styles(color_bg, color_text, color_bar, opacity)
+
+    def show_preview_held(self, screen_idx: int, x: int, y: int):
+        """Show OSD without auto-hide — call while preview button is held."""
+        self.show_preview(screen_idx, x, y)
+        self._hide_timer.stop()
+
+    def release_preview(self, timeout_ms: int):
+        """Start hide timer after preview button is released."""
+        if self.isVisible() and self._preview_mode:
+            self._hide_timer.start(timeout_ms)
+
+    def paintEvent(self, event):
+        """Draw rounded background manually — required when WA_TranslucentBackground is set."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._bg_color)
+        painter.drawRoundedRect(self.rect(), 8, 8)
+        super().paintEvent(event)
 
     # --- public API ---
 
-    def show_preview(self, screen_idx: int, x: int, y: int):
-        """Show OSD at the given position without auto-hiding (used by settings dialog)."""
+    _PREVIEW_TIMEOUT_MS = 1500
+
+    def show_preview(self, screen_idx: int, x: int, y: int, timeout_ms: int = _PREVIEW_TIMEOUT_MS):
+        """Show OSD at the given position and auto-hide after timeout_ms."""
         self._preview_mode = True
         self._hide_timer.stop()
 
@@ -116,6 +150,8 @@ class OSDWindow(QWidget):
         wh = self.windowHandle()
         if wh:
             wh.setPosition(abs_x, abs_y)
+
+        self._hide_timer.start(timeout_ms)
 
     def hide_preview(self):
         """Hide the preview OSD if it is in preview mode."""
@@ -155,6 +191,7 @@ class OSDWindow(QWidget):
             wh = self.windowHandle()
             if wh:
                 wh.setPosition(abs_x, abs_y)
+        self.update()
 
     def _abs_pos(self) -> tuple[int, int]:
         """Return absolute screen coordinates for the OSD based on config screen + offset."""

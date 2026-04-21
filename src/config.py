@@ -14,6 +14,7 @@ DEFAULTS = {
         "x": 50,
         "y": 1150,
         "timeout_ms": 1200,
+        "opacity": 85,
         "color_bg": "#1A1A1A",
         "color_text": "#FFFFFF",
         "color_bar": "#0078D7",
