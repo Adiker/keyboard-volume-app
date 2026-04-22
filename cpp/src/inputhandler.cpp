@@ -125,7 +125,7 @@ QList<std::pair<QString, bool>> findHotkeyDevices(const QString &primaryPath,
         closeDev(fd, dev);
         if (hasHotkey) {
             seen.insert(path);
-            result.append({ path, false });
+            result.append({ path, true });
         }
     }
     return result;
@@ -296,7 +296,7 @@ void InputHandler::run()
         }
         devices.append({ fd, dev, ui, grabbed });
         qDebug() << "[InputHandler] Opened" << path
-                 << (exclusive ? "[grabbed]" : "[passive]");
+                 << (grabbed ? "[grabbed]" : (exclusive ? "[grab-failed]" : "[passive]"));
     }
 
     if (devices.isEmpty()) return;
