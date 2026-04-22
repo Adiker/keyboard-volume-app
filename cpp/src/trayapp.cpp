@@ -38,7 +38,12 @@ TrayApp::TrayApp(Config *config, VolumeController *volumeCtrl,
     m_appGroup->setExclusive(true);
 
     m_tray->setContextMenu(m_menu);
-    buildMenu();
+
+    // Rebuild menu whenever the PA worker delivers a fresh app list.
+    connect(m_volumeCtrl, &VolumeController::appsReady,
+            this, &TrayApp::rebuildMenu);
+
+    buildMenu(); // builds from cache (may be empty on first call; appsReady will refresh)
     m_tray->show();
 }
 
@@ -112,8 +117,9 @@ void TrayApp::populateAppList()
 
 void TrayApp::onRefresh()
 {
+    // Triggers an async pw-dump refresh in the PA worker thread.
+    // Menu will be rebuilt automatically when appsReady fires.
     m_volumeCtrl->listApps(/*forceRefresh=*/true);
-    buildMenu();
 }
 
 void TrayApp::onAppSelected(const QString &name)

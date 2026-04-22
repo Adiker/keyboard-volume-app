@@ -39,6 +39,12 @@ public:
 private:
     void connectSignals()
     {
+        // Volume result (async) → OSD
+        connect(m_volumeCtrl, &VolumeController::volumeChanged,
+                this, [this](const QString &app, double vol, bool muted) {
+            m_osd->showVolume(app, vol, muted);
+        });
+
         // Input → volume
         connect(m_input, &InputHandler::volume_up,   this, &App::onVolumeUp);
         connect(m_input, &InputHandler::volume_down, this, &App::onVolumeDown);
@@ -92,21 +98,15 @@ private:
     {
         const QString app = m_tray->currentApp();
         if (app.isEmpty()) return;
-        double step  = m_config->volumeStep() / 100.0;
-        auto   newVol = m_volumeCtrl->changeVolume(app, direction * step);
-        if (newVol)
-            m_osd->showVolume(app, *newVol);
+        double step = m_config->volumeStep() / 100.0;
+        m_volumeCtrl->changeVolume(app, direction * step); // async → volumeChanged signal
     }
 
     void onMute()
     {
         const QString app = m_tray->currentApp();
         if (app.isEmpty()) return;
-        auto result = m_volumeCtrl->toggleMute(app);
-        if (result) {
-            auto [muted, vol] = *result;
-            m_osd->showVolume(app, vol, muted);
-        }
+        m_volumeCtrl->toggleMute(app); // async → volumeChanged signal
     }
 
     void onDeviceChangeRequested(bool startup)
