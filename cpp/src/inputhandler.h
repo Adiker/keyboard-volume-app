@@ -19,7 +19,8 @@ QList<QString> findCaptureDevices(const QString &primaryPath);
 
 // Returns (path, exclusiveGrab) pairs for runtime hotkey handling:
 //   siblings of primaryPath → exclusive grab + uinput re-injection
-//   other EV_KEY devices exposing at least one configured hotkey → passive
+//   other EV_KEY devices exposing at least one configured hotkey → exclusive
+//   grab + uinput re-injection, so global media hotkeys are swallowed everywhere.
 QList<std::pair<QString, bool>> findHotkeyDevices(
     const QString &primaryPath,
     const QSet<int> &hotkeyCodes);

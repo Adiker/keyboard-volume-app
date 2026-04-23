@@ -65,10 +65,14 @@ QList<QString> findSiblingDevices(const QString &primaryPath)
     for (const QString &path : listEvdevDevices()) {
         auto [fd2, dev2] = openDev(path);
         if (fd2 < 0) continue;
+        // NOTE: libevdev_get_phys() returns a pointer to libevdev-owned memory;
+        // it becomes invalid after libevdev_free(). Copy into a QString *before*
+        // closing, then compare.
         const char *p = libevdev_get_phys(dev2);
+        QString devPhys = p ? QString::fromLocal8Bit(p) : QString{};
         bool hasKeys = libevdev_has_event_type(dev2, EV_KEY);
         closeDev(fd2, dev2);
-        if (p && QString::fromLocal8Bit(p).startsWith(physPrefix) && hasKeys)
+        if (!devPhys.isEmpty() && devPhys.startsWith(physPrefix) && hasKeys)
             siblings.append(path);
     }
     return siblings.isEmpty() ? QList<QString>{ primaryPath } : siblings;
@@ -285,18 +289,25 @@ void InputHandler::run()
                     dev, LIBEVDEV_UINPUT_OPEN_MANAGED, &ui);
                 if (rc < 0) {
                     qDebug() << "[InputHandler] Cannot create uinput for" << path
-                             << ":" << strerror(-rc);
-                    ui = nullptr;
+                             << ":" << strerror(-rc) << "— releasing grab and skipping";
+                    libevdev_grab(dev, LIBEVDEV_UNGRAB);
+                    closeDev(fd, dev);
+                    continue;
                 } else {
                     qDebug() << "[InputHandler] Created uinput for" << path;
                 }
             } else {
-                qDebug() << "[InputHandler] Cannot grab" << path;
+                // Grab failed — another process (e.g. xremap) has it exclusively.
+                // Drop the device: reading it would yield nothing and could cause
+                // spurious select() wakeups. Matches the Python reference impl.
+                qDebug() << "[InputHandler] Cannot grab" << path << "— skipping";
+                closeDev(fd, dev);
+                continue;
             }
         }
         devices.append({ fd, dev, ui, grabbed });
         qDebug() << "[InputHandler] Opened" << path
-                 << (grabbed ? "[grabbed]" : (exclusive ? "[grab-failed]" : "[passive]"));
+                 << (grabbed ? "[grabbed+uinput]" : "[passive]");
     }
 
     if (devices.isEmpty()) return;

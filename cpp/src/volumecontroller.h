@@ -37,4 +37,5 @@ private:
     QThread         *m_paThread  = nullptr;
     class PaWorker  *m_worker    = nullptr;
     QList<AudioApp>  m_listCache;
+    bool             m_closing   = false;
 };
