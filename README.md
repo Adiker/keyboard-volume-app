@@ -1,5 +1,6 @@
-[🇬🇧 English](#english) | [🇵🇱 Polski](#polski)
-[Python – EN](#python-en) | [C++ – EN](#cpp-en) | [Python – PL](#python-pl) | [C++ – PL](#cpp-pl)
+| [🇬🇧 English](#english) | [🇵🇱 Polski](#polski) |
+|:---:|:---:|
+| [Python](#python-en) · [C++](#cpp-en) | [Python](#python-pl) · [C++](#cpp-pl) |
 
 ---
 
