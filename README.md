@@ -44,7 +44,6 @@ Jump to: [Python](#python-en) | [C++](#cpp-en)
 - **Idle app detection** — lists all apps connected to PipeWire, not just those currently playing audio
 - **Mute toggle** — press the dedicated mute key on your keyboard (the media key that would normally mute the system) to toggle mute on the selected app only. The OSD appears showing the current volume level with a 🔇 indicator when muted
 - **Persistent config** — all settings saved to `~/.config/keyboard-volume-app/config.json`
-- **KDE autostart** — ships with a `.desktop` file for automatic startup with the desktop session
 - **PL / EN interface** — switch language in Settings
 
 #### Requirements
@@ -86,14 +85,6 @@ python3 -m src.main
 ```
 
 On first launch a dialog will appear asking you to select an input device. The app filters the list to show only devices that expose volume keys (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
-
-#### Autostart with KDE
-
-```bash
-cp keyboard-volume-app.desktop ~/.config/autostart/
-```
-
-> **Note:** Edit the `Exec=` and `Path=` lines in the file if you installed the project to a different location or use a virtual environment.
 
 #### Usage
 
@@ -157,7 +148,6 @@ keyboard-volume-app/
 │   └── settings_dialog.py   # OSD/volume settings dialog
 ├── resources/
 │   └── icon.png
-├── keyboard-volume-app.desktop
 └── requirements.txt
 ```
 
@@ -187,7 +177,6 @@ The volume change hot path (keypress → OSD update) uses a single pulsectl IPC 
 - **Idle app detection** — lists all apps connected to PipeWire, not just those currently playing audio
 - **Mute toggle** — press the dedicated mute key on your keyboard to toggle mute on the selected app only. The OSD appears showing the current volume level with a 🔇 indicator when muted
 - **Persistent config** — all settings saved to `~/.config/keyboard-volume-app/config.json` (same format as the Python version)
-- **KDE autostart** — ships with a `.desktop` file for automatic startup with the desktop session
 - **PL / EN interface** — switch language in Settings
 
 #### Requirements
@@ -250,14 +239,6 @@ cpp/build/keyboard-volume-app
 ```
 
 On first launch a dialog will appear asking you to select an input device. The app filters the list to show only devices that expose volume keys (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
-
-#### Autostart with KDE
-
-```bash
-cp keyboard-volume-app.desktop ~/.config/autostart/
-```
-
-> **Note:** Edit the `Exec=` line to point to the compiled binary (`cpp/build/keyboard-volume-app`) and update `Path=` to the repo root.
 
 #### Usage
 
@@ -376,7 +357,6 @@ Przejdź do: [Python](#python-pl) | [C++](#cpp-pl)
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera wszystkie aplikacje podłączone do PipeWire, nie tylko te aktualnie odtwarzające dźwięk
 - **Wyciszenie** — naciśnij dedykowany klawisz mute na klawiaturze (ten multimedialny, który normalnie wyciszałby cały system), aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom głośności ze wskaźnikiem 🔇
 - **Trwała konfiguracja** — wszystkie ustawienia zapisywane w `~/.config/keyboard-volume-app/config.json`
-- **Autostart w KDE** — dołączony plik `.desktop` do automatycznego uruchamiania razem z sesją pulpitu
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
 
 #### Wymagania
@@ -418,14 +398,6 @@ python3 -m src.main
 ```
 
 Przy pierwszym uruchomieniu pojawi się okno z prośbą o wybranie urządzenia wejściowego. Lista jest filtrowana — pokazuje tylko urządzenia posiadające klawisze głośności (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
-
-#### Autostart w KDE
-
-```bash
-cp keyboard-volume-app.desktop ~/.config/autostart/
-```
-
-> **Uwaga:** jeśli zainstalowałeś projekt w innej lokalizacji lub używasz środowiska wirtualnego, dostosuj ścieżki w liniach `Exec=` i `Path=` tego pliku.
 
 #### Użytkowanie
 
@@ -489,7 +461,6 @@ keyboard-volume-app/
 │   └── settings_dialog.py   # Dialog ustawień OSD i głośności
 ├── resources/
 │   └── icon.png
-├── keyboard-volume-app.desktop
 └── requirements.txt
 ```
 
@@ -519,7 +490,6 @@ Hot path zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykon
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera wszystkie aplikacje podłączone do PipeWire, nie tylko te aktualnie odtwarzające dźwięk
 - **Wyciszenie** — naciśnij dedykowany klawisz mute na klawiaturze, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom głośności ze wskaźnikiem 🔇
 - **Trwała konfiguracja** — wszystkie ustawienia zapisywane w `~/.config/keyboard-volume-app/config.json` (ten sam format co wersja Python)
-- **Autostart w KDE** — dołączony plik `.desktop` do automatycznego uruchamiania razem z sesją pulpitu
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
 
 #### Wymagania
@@ -582,14 +552,6 @@ cpp/build/keyboard-volume-app
 ```
 
 Przy pierwszym uruchomieniu pojawi się okno z prośbą o wybranie urządzenia wejściowego. Lista jest filtrowana — pokazuje tylko urządzenia posiadające klawisze głośności (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
-
-#### Autostart w KDE
-
-```bash
-cp keyboard-volume-app.desktop ~/.config/autostart/
-```
-
-> **Uwaga:** ustaw linię `Exec=` na ścieżkę do skompilowanego pliku binarnego (`cpp/build/keyboard-volume-app`) i zaktualizuj `Path=` na katalog główny repozytorium.
 
 #### Użytkowanie
 
