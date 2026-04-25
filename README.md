@@ -26,7 +26,6 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Idle app detection** — lists all apps connected to PipeWire, not just those currently playing audio
 - **Mute toggle** — press the mute key to toggle mute on the selected app only; OSD shows current level with a 🔇 indicator
 - **Persistent config** — all settings saved to `~/.config/keyboard-volume-app/config.json`
-- **KDE autostart** — ships with a `.desktop` file for automatic startup with the desktop session
 - **PL / EN interface** — switch language in Settings
 
 ### Requirements
@@ -80,14 +79,6 @@ cpp/build/keyboard-volume-app
 ```
 
 On first launch a dialog will appear asking you to select an input device. The app filters the list to show only devices that expose volume keys (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
-
-### Autostart with KDE
-
-```bash
-cp keyboard-volume-app.desktop ~/.config/autostart/
-```
-
-> **Note:** Edit the `Exec=` and `Path=` lines in the file if you installed the project to a different location.
 
 ### Usage
 
@@ -190,7 +181,6 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera wszystkie aplikacje podłączone do PipeWire, nie tylko aktualnie odtwarzające dźwięk
 - **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇
 - **Trwała konfiguracja** — wszystkie ustawienia zapisywane w `~/.config/keyboard-volume-app/config.json`
-- **Autostart w KDE** — dołączony plik `.desktop` do automatycznego uruchamiania razem z sesją pulpitu
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
 
 ### Wymagania
@@ -244,14 +234,6 @@ cpp/build/keyboard-volume-app
 ```
 
 Przy pierwszym uruchomieniu pojawi się okno z prośbą o wybranie urządzenia wejściowego. Lista jest filtrowana — pokazuje tylko urządzenia posiadające klawisze głośności (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
-
-### Autostart w KDE
-
-```bash
-cp keyboard-volume-app.desktop ~/.config/autostart/
-```
-
-> **Uwaga:** jeśli zainstalowałeś projekt w innej lokalizacji, dostosuj ścieżki w liniach `Exec=` i `Path=` tego pliku.
 
 ### Użytkowanie
 
