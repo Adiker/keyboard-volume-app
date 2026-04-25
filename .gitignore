@@ -32,6 +32,7 @@ ENV/
 
 # Config (user-specific, not for repo)
 config.json
+keyboard-volume-app.desktop
 
 # Logs
 *.log
