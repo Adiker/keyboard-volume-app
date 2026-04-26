@@ -27,6 +27,9 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Mute toggle** — press the mute key to toggle mute on the selected app only; OSD shows current level with a 🔇 indicator
 - **Persistent config** — all settings saved to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
 - **PL / EN interface** — switch language in Settings
+- **First-run wizard** — on first launch, a QWizard guides through language selection and input device pick; the app is production-ready out of the box after two clicks
+- **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step; VolumeUp/Down/ToggleMute/RefreshApps methods
+- **MPRIS v2** — registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client
 
 ### Requirements
 
@@ -78,7 +81,7 @@ Log out and back in for the change to take effect.
 cpp/build/keyboard-volume-app
 ```
 
-On first launch a dialog will appear asking you to select an input device. The app filters the list to show only devices that expose volume keys (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
+On first launch the **first-run wizard** guides you through language selection and input device configuration. The device list is filtered to show only keyboards that expose volume keys (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
 
 ### Usage
 
@@ -94,6 +97,21 @@ On first launch a dialog will appear asking you to select an input device. The a
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
    - **Hotkeys** — click a key button and press any key to rebind Volume Up, Volume Down or Mute
+
+7. **D-Bus remote control** — use `qdbus` or `dbus-send` to drive the app from scripts, custom keybinds, or external tools:
+
+   ```bash
+   # Bump volume
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeUp
+
+   # Switch to Firefox
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
+       org.keyboardvolumeapp.VolumeControl ActiveApp "Firefox"
+
+   # Read current volume
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
+       org.keyboardvolumeapp.VolumeControl Volume
+   ```
 
 > **Hotkey capture note:** the app grabs its configured keys at the evdev level, so those exact keys won't be visible to Qt while the app is running. To reassign *currently active* hotkeys, first bind them to temporary placeholders (e.g. F9/F10/F11), save and reopen Settings, then set the final keys.
 
@@ -132,6 +150,7 @@ Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` 
 keyboard-volume-app/
 ├── cpp/
 │   ├── CMakeLists.txt
+│   ├── resources.qrc            # Qt resource manifest (embeds icon)
 │   └── src/
 │       ├── main.cpp             # Entry point, wires all modules together
 │       ├── config.h/cpp         # JSON config read/write
@@ -142,14 +161,17 @@ keyboard-volume-app/
 │       ├── trayapp.h/cpp        # System tray icon and menu
 │       ├── deviceselector.h/cpp # Input device picker dialog
 │       ├── settingsdialog.h/cpp # OSD/volume settings dialog
+│       ├── firstrunwizard.h/cpp  # First-run wizard (language + device)
+│       ├── dbusinterface.h/cpp   # D-Bus VolumeControl interface
+│       ├── mprisinterface.h/cpp  # MPRIS v2 adaptor
 │       └── audioapp.h           # AudioApp struct
-└── resources/
-    └── icon.png
+├── resources/
+│   └── icon.png
 ```
 
 ### Performance
 
-The volume change hot path (keypress → OSD update) uses a single libpulse IPC call (~1ms). The heavier `pw-dump` subprocess is only invoked when listing idle apps, with a cached result to avoid redundant calls. All PulseAudio operations run on a dedicated worker thread — the Qt event loop is never blocked.
+The volume change hot path (keypress → OSD update) uses a single libpulse IPC call (~1ms). The heavier `pw-dump` subprocess is only invoked when listing idle apps, with a cached result to avoid redundant calls. All PulseAudio operations run on a dedicated worker thread — the Qt event loop is never blocked. D-Bus property reads are served from a local cache (zero IPC); writes delegate asynchronously to the PulseAudio worker thread.
 
 ### License
 
@@ -182,6 +204,9 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇
 - **Trwała konfiguracja** — wszystkie ustawienia zapisywane w `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`)
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
+- **Asystent pierwszego uruchomienia** — przy pierwszym starcie QWizard przeprowadza przez wybór języka i urządzenia wejściowego; aplikacja działa od razu po dwóch kliknięciach
+- **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności; metody VolumeUp/Down/ToggleMute/RefreshApps
+- **MPRIS v2** — zarejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS
 
 ### Wymagania
 
@@ -233,7 +258,7 @@ Wyloguj się i zaloguj ponownie, by zmiana weszła w życie.
 cpp/build/keyboard-volume-app
 ```
 
-Przy pierwszym uruchomieniu pojawi się okno z prośbą o wybranie urządzenia wejściowego. Lista jest filtrowana — pokazuje tylko urządzenia posiadające klawisze głośności (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
+Przy pierwszym uruchomieniu **asystent pierwszego uruchomienia** przeprowadzi przez wybór języka i urządzenia wejściowego. Lista urządzeń jest filtrowana — pokazuje tylko klawiatury posiadające klawisze głośności (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
 
 ### Użytkowanie
 
@@ -249,6 +274,21 @@ Przy pierwszym uruchomieniu pojawi się okno z prośbą o wybranie urządzenia w
    - Krok zmiany głośności na jedno naciśnięcie klawisza (%)
    - Kolory OSD (tło, tekst, pasek)
    - **Skróty klawiszowe** — kliknij przycisk z nazwą klawisza i naciśnij dowolny klawisz, by go przypisać
+
+7. **Zdalne sterowanie przez D-Bus** — użyj `qdbus` lub `dbus-send` do kontrolowania aplikacji ze skryptów, własnych skrótów lub zewnętrznych narzędzi:
+
+   ```bash
+   # Zwiększ głośność
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeUp
+
+   # Przełącz na Firefox
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
+       org.keyboardvolumeapp.VolumeControl ActiveApp "Firefox"
+
+   # Odczytaj aktualną głośność
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
+       org.keyboardvolumeapp.VolumeControl Volume
+   ```
 
 > **Uwaga dot. przechwytywania klawiszy:** aplikacja blokuje aktualnie skonfigurowane klawisze na poziomie evdev, więc te właśnie klawisze nie są widoczne dla Qt podczas działania programu. Aby zmienić *aktywne* skróty, najpierw przypisz je do tymczasowych klawiszy (np. F9/F10/F11), zapisz i otwórz Ustawienia ponownie.
 
@@ -287,6 +327,7 @@ Wartości skrótów to kody klawiszy evdev (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOW
 keyboard-volume-app/
 ├── cpp/
 │   ├── CMakeLists.txt
+│   ├── resources.qrc            # Manifest zasobów Qt (osadza ikonę)
 │   └── src/
 │       ├── main.cpp             # Punkt wejścia, łączy wszystkie moduły
 │       ├── config.h/cpp         # Odczyt i zapis konfiguracji JSON
@@ -297,14 +338,17 @@ keyboard-volume-app/
 │       ├── trayapp.h/cpp        # Ikona tray i menu
 │       ├── deviceselector.h/cpp # Dialog wyboru urządzenia wejściowego
 │       ├── settingsdialog.h/cpp # Dialog ustawień OSD i głośności
+│       ├── firstrunwizard.h/cpp  # Asystent pierwszego uruchomienia
+│       ├── dbusinterface.h/cpp   # Interfejs D-Bus VolumeControl
+│       ├── mprisinterface.h/cpp  # Adaptor MPRIS v2
 │       └── audioapp.h           # Struct AudioApp
-└── resources/
-    └── icon.png
+├── resources/
+│   └── icon.png
 ```
 
 ### Wydajność
 
-Hot path zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykonuje jedno wywołanie IPC przez libpulse (~1ms). Cięższy subprocess `pw-dump` jest uruchamiany wyłącznie przy listowaniu nieaktywnych aplikacji. Wszystkie operacje PulseAudio działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana.
+Hot path zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykonuje jedno wywołanie IPC przez libpulse (~1ms). Cięższy subprocess `pw-dump` jest uruchamiany wyłącznie przy listowaniu nieaktywnych aplikacji. Wszystkie operacje PulseAudio działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Odczyty właściwości D-Bus są serwowane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku PulseAudio.
 
 ### Licencja
 
