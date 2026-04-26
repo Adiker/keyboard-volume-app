@@ -9,7 +9,7 @@
 
 #include <fcntl.h>
 #include <unistd.h>
-#include <sys/select.h>
+#include <sys/epoll.h>
 #include <linux/input.h>
 #include <cstring>
 
@@ -174,24 +174,31 @@ void KeyCaptureThread::run()
         return;
     }
 
-    // Build fd_set for select()
-    while (m_running) {
-        fd_set rfds;
-        FD_ZERO(&rfds);
-        int maxfd = -1;
-        for (const auto &e : devices) {
-            FD_SET(e.fd, &rfds);
-            if (e.fd > maxfd) maxfd = e.fd;
+    int epfd = epoll_create1(0);
+    if (epfd >= 0) {
+        for (auto &e : devices) {
+            epoll_event evnt{};
+            evnt.events = EPOLLIN;
+            evnt.data.ptr = &e;
+            epoll_ctl(epfd, EPOLL_CTL_ADD, e.fd, &evnt);
         }
-        struct timeval tv { 0, 100'000 };   // 100 ms
-        int ret = ::select(maxfd + 1, &rfds, nullptr, nullptr, &tv);
-        if (ret <= 0) continue;
+    }
 
-        for (const auto &e : devices) {
-            if (!FD_ISSET(e.fd, &rfds)) continue;
+    while (m_running) {
+        if (epfd < 0) { m_running = false; break; }
+        epoll_event events[16];
+        int n = epoll_wait(epfd, events, 16, 50); // 50 ms timeout
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            m_running = false; break;
+        }
+        if (n == 0) continue;
+
+        for (int i = 0; i < n; ++i) {
+            auto *e = static_cast<DevEntry *>(events[i].data.ptr);
             input_event ev{};
             int rc;
-            while ((rc = libevdev_next_event(e.dev, LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
+            while ((rc = libevdev_next_event(e->dev, LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
                 if (rc == LIBEVDEV_READ_STATUS_SYNC) continue;
                 if (ev.type != EV_KEY) continue;
                 if (ev.value != 1) continue;  // key-down only
@@ -205,6 +212,7 @@ void KeyCaptureThread::run()
         }
     }
 done:
+    if (epfd >= 0) ::close(epfd);
     for (auto &e : devices) {
         if (e.grabbed) libevdev_grab(e.dev, LIBEVDEV_UNGRAB);
         closeDev(e.fd, e.dev);
@@ -316,29 +324,36 @@ void InputHandler::run()
     const int keyDown = m_keyDown;
     const int keyMute = m_keyMute;
 
-    while (m_running) {
-        fd_set rfds;
-        FD_ZERO(&rfds);
-        int maxfd = -1;
-        for (const auto &e : devices) {
-            FD_SET(e.fd, &rfds);
-            if (e.fd > maxfd) maxfd = e.fd;
-        }
-        struct timeval tv { 0, 200'000 };   // 200 ms
-        int ret = ::select(maxfd + 1, &rfds, nullptr, nullptr, &tv);
-        if (ret < 0) { m_running = false; break; }
-        if (ret == 0) continue;
-
+    int epfd = epoll_create1(0);
+    if (epfd >= 0) {
         for (auto &e : devices) {
-            if (!FD_ISSET(e.fd, &rfds)) continue;
+            epoll_event evnt{};
+            evnt.events = EPOLLIN;
+            evnt.data.ptr = &e;
+            epoll_ctl(epfd, EPOLL_CTL_ADD, e.fd, &evnt);
+        }
+    }
+
+    while (m_running) {
+        if (epfd < 0) { m_running = false; break; }
+        epoll_event events[32];
+        int n = epoll_wait(epfd, events, 32, 50); // 50 ms timeout
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            m_running = false; break;
+        }
+        if (n == 0) continue;
+
+        for (int i = 0; i < n; ++i) {
+            auto *e = static_cast<DevEntry *>(events[i].data.ptr);
             input_event ev{};
             int rc;
-            while ((rc = libevdev_next_event(e.dev, LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
+            while ((rc = libevdev_next_event(e->dev, LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
                 if (rc == LIBEVDEV_READ_STATUS_SYNC) {
                     // Drain sync queue
-                    while (libevdev_next_event(e.dev, LIBEVDEV_READ_FLAG_SYNC, &ev) >= 0) {
-                        if (e.grabbed && e.ui)
-                            libevdev_uinput_write_event(e.ui, ev.type, ev.code, ev.value);
+                    while (libevdev_next_event(e->dev, LIBEVDEV_READ_FLAG_SYNC, &ev) >= 0) {
+                        if (e->grabbed && e->ui)
+                            libevdev_uinput_write_event(e->ui, ev.type, ev.code, ev.value);
                     }
                     continue;
                 }
@@ -365,18 +380,20 @@ void InputHandler::run()
                         continue;   // never re-inject hotkey events
                     }
                     // Non-hotkey EV_KEY → re-inject for grabbed devices
-                    if (e.grabbed && e.ui)
-                        libevdev_uinput_write_event(e.ui, ev.type, ev.code, ev.value);
+                    if (e->grabbed && e->ui)
+                        libevdev_uinput_write_event(e->ui, ev.type, ev.code, ev.value);
                 } else {
                     // EV_SYN, EV_MSC, EV_REP → re-inject for grabbed devices
-                    if (e.grabbed && e.ui)
-                        libevdev_uinput_write_event(e.ui, ev.type, ev.code, ev.value);
+                    if (e->grabbed && e->ui)
+                        libevdev_uinput_write_event(e->ui, ev.type, ev.code, ev.value);
                 }
             }
             // LIBEVDEV_READ_STATUS_ERROR (-EIO) — device disconnected
             if (rc == -EIO) { m_running = false; break; }
         }
     }
+
+    if (epfd >= 0) ::close(epfd);
 
     // Cleanup
     for (auto &e : devices) {

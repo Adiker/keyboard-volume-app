@@ -207,7 +207,7 @@ MPRIS external call
 | Thread | Type | Purpose |
 |---|---|---|
 | Main | Qt event loop | UI, signals, OSD updates, D-Bus dispatch |
-| `InputHandler` | `QThread` | evdev polling with `select()` (200ms timeout) |
+| `InputHandler` | `QThread` | evdev polling with `epoll()` (50ms timeout) |
 | `KeyCaptureThread` | `QThread` | One-shot key capture for hotkey rebinding |
 | `PaWorker` | `QThread` (via `moveToThread`) | All PulseAudio/pw-dump operations |
 
