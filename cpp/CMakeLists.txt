@@ -8,7 +8,7 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Qt6
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui DBus)
 
 # System libraries via pkg-config
 find_package(PkgConfig REQUIRED)
@@ -26,6 +26,10 @@ set(SOURCES
     src/trayapp.cpp
     src/deviceselector.cpp
     src/settingsdialog.cpp
+    src/firstrunwizard.cpp
+    src/dbusinterface.cpp
+    src/mprisinterface.cpp
+    resources.qrc
 )
 
 add_executable(keyboard-volume-app ${SOURCES})
@@ -38,16 +42,9 @@ target_link_libraries(keyboard-volume-app PRIVATE
     Qt6::Core
     Qt6::Widgets
     Qt6::Gui
+    Qt6::DBus
     PkgConfig::LIBEVDEV
     PkgConfig::LIBPULSE
-)
-
-# Copy the icon resource next to the binary at build time
-add_custom_command(TARGET keyboard-volume-app POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/../resources/icon.png"
-        "$<TARGET_FILE_DIR:keyboard-volume-app>/icon.png"
-    COMMENT "Copying icon.png"
 )
 
 install(TARGETS keyboard-volume-app DESTINATION bin)

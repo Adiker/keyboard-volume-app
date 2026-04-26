@@ -34,6 +34,8 @@ public:
     void load();
     void save() const;
 
+    bool isFirstRun() const { return m_firstRun; }
+
     // input device
     QString inputDevice() const;
     void    setInputDevice(const QString &path);
@@ -74,4 +76,5 @@ private:
     static QJsonObject deepMerge(const QJsonObject &base, const QJsonObject &override_);
 
     QJsonObject m_data;
+    bool m_firstRun = false;
 };

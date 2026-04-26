@@ -11,17 +11,6 @@
 #include <QActionGroup>
 #include <QAction>
 #include <QIcon>
-#include <QDir>
-#include <QCoreApplication>
-
-static QString iconPath()
-{
-    // Look next to the executable first, then fallback to install location.
-    QString beside = QCoreApplication::applicationDirPath()
-                     + QStringLiteral("/icon.png");
-    if (QFile::exists(beside)) return beside;
-    return QStringLiteral("/usr/share/keyboard-volume-app/icon.png");
-}
 
 TrayApp::TrayApp(Config *config, VolumeController *volumeCtrl,
                  InputHandler *inputHandler, QObject *parent)
@@ -30,7 +19,7 @@ TrayApp::TrayApp(Config *config, VolumeController *volumeCtrl,
     , m_volumeCtrl(volumeCtrl)
     , m_inputHandler(inputHandler)
 {
-    m_tray = new QSystemTrayIcon(QIcon(iconPath()), this);
+    m_tray = new QSystemTrayIcon(QIcon(QStringLiteral(":/icon.png")), this);
     m_tray->setToolTip(QStringLiteral("Keyboard Volume App"));
 
     m_menu     = new QMenu();

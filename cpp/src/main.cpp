@@ -5,10 +5,14 @@
 #include "trayapp.h"
 #include "inputhandler.h"
 #include "deviceselector.h"
+#include "firstrunwizard.h"
+#include "dbusinterface.h"
+#include "mprisinterface.h"
 
 #include <QApplication>
 #include <QMessageBox>
 #include <QObject>
+#include <QDBusConnection>
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 // Root coordinator — wires all modules via Qt signals, mirrors App in main.py.
@@ -19,6 +23,12 @@ public:
     App()
     {
         m_config = new Config;
+    }
+
+    Config *config() const { return m_config; }
+
+    void init()
+    {
         setLanguage(m_config->language());
 
         m_volumeCtrl = new VolumeController(this);
@@ -28,12 +38,19 @@ public:
 
         connectSignals();
         initDevice();
+        initDbus();
     }
 
     void cleanup()
     {
         m_input->stop();
         m_volumeCtrl->close();
+
+        auto bus = QDBusConnection::sessionBus();
+        bus.unregisterObject(QStringLiteral("/org/keyboardvolumeapp"));
+        bus.unregisterService(QStringLiteral("org.keyboardvolumeapp"));
+        bus.unregisterObject(QStringLiteral("/org/mpris/MediaPlayer2"));
+        bus.unregisterService(QStringLiteral("org.mpris.MediaPlayer2.keyboardvolumeapp"));
     }
 
 private:
@@ -122,11 +139,43 @@ private:
         }
     }
 
+    void initDbus()
+    {
+        m_dbus = new DbusInterface(m_config, m_volumeCtrl, m_tray, this);
+
+        auto bus = QDBusConnection::sessionBus();
+
+        // Custom interface
+        if (bus.registerObject(QStringLiteral("/org/keyboardvolumeapp"), m_dbus,
+                QDBusConnection::ExportScriptableSignals |
+                QDBusConnection::ExportScriptableProperties |
+                QDBusConnection::ExportScriptableSlots))
+        {
+            bus.registerService(QStringLiteral("org.keyboardvolumeapp"));
+        }
+
+        // MPRIS interface
+        m_mprisEndpoint = new QObject(this);
+        new MprisRootAdaptor(m_dbus, m_mprisEndpoint);
+        new MprisPlayerAdaptor(m_dbus, m_mprisEndpoint);
+        if (bus.registerObject(QStringLiteral("/org/mpris/MediaPlayer2"), m_mprisEndpoint,
+                QDBusConnection::ExportAdaptors |
+                QDBusConnection::ExportScriptableSlots |
+                QDBusConnection::ExportScriptableSignals |
+                QDBusConnection::ExportScriptableProperties))
+        {
+            bus.registerService(QStringLiteral("org.mpris.MediaPlayer2.keyboardvolumeapp"));
+        }
+    }
+
     Config           *m_config      = nullptr;
     VolumeController *m_volumeCtrl  = nullptr;
     OSDWindow        *m_osd         = nullptr;
     InputHandler     *m_input       = nullptr;
     TrayApp          *m_tray        = nullptr;
+
+    DbusInterface    *m_dbus         = nullptr;
+    QObject          *m_mprisEndpoint = nullptr;
 };
 
 // ─── main() ───────────────────────────────────────────────────────────────────
@@ -150,6 +199,16 @@ int main(int argc, char *argv[])
     qtApp.setQuitOnLastWindowClosed(false);
 
     App app;
+
+    // First-run wizard: guide the user through language and device selection.
+    if (app.config()->isFirstRun()) {
+        FirstRunWizard wizard(app.config());
+        if (wizard.exec() != QWizard::Accepted)
+            return 0;
+    }
+
+    app.init();
+
     int exitCode = qtApp.exec();
     app.cleanup();
     return exitCode;

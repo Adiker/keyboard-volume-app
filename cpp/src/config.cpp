@@ -85,6 +85,7 @@ void Config::load()
         }
         qWarning() << "[Config] Parse error:" << err.errorString();
     }
+    m_firstRun = true;
     m_data = defaultJson();
     save();
 }

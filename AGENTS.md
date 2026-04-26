@@ -45,8 +45,36 @@ After `show()`, position is also set via `QWindow::setPosition()` on `windowHand
 
 - Reads/writes `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (uses `QStandardPaths::ConfigLocation`, not hardcoded `~/.config`).
 - Deep-merges existing config with built-in defaults so new keys are always present.
-- **Every setter calls `save()` immediately** — no explicit save step, no Config::save() to call manually.
+- **Every setter calls `save()` immediately` — no explicit save step, no Config::save() to call manually.
 - Hotkey values are evdev codes (see above).
+- `isFirstRun()` returns `true` when the config file did not exist at load time. Used by `main()` to show the first-run wizard.
+
+## First-run wizard
+
+`cpp/src/firstrunwizard.h/cpp` — `QWizard` with 2 pages. Shown before `App::init()` when `Config::isFirstRun()` is true.
+- **WelcomePage** — language picker (saves to config on Next)
+- **DevicePage** — evdev device list (reuses scan logic from `deviceselector.cpp`)
+- If wizard is cancelled, the app exits immediately (`return 0` in `main()`)
+
+## D-Bus / MPRIS
+
+The app registers two D-Bus services on the session bus:
+
+| Service | Object path | Interface |
+|---|---|---|
+| `org.keyboardvolumeapp` | `/org/keyboardvolumeapp` | `org.keyboardvolumeapp.VolumeControl` |
+| `org.mpris.MediaPlayer2.keyboardvolumeapp` | `/org/mpris/MediaPlayer2` | `org.mpris.MediaPlayer2` + `.Player` |
+
+- **`DbusInterface`** — `QObject` with `Q_CLASSINFO`, registered directly. Caches volume/mute/active-app/apps from `VolumeController`/`TrayApp` signals. D-Bus setters delegate to `VolumeController` async.
+- **MPRIS** — separate `QObject` endpoint with `MprisRootAdaptor` and `MprisPlayerAdaptor` (`QDBusAbstractAdaptor` subclasses). **Must include `ExportAdaptors` flag** when registering — Qt6 auto-detects adaptor children.
+- **`QDBusConnection::sessionBus()` returns by value** in Qt6 (not `&`). Write `auto bus = QDBusConnection::sessionBus();`, not `auto &bus`.
+- `cleanup()` unregisters both objects and services via `bus.unregisterObject()` / `bus.unregisterService()`.
+- `Qt6::DBus` is a separate CMake component — requires `find_package(Qt6 REQUIRED COMPONENTS ... DBus)`.
+- The MPRIS `Volume` property maps to `DbusInterface::volume()`. `PlaybackStatus` is always `"Stopped"`. Play/Pause/Next/Previous are no-ops. `Quit` → `qApp->quit()`.
+
+## Icon / QRC
+
+The tray icon is embedded as a Qt resource: `cpp/resources.qrc` maps `../resources/icon.png` to `:/icon.png`. `CMAKE_AUTORCC` is ON so the `.qrc` only needs to be listed in `SOURCES`. Do not add separate `POST_BUILD` copy commands — the icon is already in the binary.
 
 ## No tests, no lint, no CI
 

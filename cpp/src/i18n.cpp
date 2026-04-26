@@ -39,6 +39,14 @@ static const QMap<QString, QMap<QString, QString>> &strings()
             { QStringLiteral("settings.hotkey.capture_cancel"),    QStringLiteral("Cancel") },
             // osd
             { QStringLiteral("osd.preview"),                       QStringLiteral("OSD Preview") },
+            // wizard
+            { QStringLiteral("wizard.welcome_title"), QStringLiteral("Welcome") },
+            { QStringLiteral("wizard.welcome_text"),  QStringLiteral(
+                "This application intercepts keyboard volume keys at the hardware level\n"
+                "and routes them to a single audio application instead of the system master volume.\n\n"
+                "Let's quickly configure the basics. You can change everything later in Settings.") },
+            { QStringLiteral("wizard.lang_label"),    QStringLiteral("Language:") },
+            { QStringLiteral("wizard.device_title"),  QStringLiteral("Input device") },
             // warnings
             { QStringLiteral("warn.no_device.title"), QStringLiteral("No device selected") },
             { QStringLiteral("warn.no_device.text"),  QStringLiteral(
@@ -80,6 +88,14 @@ static const QMap<QString, QMap<QString, QString>> &strings()
             { QStringLiteral("settings.hotkey.capture_cancel"),    QStringLiteral("Anuluj") },
             // osd
             { QStringLiteral("osd.preview"),                       QStringLiteral("Podgl\u0105d OSD") },
+            // wizard
+            { QStringLiteral("wizard.welcome_title"), QStringLiteral("Witamy") },
+            { QStringLiteral("wizard.welcome_text"),  QStringLiteral(
+                "Ta aplikacja przechwytuje sprz\u0119towe klawisze g\u0142o\u015bno\u015bci\n"
+                "i kieruje je do jednej, wybranej aplikacji audio, zamiast zmienia\u0107 g\u0142o\u015bno\u015b\u0107 systemow\u0105.\n\n"
+                "Skonfigurujmy podstawowe ustawienia. Wszystko mo\u017cna p\u00f3\u017aniej zmieni\u0107 w Ustawieniach.") },
+            { QStringLiteral("wizard.lang_label"),    QStringLiteral("J\u0119zyk:") },
+            { QStringLiteral("wizard.device_title"),  QStringLiteral("Urz\u0105dzenie wej\u015bciowe") },
             // warnings
             { QStringLiteral("warn.no_device.title"), QStringLiteral("Brak urz\u0105dzenia") },
             { QStringLiteral("warn.no_device.text"),  QStringLiteral(
