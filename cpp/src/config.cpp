@@ -11,7 +11,8 @@
 // ─── Paths ────────────────────────────────────────────────────────────────────
 static QString configDir()
 {
-    return QDir::homePath() + QStringLiteral("/.config/keyboard-volume-app");
+    return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
+           + QStringLiteral("/keyboard-volume-app");
 }
 
 static QString configFile()

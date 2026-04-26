@@ -25,7 +25,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists all apps connected to PipeWire, not just those currently playing audio
 - **Mute toggle** — press the mute key to toggle mute on the selected app only; OSD shows current level with a 🔇 indicator
-- **Persistent config** — all settings saved to `~/.config/keyboard-volume-app/config.json`
+- **Persistent config** — all settings saved to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
 - **PL / EN interface** — switch language in Settings
 
 ### Requirements
@@ -99,7 +99,7 @@ On first launch a dialog will appear asking you to select an input device. The a
 
 ### Configuration
 
-Config file: `~/.config/keyboard-volume-app/config.json`
+Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
 
 ```json
 {
@@ -180,7 +180,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego oraz dostęp do ustawień
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera wszystkie aplikacje podłączone do PipeWire, nie tylko aktualnie odtwarzające dźwięk
 - **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇
-- **Trwała konfiguracja** — wszystkie ustawienia zapisywane w `~/.config/keyboard-volume-app/config.json`
+- **Trwała konfiguracja** — wszystkie ustawienia zapisywane w `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`)
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
 
 ### Wymagania
@@ -254,7 +254,7 @@ Przy pierwszym uruchomieniu pojawi się okno z prośbą o wybranie urządzenia w
 
 ### Konfiguracja
 
-Plik konfiguracyjny: `~/.config/keyboard-volume-app/config.json`
+Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`)
 
 ```json
 {

@@ -22,7 +22,7 @@ struct HotkeyConfig {
 };
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-// Reads/writes ~/.config/keyboard-volume-app/config.json.
+// Reads/writes keyboard-volume-app/config.json in the XDG config directory.
 // Deep-merges existing file with built-in defaults so new keys are always
 // present even when loading old config files.
 // Every setter calls save() immediately — no explicit "save all" step.
