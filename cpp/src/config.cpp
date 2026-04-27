@@ -9,13 +9,15 @@
 #include <algorithm>
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
-static QString configDir()
+QString Config::configDir() const
 {
+    if (!m_configDir.isEmpty())
+        return m_configDir;
     return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)
            + QStringLiteral("/keyboard-volume-app");
 }
 
-static QString configFile()
+QString Config::configFile() const
 {
     return configDir() + QStringLiteral("/config.json");
 }
@@ -67,6 +69,12 @@ QJsonObject Config::deepMerge(const QJsonObject &base, const QJsonObject &overri
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 Config::Config()
+{
+    load();
+}
+
+Config::Config(const QString &configDir)
+    : m_configDir(configDir)
 {
     load();
 }

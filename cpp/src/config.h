@@ -23,13 +23,17 @@ struct HotkeyConfig {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 // Reads/writes keyboard-volume-app/config.json in the XDG config directory.
+// Pass a custom configDir to the constructor for isolated testing.
 // Deep-merges existing file with built-in defaults so new keys are always
 // present even when loading old config files.
 // Every setter calls save() immediately — no explicit "save all" step.
 class Config
 {
 public:
+    // Uses XDG config directory for file I/O.
     Config();
+    // Uses the given directory for file I/O (e.g. QTemporaryDir for tests).
+    explicit Config(const QString &configDir);
 
     void load();
     void save() const;
@@ -71,10 +75,16 @@ public:
     HotkeyConfig hotkeys() const;
     void         setHotkeys(int volumeUp, int volumeDown, int mute);
 
-private:
-    static QJsonObject defaultJson();
+    // Recursively merges two JSON objects. Nested objects are merged
+    // recursively; scalars from override_ overwrite those from base.
     static QJsonObject deepMerge(const QJsonObject &base, const QJsonObject &override_);
 
+private:
+    QString configDir() const;
+    QString configFile() const;
+    static QJsonObject defaultJson();
+
     QJsonObject m_data;
-    bool m_firstRun = false;
+    QString     m_configDir;  // empty → use XDG default
+    bool        m_firstRun = false;
 };

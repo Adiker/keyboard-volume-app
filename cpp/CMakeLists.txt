@@ -50,3 +50,9 @@ target_link_libraries(keyboard-volume-app PRIVATE
 install(TARGETS keyboard-volume-app DESTINATION bin)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../resources/icon.png"
         DESTINATION share/keyboard-volume-app)
+
+include(CTest)
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
