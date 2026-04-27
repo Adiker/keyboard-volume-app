@@ -30,6 +30,8 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **First-run wizard** — on first launch, a QWizard guides through language selection and input device pick; the app is production-ready out of the box after two clicks
 - **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step; VolumeUp/Down/ToggleMute/RefreshApps methods
 - **MPRIS v2** — registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client
+- **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
+- **Unit tests** — GTest + Qt Test suite covering Config, i18n, VolumeController, and InputHandler
 
 ### Requirements
 
@@ -39,6 +41,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 | libevdev + libuinput | Global keyboard input capture and re-injection |
 | libpulse | Per-app volume control via PipeWire/PulseAudio socket |
 | `pw-dump` / `pw-cli` | Listing and controlling idle audio apps (part of `pipewire`) |
+| GTest | Unit tests (optional, `BUILD_TESTING=ON`) |
 | CMake 3.20+ | Build system |
 | C++20 compiler | GCC 11+ or Clang 13+ |
 
@@ -53,12 +56,12 @@ cd keyboard-volume-app
 
 Arch / Manjaro:
 ```bash
-sudo pacman -S qt6-base libevdev libpulse cmake gcc
+sudo pacman -S qt6-base libevdev libpulse cmake gcc gtest
 ```
 
 Ubuntu / Debian:
 ```bash
-sudo apt install qt6-base-dev libevdev-dev libpulse-dev cmake g++
+sudo apt install qt6-base-dev libevdev-dev libpulse-dev cmake g++ libgtest-dev
 ```
 
 **Build**
@@ -82,6 +85,23 @@ cpp/build/keyboard-volume-app
 ```
 
 On first launch the **first-run wizard** guides you through language selection and input device configuration. The device list is filtered to show only keyboards that expose volume keys (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
+
+**CLI flags:**
+
+```bash
+cpp/build/keyboard-volume-app --help     # Show help
+cpp/build/keyboard-volume-app --version  # Show version
+```
+
+### Testing
+
+```bash
+cmake -S cpp -B cpp/build -DBUILD_TESTING=ON
+cmake --build cpp/build
+cd cpp/build && ctest
+```
+
+Tests cover the Config manager, i18n translations, VolumeController (smoke test), and InputHandler (API-only, no device required). Requires `gtest` / `libgtest-dev` package (see Requirements).
 
 ### Usage
 
@@ -151,12 +171,13 @@ keyboard-volume-app/
 ├── cpp/
 │   ├── CMakeLists.txt
 │   ├── resources.qrc            # Qt resource manifest (embeds icon)
-│   └── src/
+│   ├── src/
 │       ├── main.cpp             # Entry point, wires all modules together
 │       ├── config.h/cpp         # JSON config read/write
 │       ├── i18n.h/cpp           # PL/EN translations and tr() helper
 │       ├── volumecontroller.h/cpp  # libpulse — per-app volume and mute
-│       ├── inputhandler.h/cpp   # evdev QThread — global key capture
+│       ├── inputhandler.h/cpp   # evdev QThread — global key capture (epoll)
+│       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (open/close/grab)
 │       ├── osdwindow.h/cpp      # Qt6 OSD overlay
 │       ├── trayapp.h/cpp        # System tray icon and menu
 │       ├── deviceselector.h/cpp # Input device picker dialog
@@ -165,8 +186,18 @@ keyboard-volume-app/
 │       ├── dbusinterface.h/cpp   # D-Bus VolumeControl interface
 │       ├── mprisinterface.h/cpp  # MPRIS v2 adaptor
 │       └── audioapp.h           # AudioApp struct
+│   └── tests/
+│       ├── CMakeLists.txt
+│       ├── test_config.cpp
+│       ├── test_i18n.cpp
+│       ├── test_inputhandler.cpp
+│       └── test_volumecontroller.cpp
 ├── resources/
 │   └── icon.png
+├── AGENTS.md
+├── CLAUDE.md
+├── GEMINI.md
+└── ROADMAP.md
 ```
 
 ### Performance
@@ -207,6 +238,8 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Asystent pierwszego uruchomienia** — przy pierwszym starcie QWizard przeprowadza przez wybór języka i urządzenia wejściowego; aplikacja działa od razu po dwóch kliknięciach
 - **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności; metody VolumeUp/Down/ToggleMute/RefreshApps
 - **MPRIS v2** — zarejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS
+- **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
+- **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, VolumeController, InputHandler
 
 ### Wymagania
 
@@ -216,6 +249,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 | libevdev + libuinput | Globalne przechwytywanie klawiszy i reinjekcja zdarzeń |
 | libpulse | Sterowanie głośnością per aplikacja przez gniazdo PipeWire/PulseAudio |
 | `pw-dump` / `pw-cli` | Listowanie i sterowanie nieaktywnymi aplikacjami audio (część pakietu `pipewire`) |
+| GTest | Testy jednostkowe (opcjonalne, `BUILD_TESTING=ON`) |
 | CMake 3.20+ | System budowania |
 | Kompilator C++20 | GCC 11+ lub Clang 13+ |
 
@@ -230,12 +264,12 @@ cd keyboard-volume-app
 
 Arch / Manjaro:
 ```bash
-sudo pacman -S qt6-base libevdev libpulse cmake gcc
+sudo pacman -S qt6-base libevdev libpulse cmake gcc gtest
 ```
 
 Ubuntu / Debian:
 ```bash
-sudo apt install qt6-base-dev libevdev-dev libpulse-dev cmake g++
+sudo apt install qt6-base-dev libevdev-dev libpulse-dev cmake g++ libgtest-dev
 ```
 
 **Kompilacja**
@@ -259,6 +293,23 @@ cpp/build/keyboard-volume-app
 ```
 
 Przy pierwszym uruchomieniu **asystent pierwszego uruchomienia** przeprowadzi przez wybór języka i urządzenia wejściowego. Lista urządzeń jest filtrowana — pokazuje tylko klawiatury posiadające klawisze głośności (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
+
+**Flagi CLI:**
+
+```bash
+cpp/build/keyboard-volume-app --help     # Pokaż pomoc
+cpp/build/keyboard-volume-app --version  # Pokaż wersję
+```
+
+### Testowanie
+
+```bash
+cmake -S cpp -B cpp/build -DBUILD_TESTING=ON
+cmake --build cpp/build
+cd cpp/build && ctest
+```
+
+Testy obejmują Config, i18n, VolumeController (test dymny) i InputHandler (API, bez potrzeby urządzenia). Wymaga pakietu `gtest` / `libgtest-dev` (zobacz Wymagania).
 
 ### Użytkowanie
 
@@ -328,12 +379,13 @@ keyboard-volume-app/
 ├── cpp/
 │   ├── CMakeLists.txt
 │   ├── resources.qrc            # Manifest zasobów Qt (osadza ikonę)
-│   └── src/
+│   ├── src/
 │       ├── main.cpp             # Punkt wejścia, łączy wszystkie moduły
 │       ├── config.h/cpp         # Odczyt i zapis konfiguracji JSON
 │       ├── i18n.h/cpp           # Tłumaczenia PL/EN i funkcja tr()
 │       ├── volumecontroller.h/cpp  # libpulse — głośność i wyciszenie per aplikacja
-│       ├── inputhandler.h/cpp   # evdev QThread — globalne przechwytywanie klawiszy
+│       ├── inputhandler.h/cpp   # evdev QThread — globalne przechwytywanie klawiszy (epoll)
+│       ├── evdevdevice.h/cpp    # Opakowanie RAII dla urządzeń evdev
 │       ├── osdwindow.h/cpp      # Nakładka OSD (Qt6)
 │       ├── trayapp.h/cpp        # Ikona tray i menu
 │       ├── deviceselector.h/cpp # Dialog wyboru urządzenia wejściowego
@@ -342,8 +394,18 @@ keyboard-volume-app/
 │       ├── dbusinterface.h/cpp   # Interfejs D-Bus VolumeControl
 │       ├── mprisinterface.h/cpp  # Adaptor MPRIS v2
 │       └── audioapp.h           # Struct AudioApp
+│   └── tests/
+│       ├── CMakeLists.txt
+│       ├── test_config.cpp
+│       ├── test_i18n.cpp
+│       ├── test_inputhandler.cpp
+│       └── test_volumecontroller.cpp
 ├── resources/
 │   └── icon.png
+├── AGENTS.md
+├── CLAUDE.md
+├── GEMINI.md
+└── ROADMAP.md
 ```
 
 ### Wydajność
