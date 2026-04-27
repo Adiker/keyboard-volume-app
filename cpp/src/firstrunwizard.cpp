@@ -10,32 +10,6 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 
-#include <libevdev/libevdev.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <linux/input.h>
-
-static QList<std::pair<QString, QString>> getVolumeDevices()
-{
-    QList<std::pair<QString, QString>> result;
-    for (const QString &path : listEvdevDevices()) {
-        int fd = ::open(path.toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK);
-        if (fd < 0) continue;
-        libevdev *dev = nullptr;
-        if (libevdev_new_from_fd(fd, &dev) < 0) { ::close(fd); continue; }
-
-        bool hasVol = libevdev_has_event_code(dev, EV_KEY, KEY_VOLUMEUP)
-                   || libevdev_has_event_code(dev, EV_KEY, KEY_VOLUMEDOWN);
-        QString name = QString::fromUtf8(libevdev_get_name(dev));
-        libevdev_free(dev);
-        ::close(fd);
-
-        if (hasVol)
-            result.append({ path, QStringLiteral("%1  [%2]").arg(name, path) });
-    }
-    return result;
-}
-
 FirstRunWizard::FirstRunWizard(Config *config, QWidget *parent)
     : QWizard(parent), m_config(config)
 {
@@ -69,7 +43,6 @@ WelcomePage::WelcomePage(Config *config, QWidget *parent)
     for (auto it = langs.begin(); it != langs.end(); ++it) {
         m_langCombo->addItem(it.value(), it.key());
     }
-    // Select current language
     int idx = m_langCombo->findData(m_config->language());
     if (idx >= 0)
         m_langCombo->setCurrentIndex(idx);
@@ -114,7 +87,6 @@ void DevicePage::initializePage()
         item->setData(Qt::UserRole, path);
         m_list->addItem(item);
     }
-    // Preselect the first item
     if (m_list->count() > 0)
         m_list->setCurrentRow(0);
 }
@@ -129,5 +101,5 @@ bool DevicePage::validatePage()
             return true;
         }
     }
-    return true; // Allow proceeding even without device
+    return true;
 }

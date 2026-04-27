@@ -1,4 +1,5 @@
 #include "inputhandler.h"
+#include "evdevdevice.h"
 
 #include <QDir>
 #include <QDateTime>
@@ -12,6 +13,8 @@
 #include <sys/epoll.h>
 #include <linux/input.h>
 #include <cstring>
+#include <memory>
+#include <vector>
 
 // ─── Device enumeration ───────────────────────────────────────────────────────
 QList<QString> listEvdevDevices()
@@ -25,55 +28,34 @@ QList<QString> listEvdevDevices()
     return result;
 }
 
-// Helper: open device read-only non-blocking and attach libevdev.
-// Returns {fd, dev}; fd == -1 on failure.
-static std::pair<int, libevdev *> openDev(const QString &path)
-{
-    int fd = ::open(path.toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK);
-    if (fd < 0) return { -1, nullptr };
-
-    libevdev *dev = nullptr;
-    if (libevdev_new_from_fd(fd, &dev) < 0) {
-        ::close(fd);
-        return { -1, nullptr };
-    }
-    return { fd, dev };
-}
-
-static void closeDev(int fd, libevdev *dev)
-{
-    if (dev) libevdev_free(dev);
-    if (fd >= 0) ::close(fd);
-}
-
 QList<QString> findSiblingDevices(const QString &primaryPath)
 {
-    auto [fd, dev] = openDev(primaryPath);
-    if (fd < 0) return { primaryPath };
+    EvdevDevice primary(primaryPath);
+    if (!primary.isOpen()) return { primaryPath };
 
-    const char *physRaw = libevdev_get_phys(dev);
+    const char *physRaw = primary.phys();
     QString phys = physRaw ? QString::fromLocal8Bit(physRaw) : QString{};
-    closeDev(fd, dev);
+    primary.close();
 
     if (phys.isEmpty()) return { primaryPath };
 
-    // Strip "/inputN" suffix → physical parent prefix
     int slashIdx = phys.lastIndexOf(QLatin1String("/input"));
     QString physPrefix = (slashIdx >= 0) ? phys.left(slashIdx) : phys;
 
     QList<QString> siblings;
     for (const QString &path : listEvdevDevices()) {
-        auto [fd2, dev2] = openDev(path);
-        if (fd2 < 0) continue;
-        // NOTE: libevdev_get_phys() returns a pointer to libevdev-owned memory;
-        // it becomes invalid after libevdev_free(). Copy into a QString *before*
-        // closing, then compare.
-        const char *p = libevdev_get_phys(dev2);
+        EvdevDevice dev(path);
+        if (!dev.isOpen()) continue;
+        const char *p = dev.phys();
         QString devPhys = p ? QString::fromLocal8Bit(p) : QString{};
-        bool hasKeys = libevdev_has_event_type(dev2, EV_KEY);
-        closeDev(fd2, dev2);
-        if (!devPhys.isEmpty() && devPhys.startsWith(physPrefix) && hasKeys)
-            siblings.append(path);
+        if (devPhys.isEmpty() || !devPhys.startsWith(physPrefix)
+            || !dev.hasEventType(EV_KEY))
+        {
+            dev.close();
+            continue;
+        }
+        dev.close();
+        siblings.append(path);
     }
     return siblings.isEmpty() ? QList<QString>{ primaryPath } : siblings;
 }
@@ -91,11 +73,9 @@ QList<QString> findCaptureDevices(const QString &primaryPath)
 
     for (const QString &path : listEvdevDevices()) {
         if (seen.contains(path)) continue;
-        auto [fd, dev] = openDev(path);
-        if (fd < 0) continue;
-        bool hasKeys = libevdev_has_event_type(dev, EV_KEY);
-        closeDev(fd, dev);
-        if (hasKeys) { seen.insert(path); result.append(path); }
+        EvdevDevice dev(path);
+        if (!dev.isOpen()) continue;
+        if (dev.hasEventType(EV_KEY)) { seen.insert(path); result.append(path); }
     }
     return result;
 }
@@ -117,20 +97,34 @@ QList<std::pair<QString, bool>> findHotkeyDevices(const QString &primaryPath,
 
     for (const QString &path : listEvdevDevices()) {
         if (seen.contains(path)) continue;
-        auto [fd, dev] = openDev(path);
-        if (fd < 0) continue;
+        EvdevDevice dev(path);
+        if (!dev.isOpen()) continue;
         bool hasHotkey = false;
         for (int code : hotkeyCodes) {
-            if (libevdev_has_event_code(dev, EV_KEY, static_cast<unsigned int>(code))) {
+            if (dev.hasEventCode(EV_KEY, static_cast<unsigned int>(code))) {
                 hasHotkey = true;
                 break;
             }
         }
-        closeDev(fd, dev);
         if (hasHotkey) {
             seen.insert(path);
             result.append({ path, true });
         }
+    }
+    return result;
+}
+
+QList<std::pair<QString, QString>> getVolumeDevices()
+{
+    QList<std::pair<QString, QString>> result;
+    for (const QString &path : listEvdevDevices()) {
+        EvdevDevice dev(path);
+        if (!dev.isOpen()) continue;
+        bool hasVol = dev.hasEventCode(EV_KEY, KEY_VOLUMEUP)
+                   || dev.hasEventCode(EV_KEY, KEY_VOLUMEDOWN);
+        QString name = QString::fromUtf8(dev.name());
+        if (hasVol)
+            result.append({ path, QStringLiteral("%1  [%2]").arg(name, path) });
     }
     return result;
 }
@@ -150,44 +144,37 @@ void KeyCaptureThread::run()
 {
     const QList<QString> candidates = findCaptureDevices(m_devicePath);
 
-    // {fd, dev, grabbed}
-    struct DevEntry { int fd; libevdev *dev; bool grabbed; };
-    QList<DevEntry> devices;
+    std::vector<std::unique_ptr<EvdevDevice>> devices;
 
     for (const QString &path : candidates) {
-        int fd = ::open(path.toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK);
-        if (fd < 0) continue;
-        libevdev *dev = nullptr;
-        if (libevdev_new_from_fd(fd, &dev) < 0) { ::close(fd); continue; }
-        int rc = libevdev_grab(dev, LIBEVDEV_GRAB);
-        bool grabbed = (rc == 0);
-        if (!grabbed) {
-            qDebug() << "[CaptureThread] Cannot grab" << path << ":" << strerror(-rc);
-        } else {
+        auto dev = std::make_unique<EvdevDevice>(path);
+        if (!dev->isOpen()) continue;
+        if (dev->grab())
             qDebug() << "[CaptureThread] Grabbed" << path;
-        }
-        devices.append({ fd, dev, grabbed });
+        else
+            qDebug() << "[CaptureThread] Cannot grab" << path;
+        devices.push_back(std::move(dev));
     }
 
-    if (devices.isEmpty()) {
+    if (devices.empty()) {
         emit cancelled();
         return;
     }
 
     int epfd = epoll_create1(0);
     if (epfd >= 0) {
-        for (auto &e : devices) {
+        for (auto &dev : devices) {
             epoll_event evnt{};
             evnt.events = EPOLLIN;
-            evnt.data.ptr = &e;
-            epoll_ctl(epfd, EPOLL_CTL_ADD, e.fd, &evnt);
+            evnt.data.ptr = dev.get();
+            epoll_ctl(epfd, EPOLL_CTL_ADD, dev->fd(), &evnt);
         }
     }
 
     while (m_running) {
         if (epfd < 0) { m_running = false; break; }
         epoll_event events[16];
-        int n = epoll_wait(epfd, events, 16, 50); // 50 ms timeout
+        int n = epoll_wait(epfd, events, 16, 50);
         if (n < 0) {
             if (errno == EINTR) continue;
             m_running = false; break;
@@ -195,13 +182,13 @@ void KeyCaptureThread::run()
         if (n == 0) continue;
 
         for (int i = 0; i < n; ++i) {
-            auto *e = static_cast<DevEntry *>(events[i].data.ptr);
+            auto *e = static_cast<EvdevDevice *>(events[i].data.ptr);
             input_event ev{};
             int rc;
-            while ((rc = libevdev_next_event(e->dev, LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
+            while ((rc = libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
                 if (rc == LIBEVDEV_READ_STATUS_SYNC) continue;
                 if (ev.type != EV_KEY) continue;
-                if (ev.value != 1) continue;  // key-down only
+                if (ev.value != 1) continue;
                 m_running = false;
                 if (ev.code == KEY_ESC)
                     emit cancelled();
@@ -213,11 +200,8 @@ void KeyCaptureThread::run()
     }
 done:
     if (epfd >= 0) ::close(epfd);
-    for (auto &e : devices) {
-        if (e.grabbed) libevdev_grab(e.dev, LIBEVDEV_UNGRAB);
-        closeDev(e.fd, e.dev);
+    for (auto &dev : devices)
         qDebug() << "[CaptureThread] Released device";
-    }
 }
 
 // ─── InputHandler ─────────────────────────────────────────────────────────────
@@ -265,60 +249,33 @@ void InputHandler::run()
     const QSet<int> hotkeys { m_keyUp, m_keyDown, m_keyMute };
     const auto candidates = findHotkeyDevices(m_devicePath, hotkeys);
 
-    struct DevEntry {
-        int             fd;
-        libevdev        *dev;
-        libevdev_uinput *ui;
-        bool             grabbed;
-    };
-    QList<DevEntry> devices;
+    std::vector<std::unique_ptr<EvdevDevice>> devices;
 
     for (const auto &[path, exclusive] : candidates) {
-        int fd = ::open(path.toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK);
-        if (fd < 0) {
+        auto dev = std::make_unique<EvdevDevice>(path);
+        if (!dev->isOpen()) {
             qDebug() << "[InputHandler] Cannot open" << path;
             continue;
         }
-        libevdev *dev = nullptr;
-        if (libevdev_new_from_fd(fd, &dev) < 0) {
-            ::close(fd);
-            qDebug() << "[InputHandler] libevdev_new_from_fd failed" << path;
-            continue;
-        }
-
-        bool grabbed = false;
-        libevdev_uinput *ui = nullptr;
 
         if (exclusive) {
-            if (libevdev_grab(dev, LIBEVDEV_GRAB) == 0) {
-                grabbed = true;
-                // Create a mirror UInput device for re-injection
-                int rc = libevdev_uinput_create_from_device(
-                    dev, LIBEVDEV_UINPUT_OPEN_MANAGED, &ui);
-                if (rc < 0) {
-                    qDebug() << "[InputHandler] Cannot create uinput for" << path
-                             << ":" << strerror(-rc) << "— releasing grab and skipping";
-                    libevdev_grab(dev, LIBEVDEV_UNGRAB);
-                    closeDev(fd, dev);
-                    continue;
-                } else {
-                    qDebug() << "[InputHandler] Created uinput for" << path;
-                }
-            } else {
-                // Grab failed — another process (e.g. xremap) has it exclusively.
-                // Drop the device: reading it would yield nothing and could cause
-                // spurious select() wakeups. Matches the Python reference impl.
+            if (!dev->grab()) {
                 qDebug() << "[InputHandler] Cannot grab" << path << "— skipping";
-                closeDev(fd, dev);
                 continue;
             }
+            if (!dev->createUinput()) {
+                qDebug() << "[InputHandler] Cannot create uinput for" << path
+                         << "— releasing grab and skipping";
+                continue;
+            }
+            qDebug() << "[InputHandler] Created uinput for" << path;
         }
-        devices.append({ fd, dev, ui, grabbed });
         qDebug() << "[InputHandler] Opened" << path
-                 << (grabbed ? "[grabbed+uinput]" : "[passive]");
+                 << (dev->isGrabbed() ? "[grabbed+uinput]" : "[passive]");
+        devices.push_back(std::move(dev));
     }
 
-    if (devices.isEmpty()) return;
+    if (devices.empty()) return;
 
     const int keyUp   = m_keyUp;
     const int keyDown = m_keyDown;
@@ -326,18 +283,18 @@ void InputHandler::run()
 
     int epfd = epoll_create1(0);
     if (epfd >= 0) {
-        for (auto &e : devices) {
+        for (auto &dev : devices) {
             epoll_event evnt{};
             evnt.events = EPOLLIN;
-            evnt.data.ptr = &e;
-            epoll_ctl(epfd, EPOLL_CTL_ADD, e.fd, &evnt);
+            evnt.data.ptr = dev.get();
+            epoll_ctl(epfd, EPOLL_CTL_ADD, dev->fd(), &evnt);
         }
     }
 
     while (m_running) {
         if (epfd < 0) { m_running = false; break; }
         epoll_event events[32];
-        int n = epoll_wait(epfd, events, 32, 50); // 50 ms timeout
+        int n = epoll_wait(epfd, events, 32, 50);
         if (n < 0) {
             if (errno == EINTR) continue;
             m_running = false; break;
@@ -345,15 +302,14 @@ void InputHandler::run()
         if (n == 0) continue;
 
         for (int i = 0; i < n; ++i) {
-            auto *e = static_cast<DevEntry *>(events[i].data.ptr);
+            auto *e = static_cast<EvdevDevice *>(events[i].data.ptr);
             input_event ev{};
             int rc;
-            while ((rc = libevdev_next_event(e->dev, LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
+            while ((rc = libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
                 if (rc == LIBEVDEV_READ_STATUS_SYNC) {
-                    // Drain sync queue
-                    while (libevdev_next_event(e->dev, LIBEVDEV_READ_FLAG_SYNC, &ev) >= 0) {
-                        if (e->grabbed && e->ui)
-                            libevdev_uinput_write_event(e->ui, ev.type, ev.code, ev.value);
+                    while (libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_SYNC, &ev) >= 0) {
+                        if (e->isGrabbed() && e->uinput())
+                            libevdev_uinput_write_event(e->uinput(), ev.type, ev.code, ev.value);
                     }
                     continue;
                 }
@@ -363,8 +319,7 @@ void InputHandler::run()
                                   || ev.code == static_cast<unsigned>(keyDown)
                                   || ev.code == static_cast<unsigned>(keyMute));
                     if (isHotkey) {
-                        // Swallow all states (down/repeat/up)
-                        if (ev.value == 1) {   // key-down only for triggering
+                        if (ev.value == 1) {
                             qint64 now  = QDateTime::currentMSecsSinceEpoch();
                             qint64 last = m_lastTriggerMs.value(ev.code, 0LL);
                             if (now - last >= 100) {
@@ -377,29 +332,21 @@ void InputHandler::run()
                                     emit volume_mute();
                             }
                         }
-                        continue;   // never re-inject hotkey events
+                        continue;
                     }
-                    // Non-hotkey EV_KEY → re-inject for grabbed devices
-                    if (e->grabbed && e->ui)
-                        libevdev_uinput_write_event(e->ui, ev.type, ev.code, ev.value);
+                    if (e->isGrabbed() && e->uinput())
+                        libevdev_uinput_write_event(e->uinput(), ev.type, ev.code, ev.value);
                 } else {
-                    // EV_SYN, EV_MSC, EV_REP → re-inject for grabbed devices
-                    if (e->grabbed && e->ui)
-                        libevdev_uinput_write_event(e->ui, ev.type, ev.code, ev.value);
+                    if (e->isGrabbed() && e->uinput())
+                        libevdev_uinput_write_event(e->uinput(), ev.type, ev.code, ev.value);
                 }
             }
-            // LIBEVDEV_READ_STATUS_ERROR (-EIO) — device disconnected
             if (rc == -EIO) { m_running = false; break; }
         }
     }
 
     if (epfd >= 0) ::close(epfd);
 
-    // Cleanup
-    for (auto &e : devices) {
-        if (e.ui) libevdev_uinput_destroy(e.ui);
-        if (e.grabbed) libevdev_grab(e.dev, LIBEVDEV_UNGRAB);
-        closeDev(e.fd, e.dev);
+    for (auto &dev : devices)
         qDebug() << "[InputHandler] Released device";
-    }
 }

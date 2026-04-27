@@ -11,34 +11,6 @@
 #include <QPushButton>
 #include <QDialogButtonBox>
 
-#include <libevdev/libevdev.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <linux/input.h>
-
-// Return (path, "Device Name  [path]") for every device that has KEY_VOLUMEUP
-// or KEY_VOLUMEDOWN.
-static QList<std::pair<QString, QString>> getVolumeDevices()
-{
-    QList<std::pair<QString, QString>> result;
-    for (const QString &path : listEvdevDevices()) {
-        int fd = ::open(path.toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK);
-        if (fd < 0) continue;
-        libevdev *dev = nullptr;
-        if (libevdev_new_from_fd(fd, &dev) < 0) { ::close(fd); continue; }
-
-        bool hasVol = libevdev_has_event_code(dev, EV_KEY, KEY_VOLUMEUP)
-                   || libevdev_has_event_code(dev, EV_KEY, KEY_VOLUMEDOWN);
-        QString name = QString::fromUtf8(libevdev_get_name(dev));
-        libevdev_free(dev);
-        ::close(fd);
-
-        if (hasVol)
-            result.append({ path, QStringLiteral("%1  [%2]").arg(name, path) });
-    }
-    return result;
-}
-
 // ─── DeviceSelectorDialog ─────────────────────────────────────────────────────
 DeviceSelectorDialog::DeviceSelectorDialog(Config *config, bool firstRun, QWidget *parent)
     : QDialog(parent), m_config(config)

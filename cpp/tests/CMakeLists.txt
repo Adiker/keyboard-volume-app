@@ -60,6 +60,7 @@ add_test(NAME test_volumecontroller COMMAND test_volumecontroller)
 add_executable(test_inputhandler
     test_inputhandler.cpp
     ../src/inputhandler.cpp
+    ../src/evdevdevice.cpp
 )
 target_include_directories(test_inputhandler PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src

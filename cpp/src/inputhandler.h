@@ -5,6 +5,8 @@
 #include <QString>
 #include <QMap>
 
+struct libevdev;
+
 // ─── Device enumeration helpers ───────────────────────────────────────────────
 // Returns absolute paths of all /dev/input/event* devices.
 QList<QString> listEvdevDevices();
@@ -24,6 +26,10 @@ QList<QString> findCaptureDevices(const QString &primaryPath);
 QList<std::pair<QString, bool>> findHotkeyDevices(
     const QString &primaryPath,
     const QSet<int> &hotkeyCodes);
+
+// Returns (path, "Device Name  [path]") for every device that has KEY_VOLUMEUP
+// or KEY_VOLUMEDOWN.
+QList<std::pair<QString, QString>> getVolumeDevices();
 
 // ─── KeyCaptureThread ─────────────────────────────────────────────────────────
 // One-shot: grabs candidate devices, waits for a single key-down event,

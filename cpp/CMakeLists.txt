@@ -29,6 +29,7 @@ set(SOURCES
     src/firstrunwizard.cpp
     src/dbusinterface.cpp
     src/mprisinterface.cpp
+    src/evdevdevice.cpp
     resources.qrc
 )
 
