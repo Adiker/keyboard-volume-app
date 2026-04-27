@@ -10,6 +10,7 @@
 #include "mprisinterface.h"
 
 #include <QApplication>
+#include <QCommandLineParser>
 #include <QMessageBox>
 #include <QObject>
 #include <QDBusConnection>
@@ -179,6 +180,11 @@ private:
 };
 
 // ─── main() ───────────────────────────────────────────────────────────────────
+
+#ifndef APP_VERSION
+#define APP_VERSION "unknown"
+#endif
+
 int main(int argc, char *argv[])
 {
     // On Wayland, Qt cannot position windows via move() — the compositor ignores it.
@@ -197,6 +203,13 @@ int main(int argc, char *argv[])
 
     QApplication qtApp(argc, argv);
     qtApp.setQuitOnLastWindowClosed(false);
+    qtApp.setApplicationVersion(QStringLiteral(APP_VERSION));
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription("Keyboard volume controller with OSD");
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.process(qtApp);
 
     App app;
 

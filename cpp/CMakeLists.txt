@@ -34,6 +34,10 @@ set(SOURCES
 
 add_executable(keyboard-volume-app ${SOURCES})
 
+target_compile_definitions(keyboard-volume-app PRIVATE
+    APP_VERSION="${PROJECT_VERSION}"
+)
+
 target_include_directories(keyboard-volume-app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
