@@ -209,7 +209,20 @@ int main(int argc, char *argv[])
     parser.setApplicationDescription("Keyboard volume controller with OSD");
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.process(qtApp);
+    // Use parse() instead of process() — process() calls ::exit(0) which
+    // skips destructors and triggers QThreadStorage warnings.
+    parser.parse(qtApp.arguments());
+
+    if (parser.isSet(QStringLiteral("help"))) {
+        fputs(qPrintable(parser.helpText()), stdout);
+        return 0;
+    }
+    if (parser.isSet(QStringLiteral("version"))) {
+        printf("%s %s\n",
+               qPrintable(qtApp.applicationName()),
+               qPrintable(qtApp.applicationVersion()));
+        return 0;
+    }
 
     App app;
 
