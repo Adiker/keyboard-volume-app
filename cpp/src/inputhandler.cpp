@@ -319,7 +319,7 @@ void InputHandler::run()
                                   || ev.code == static_cast<unsigned>(keyDown)
                                   || ev.code == static_cast<unsigned>(keyMute));
                     if (isHotkey) {
-                        if (ev.value == 1) {
+                        if (ev.value == 1 || ev.value == 2) {  // press or repeat
                             qint64 now  = QDateTime::currentMSecsSinceEpoch();
                             qint64 last = m_lastTriggerMs.value(ev.code, 0LL);
                             if (now - last >= 100) {

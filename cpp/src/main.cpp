@@ -14,6 +14,8 @@
 #include <QMessageBox>
 #include <QObject>
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <memory>
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 // Root coordinator — wires all modules via Qt signals, mirrors App in main.py.
@@ -22,20 +24,21 @@ class App : public QObject
     Q_OBJECT
 public:
     App()
-    {
-        m_config = new Config;
-    }
+        : m_config(std::make_unique<Config>())
+    {}
 
-    Config *config() const { return m_config; }
+    ~App() override { delete m_osd; }
+
+    Config *config() const { return m_config.get(); }
 
     void init()
     {
         setLanguage(m_config->language());
 
         m_volumeCtrl = new VolumeController(this);
-        m_osd        = new OSDWindow(m_config);
+        m_osd        = new OSDWindow(m_config.get());
         m_input      = new InputHandler(this);
-        m_tray       = new TrayApp(m_config, m_volumeCtrl, m_input, this);
+        m_tray       = new TrayApp(m_config.get(), m_volumeCtrl, m_input, this);
 
         connectSignals();
         initDevice();
@@ -129,7 +132,7 @@ private:
 
     void onDeviceChangeRequested(bool startup)
     {
-        DeviceSelectorDialog dlg(m_config, startup);
+        DeviceSelectorDialog dlg(m_config.get(), startup);
         int res = dlg.exec();
         if (res == QDialog::Accepted && !dlg.selectedPath().isEmpty()) {
             m_input->startDevice(dlg.selectedPath());
@@ -142,7 +145,7 @@ private:
 
     void initDbus()
     {
-        m_dbus = new DbusInterface(m_config, m_volumeCtrl, m_tray, this);
+        m_dbus = new DbusInterface(m_config.get(), m_volumeCtrl, m_tray, this);
 
         auto bus = QDBusConnection::sessionBus();
 
@@ -169,9 +172,9 @@ private:
         }
     }
 
-    Config           *m_config      = nullptr;
+    std::unique_ptr<Config> m_config;
     VolumeController *m_volumeCtrl  = nullptr;
-    OSDWindow        *m_osd         = nullptr;
+    OSDWindow        *m_osd         = nullptr;  // QWidget, no parent — deleted in ~App()
     InputHandler     *m_input       = nullptr;
     TrayApp          *m_tray        = nullptr;
 
@@ -222,6 +225,16 @@ int main(int argc, char *argv[])
                qPrintable(qtApp.applicationName()),
                qPrintable(qtApp.applicationVersion()));
         return 0;
+    }
+
+    // ── Singleton check ──────────────────────────────────────────────────────
+    {
+        auto bus = QDBusConnection::sessionBus();
+        if (bus.interface() && bus.interface()->isServiceRegistered(
+                QStringLiteral("org.keyboardvolumeapp"))) {
+            qWarning() << "Another instance is already running (D-Bus name taken). Exiting.";
+            return 1;
+        }
     }
 
     App app;

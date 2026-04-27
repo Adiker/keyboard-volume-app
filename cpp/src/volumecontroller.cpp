@@ -112,7 +112,7 @@ protected:
 private:
     pa_threaded_mainloop *m_mainloop = nullptr;
     pa_context           *m_ctx      = nullptr;
-    volatile bool         m_stopping = false;
+    std::atomic<bool>     m_stopping{false};
 
     static void contextStateCallback(pa_context *ctx, void *ud)
     {

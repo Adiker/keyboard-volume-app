@@ -16,6 +16,7 @@
 #include <QScreen>
 #include <QKeyEvent>
 #include <QCloseEvent>
+#include <QDebug>
 
 #include <linux/input.h>    // KEY_* constants
 
@@ -179,7 +180,9 @@ void HotkeyCapture::capture()
             m_code = dlg.capturedCode();
             updateDisplay();
         }
-    } catch (...) {}
+    } catch (...) {
+        qWarning() << "[HotkeyCapture] Exception during key capture";
+    }
     if (m_inputHandler) m_inputHandler->restart();
 }
 

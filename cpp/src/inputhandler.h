@@ -4,6 +4,7 @@
 #include <QList>
 #include <QString>
 #include <QMap>
+#include <atomic>
 
 struct libevdev;
 
@@ -52,14 +53,14 @@ protected:
 
 private:
     QString       m_devicePath;
-    volatile bool m_running = true;
+    std::atomic<bool> m_running{true};
 };
 
 // ─── InputHandler ─────────────────────────────────────────────────────────────
 // Reads evdev events from the selected device and its siblings.
 // Hotkey events are intercepted and emitted as Qt signals.
 // All other events are re-injected through a UInput virtual device.
-// 100 ms debounce per key code.
+// Supports key repeat (ev.value == 2). 100 ms debounce per key code.
 class InputHandler : public QThread
 {
     Q_OBJECT
@@ -90,7 +91,7 @@ protected:
 
 private:
     QString m_devicePath;
-    volatile bool m_running = false;
+    std::atomic<bool> m_running{false};
     int m_keyUp   = 115;   // KEY_VOLUMEUP
     int m_keyDown = 114;   // KEY_VOLUMEDOWN
     int m_keyMute = 113;   // KEY_MUTE

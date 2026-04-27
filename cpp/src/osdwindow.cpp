@@ -104,6 +104,7 @@ std::pair<int, int> OSDWindow::absPos() const
 {
     OsdConfig osd = m_config->osd();
     QList<QScreen *> screens = QApplication::screens();
+    if (screens.isEmpty()) return { osd.x, osd.y };
     int idx = osd.screen;
     if (idx >= screens.size()) idx = 0;
     QRect geo = screens[idx]->geometry();
@@ -149,6 +150,7 @@ void OSDWindow::showPreview(int screenIdx, int x, int y, int timeoutMs)
     m_labelPct->setText(QStringLiteral("60%"));
 
     QList<QScreen *> screens = QApplication::screens();
+    if (screens.isEmpty()) return;
     if (screenIdx >= screens.size()) screenIdx = 0;
     QRect geo = screens[screenIdx]->geometry();
     positionWindow(geo.x() + x, geo.y() + y);
