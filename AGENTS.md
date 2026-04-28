@@ -2,6 +2,27 @@
 
 Comprehensive project docs are in `CLAUDE.md`. This file covers only the sharp edges an agent would otherwise guess wrong.
 
+## Git Workflow (mandatory)
+
+- **Never commit directly to `main`** unless explicitly asked by the user.
+- Always create a branch from the latest `origin/main`.
+- Use branch prefixes: `feature/`, `fix/`, `refactor/`, `docs/`, `chore/`.
+- Push the branch and open a PR to `main`.
+- Never force-push to `main`.
+- Never delete branches without explicit consent.
+- Never rewrite published history without explicit consent.
+- Before opening a PR, run relevant build/tests if the change warrants it.
+- For risky areas (evdev, libpulse, D-Bus, MPRIS, threading, CMake, config migration), add a short risk/rollback note in the PR description.
+
+## Branch Layout
+
+| Branch | Purpose |
+|---|---|
+| `main` | Primary C++/Qt6 implementation |
+| `python-legacy` | Archived Python/PyQt6 implementation |
+| `python-last` | Tag pointing to last Python `main` commit |
+| `cpp-rewrite` | Preserved migration branch, inactive for new changes |
+
 ## Build & Run
 
 ```bash
@@ -11,14 +32,6 @@ cpp/build/keyboard-volume-app
 ```
 
 User must be in the `input` group for evdev access (`sudo usermod -aG input $USER`, re-login).
-
-## CLI flags
-
-The app supports `--version` and `--help` via `QCommandLineParser`. `APP_VERSION` is injected from `CMakeLists.txt` at build time.
-
-## Singleton
-
-Only one instance is allowed. On startup, the app checks if `org.keyboardvolumeapp` is already registered on the D-Bus session bus — if so, it prints a warning and exits with code 1.
 
 ## Environment — Wayland
 
@@ -52,22 +65,6 @@ Key repeat events (`ev.value == 2`) are handled alongside regular press events (
 Qt skips stylesheet background painting for translucent top-level windows (`WA_TranslucentBackground`). The OSD background is drawn manually in `OSDWindow::paintEvent()` via `QPainter::drawRoundedRect()`. Do not try to set OSD background via stylesheet — it won't render.
 
 After `show()`, position is also set via `QWindow::setPosition()` on `windowHandle()` for XWayland compatibility.
-
-## Config
-
-- Reads/writes `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (uses `QStandardPaths::ConfigLocation`, not hardcoded `~/.config`).
-- Deep-merges existing config with built-in defaults so new keys are always present.
-- **Every setter calls `save()` immediately** — no explicit save step, no Config::save() to call manually.
-- **Thread-safe** — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`. All public methods lock.
-- Hotkey values are evdev codes (see above).
-- `isFirstRun()` returns `true` when the config file did not exist at load time. Used by `main()` to show the first-run wizard.
-
-## First-run wizard
-
-`cpp/src/firstrunwizard.h/cpp` — `QWizard` with 2 pages. Shown before `App::init()` when `Config::isFirstRun()` is true.
-- **WelcomePage** — language picker (saves to config on Next)
-- **DevicePage** — evdev device list (reuses scan logic from `deviceselector.cpp`)
-- If wizard is cancelled, the app exits immediately (`return 0` in `main()`)
 
 ## D-Bus / MPRIS
 
