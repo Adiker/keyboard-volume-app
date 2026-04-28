@@ -1,68 +1,103 @@
 # GEMINI.md — keyboard-volume-app
 
-This file contains the core context, architectural constraints, and rules specifically curated for Gemini (Antigravity) when working on the `keyboard-volume-app` project. It synthesizes the most important guidelines from `AGENTS.md`, `CLAUDE.md`, and the current state of the codebase.
+This is the concise working guide for Gemini / Antigravity agents in this repository. It summarizes the rules that matter during implementation; the full project reference lives in `CLAUDE.md`, and sharp agent-specific constraints live in `AGENTS.md`.
 
-## 1. Project Overview
-- **What:** A Linux desktop utility that intercepts volume/mute keys via evdev to control a single, user-selected audio application's volume (instead of the system master volume).
-- **Stack:** C++20, Qt6 (Widgets, DBus), CMake 3.20+.
-- **Backend:** libevdev, libuinput, PulseAudio (libpulse IPC) + PipeWire (`pw-dump`/`pw-cli`).
-- **Platform:** Linux only (Targets KDE Plasma primarily; X11 & Wayland).
+## Project Overview
 
-## 2. Critical Development Rules
+- **What:** Linux desktop utility that intercepts keyboard volume/mute keys through evdev and applies them to one selected audio application instead of the system master volume.
+- **Stack:** C++20, Qt6 Widgets, Qt6 DBus, CMake 3.20+.
+- **Audio:** PulseAudio-compatible IPC via libpulse, with PipeWire support through `pipewire-pulse` plus `pw-dump` / `pw-cli` subprocess fallback.
+- **Input:** libevdev + libuinput.
+- **Platform:** Linux only. KDE Plasma is the primary target. On Wayland sessions, the app forces `QT_QPA_PLATFORM=xcb` when that variable is unset, so the OSD can be positioned through XWayland.
 
-### Build & Run
-- **Build:** 
-  ```bash
-  cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
-  cmake --build cpp/build -j$(nproc)
-  ```
-- **Run:** `cpp/build/keyboard-volume-app`
-- **Permissions:** You must be in the `input` group to access `/dev/input/event*` devices.
+## Non-Negotiable Rules
 
-### Threading & Concurrency (CRITICAL)
-- **`InputHandler`:** Extends `QThread`. Runs `epoll()` in `run()` (50ms timeout).
-- **`PaWorker`:** Uses `moveToThread()`. All PulseAudio and `pw-dump` operations MUST go through `QMetaObject::invokeMethod` targeting this thread. 
-- **Rule:** NEVER call libpulse or PipeWire subprocesses from the main thread. It will block the Qt event loop and freeze the UI/tray.
-- **`std::atomic<bool>`** used for all thread-shared flags (`m_running`, `m_stopping`) — never `volatile bool`.
-- **`EvdevDevice`** (RAII, move-only) in `evdevdevice.h/cpp` — manages fd, `libevdev*`, grab/ungrab, and `libevdev_uinput*` with automatic cleanup. Used by `InputHandler`, `DeviceSelectorDialog`, and `FirstRunWizard`.
+- **Do not commit directly to `main`** unless the user explicitly asks. Create a branch from the latest `origin/main`, use `feature/`, `fix/`, `refactor/`, `docs/`, or `chore/`, push it, and open a PR to `main`.
+- Never force-push to `main`, delete branches, or rewrite published history without explicit consent.
+- Before opening a PR, run the relevant build/tests. For evdev, libpulse, D-Bus, MPRIS, threading, CMake, or config migration changes, include a short risk/rollback note in the PR description.
+- Config hotkeys and internal key handling use **Linux evdev key codes**, not Qt key codes. X11 native scan code conversion is `evdev = X11_keycode - 8`.
+- `InputHandler` is a direct `QThread` subclass. It runs `epoll()` in `run()` with a 50ms timeout and handles both key press (`ev.value == 1`) and repeat (`ev.value == 2`) with 100ms debounce per key code.
+- `PaWorker` uses `moveToThread()`. All libpulse calls must go through `QMetaObject::invokeMethod` targeting the PaWorker thread. Never call libpulse from the main thread.
+- `pw-dump` and `pw-cli` are slow fallback tools. Do not put them in the hot keypress path or block the Qt event loop with them.
+- Use `std::atomic<bool>` for thread-shared flags such as `m_running` and `m_stopping`; do not use `volatile bool`.
+- `EvdevDevice` is the RAII, move-only wrapper for fd, `libevdev*`, grab/ungrab, and `libevdev_uinput*`. Reuse it instead of duplicating evdev cleanup logic.
+- Keep the Wayland/XWayland startup logic in `main.cpp`: if Wayland is detected and `QT_QPA_PLATFORM` is unset, force `xcb`.
+- The OSD is a translucent top-level window. Draw its background manually in `OSDWindow::paintEvent()` with `QPainter::drawRoundedRect()`; stylesheet backgrounds will not render there.
+- After showing the OSD, also set position through `QWindow::setPosition()` on `windowHandle()` for XWayland compatibility.
+- In Qt6, `QDBusConnection::sessionBus()` returns by value. Use `auto bus = QDBusConnection::sessionBus();`, not `auto &bus = ...`.
+- MPRIS adaptors require `QDBusConnection::ExportAdaptors` when registering the object.
+- The tray icon is embedded through `cpp/resources.qrc` as `:/icon.png`. Do not add post-build copy steps for the icon.
 
-### Wayland & OSD Positioning
-- On Wayland, Qt cannot position pure Wayland windows via `move()`. 
-- **Workaround:** The app reads `WAYLAND_DISPLAY` and `XDG_SESSION_TYPE`. If Wayland is detected and `QT_QPA_PLATFORM` is unset, it forces `xcb` (XWayland). Do NOT remove this logic from `main.cpp`.
-- After calling `show()` on the OSD, its position is forcibly updated using `QWindow::setPosition()` on `windowHandle()`.
-- **Styling Quirk:** The OSD uses `WA_TranslucentBackground`. Qt skips stylesheet background painting for translucent top-level windows. The background MUST be drawn manually in `OSDWindow::paintEvent()` via `QPainter::drawRoundedRect()`. Do not attempt to use CSS/stylesheets for the OSD background.
+## Architecture Map
 
-### Key Handling (evdev vs Qt)
-- Internal key routing and config use **Linux evdev key codes** (e.g., `KEY_VOLUMEUP` = 115).
-- Conversion from X11 keycodes to evdev: `evdev = X11_keycode - 8`.
-- `KeyCaptureDialog` (settings) uses two parallel paths: a background `QThread` for media keys, and Qt's `QKeyEvent::nativeScanCode()` for regular keys.
-- Key repeat events (`ev.value == 2`) are handled alongside regular press events (`ev.value == 1`), with 100ms debounce per key code.
+- `cpp/src/main.cpp`: entry point and `App` coordinator. Uses two-phase init: constructor creates only `Config`, then `init()` creates UI, input, audio, and D-Bus/MPRIS integration after the optional first-run wizard.
+- `cpp/src/config.h/cpp`: thread-safe JSON config via `QStandardPaths::ConfigLocation`. Loads with deep-merge defaults. Setters save automatically.
+- `cpp/src/inputhandler.h/cpp`: evdev hotkey capture, device grabbing, uinput mirroring, and `KeyCaptureThread` for hotkey rebinding.
+- `cpp/src/volumecontroller.h/cpp`: async per-app volume/mute controller. Fast path is libpulse active sink input, then stream restore, then PipeWire node fallback, then pending watcher.
+- `cpp/src/osdwindow.h/cpp`: frameless always-on-top OSD with custom translucent painting and explicit XWayland positioning.
+- `cpp/src/trayapp.h/cpp`: tray icon and app selection menu.
+- `cpp/src/dbusinterface.h/cpp`: custom D-Bus interface `org.keyboardvolumeapp.VolumeControl`.
+- `cpp/src/mprisinterface.h/cpp`: MPRIS endpoint `org.mpris.MediaPlayer2.keyboardvolumeapp`.
+- `cpp/src/evdevdevice.h/cpp`: shared RAII wrapper for evdev/uinput resources.
 
-### Volume Controller Fallback
-Volume changes use a 4-level fallback (in hot-path order):
-1. **Active sink input** (libpulse, ~0.5ms) — primary fast path.
-2. **Stream restore DB** (libpulse).
-3. **PipeWire node** (`pw-dump` + `pw-cli`, ~30ms) — slow, NEVER use in the main hotkey path.
-4. **Pending watcher** (queues volume for when the app reconnects).
+## Development Workflow
 
-### Configuration (`Config`)
-- Uses `QStandardPaths::ConfigLocation` (`~/.config/keyboard-volume-app/config.json`).
-- Always deep-merges config read from disk with built-in defaults.
-- **Auto-save:** Every setter method calls `save()` automatically. Do not call `save()` manually.
-- **Thread-safe** — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`. All public methods lock.
-- `isFirstRun()` determines if the setup wizard (`FirstRunWizard`) should be shown before the main `App::init()`.
+Build:
 
-### D-Bus & MPRIS Integration
-- **D-Bus Session Bus:** `QDBusConnection::sessionBus()` returns by value in Qt6 (use `auto bus = ...`, NOT `auto &bus = ...`).
-- **MPRIS:** Uses `QDBusAbstractAdaptor`. You MUST use the `ExportAdaptors` flag when registering the object (`bus.registerObject("/...", obj, QDBusConnection::ExportAdaptors)`) so Qt6 exposes the adaptor children.
-- Two services are registered: `org.keyboardvolumeapp` and `org.mpris.MediaPlayer2.keyboardvolumeapp`. Unregister both explicitly during cleanup.
+```bash
+cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
+cmake --build cpp/build -j$(nproc)
+```
 
-### Resources
-- The tray icon is embedded via `cpp/resources.qrc` (`:/icon.png`). There is no need to copy icon files post-build. `CMAKE_AUTORCC` is ON and handles it automatically.
+Run:
 
-## 3. Current State & Roadmap Context
-- **Singleton:** Only one instance allowed. On startup, the app checks if `org.keyboardvolumeapp` is already registered on the D-Bus session bus — if so, prints a warning and exits with code 1.
-- **CLI flags:** `--version` and `--help` via `QCommandLineParser`. `APP_VERSION` is injected from `CMakeLists.txt`.
-- **Tests** are in `cpp/tests/` (integrated with CTest): `test_config` (14), `test_i18n` (8), `test_volumecontroller` (4), `test_inputhandler` (8). Run: `cd cpp/build && ctest --output-on-failure`. No CI yet.
-- Input polling uses `epoll()` with a 50ms timeout.
-- **Future plans (from `ROADMAP.md`):** Packaging (PKGBUILD/CPack), native libpipewire support (to replace `pw-dump` sub-processes), and supporting multiple applications via user profiles. Keep these in mind if architectural changes are requested.
+```bash
+cpp/build/keyboard-volume-app
+```
+
+The user must be in the `input` group for evdev access to `/dev/input/event*` devices.
+
+Common edits:
+
+- **Adding a translation key:** add the English string to `_en` in `cpp/src/i18n.cpp`, add the Polish string to `_pl`, then call `tr("your.key")` from UI code.
+- **Adding a config field:** add the default to the merge logic in `Config::load()`, add a typed getter/setter pair in `Config`, and rely on the setter's automatic save.
+- **Changing D-Bus behavior:** keep property reads served from cached main-thread state and delegate setters/methods asynchronously to `VolumeController` or config.
+
+## Risk Areas
+
+- **evdev/libuinput:** exclusive grabs must not swallow normal keyboard input. Non-hotkey events should still be mirrored through uinput.
+- **Threading:** main-thread blocking freezes tray/UI/D-Bus dispatch. Audio operations belong on PaWorker; evdev polling belongs in `InputHandler`.
+- **Volume fallback:** keep the hot path fast. `pw-dump` is only for idle-app listing and PipeWire node fallback.
+- **Wayland/OSD:** removing XWayland forcing or `QWindow::setPosition()` can make the OSD land at `(0,0)`.
+- **Config migration:** preserve deep-merge behavior so old config files receive new defaults.
+- **D-Bus/MPRIS:** unregister both objects and services during cleanup; keep `Qt6::DBus` in CMake when touching these modules.
+
+## Testing
+
+Unit tests are in `cpp/tests/` and run through CTest:
+
+- `test_config` — config merge, load/save, thread-safety
+- `test_i18n` — lookup and fallback
+- `test_volumecontroller` — smoke tests
+- `test_inputhandler` — API and evdev device listing
+
+Run:
+
+```bash
+cd cpp/build && ctest --output-on-failure
+```
+
+Documentation-only changes do not require a build. For code changes, build first and run the focused or full test set based on risk.
+
+## References
+
+- `AGENTS.md`: mandatory git workflow and high-risk implementation constraints.
+- `CLAUDE.md`: full architecture, module behavior, config schema, and signal flow.
+- `README.md`: user-facing project overview and basic usage.
+
+Public bus names and object paths:
+
+| Service | Object path | Interface |
+|---|---|---|
+| `org.keyboardvolumeapp` | `/org/keyboardvolumeapp` | `org.keyboardvolumeapp.VolumeControl` |
+| `org.mpris.MediaPlayer2.keyboardvolumeapp` | `/org/mpris/MediaPlayer2` | `org.mpris.MediaPlayer2` + `.Player` |
