@@ -1,6 +1,7 @@
 #pragma once
 #include <QString>
 #include <QJsonObject>
+#include <mutex>
 
 // ─── OSD configuration sub-struct ─────────────────────────────────────────────
 struct OsdConfig {
@@ -38,7 +39,7 @@ public:
     void load();
     void save() const;
 
-    bool isFirstRun() const { return m_firstRun; }
+    bool isFirstRun() const;
 
     // input device
     QString inputDevice() const;
@@ -84,6 +85,9 @@ private:
     QString configFile() const;
     static QJsonObject defaultJson();
 
+    void saveUnlocked() const;
+
+    mutable std::mutex m_mutex;
     QJsonObject m_data;
     QString     m_configDir;  // empty → use XDG default
     bool        m_firstRun = false;

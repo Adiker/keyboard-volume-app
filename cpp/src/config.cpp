@@ -81,6 +81,7 @@ Config::Config(const QString &configDir)
 
 void Config::load()
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     QDir().mkpath(configDir());
     QFile f(configFile());
     if (f.exists() && f.open(QIODevice::ReadOnly)) {
@@ -95,10 +96,22 @@ void Config::load()
     }
     m_firstRun = true;
     m_data = defaultJson();
-    save();
+    saveUnlocked();
+}
+
+bool Config::isFirstRun() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_firstRun;
 }
 
 void Config::save() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    saveUnlocked();
+}
+
+void Config::saveUnlocked() const
 {
     QDir().mkpath(configDir());
     QFile f(configFile());
@@ -112,52 +125,61 @@ void Config::save() const
 // ─── Getters / setters ────────────────────────────────────────────────────────
 QString Config::inputDevice() const
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     QJsonValue v = m_data[QStringLiteral("input_device")];
     return v.isString() ? v.toString() : QString{};
 }
 void Config::setInputDevice(const QString &path)
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_data[QStringLiteral("input_device")] = path.isEmpty()
         ? QJsonValue(QJsonValue::Null)
         : QJsonValue(path);
-    save();
+    saveUnlocked();
 }
 
 QString Config::selectedApp() const
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     QJsonValue v = m_data[QStringLiteral("selected_app")];
     return v.isString() ? v.toString() : QString{};
 }
 void Config::setSelectedApp(const QString &name)
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_data[QStringLiteral("selected_app")] = name.isEmpty()
         ? QJsonValue(QJsonValue::Null)
         : QJsonValue(name);
-    save();
+    saveUnlocked();
 }
 
 QString Config::language() const
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     return m_data[QStringLiteral("language")].toString(QStringLiteral("en"));
 }
 void Config::setLanguage(const QString &code)
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_data[QStringLiteral("language")] = code;
-    save();
+    saveUnlocked();
 }
 
 int Config::volumeStep() const
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     return m_data[QStringLiteral("volume_step")].toInt(5);
 }
 void Config::setVolumeStep(int step)
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_data[QStringLiteral("volume_step")] = std::clamp(step, 1, 50);
-    save();
+    saveUnlocked();
 }
 
 OsdConfig Config::osd() const
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     QJsonObject o = m_data[QStringLiteral("osd")].toObject();
     OsdConfig c;
     c.screen    = o[QStringLiteral("screen")].toInt(0);
@@ -173,6 +195,7 @@ OsdConfig Config::osd() const
 
 void Config::setOsd(const OsdConfig &c)
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_data[QStringLiteral("osd")] = QJsonObject {
         { QStringLiteral("screen"),     c.screen },
         { QStringLiteral("x"),          c.x },
@@ -183,7 +206,7 @@ void Config::setOsd(const OsdConfig &c)
         { QStringLiteral("color_text"), c.colorText },
         { QStringLiteral("color_bar"),  c.colorBar },
     };
-    save();
+    saveUnlocked();
 }
 
 void Config::updateOsd(int screen, int timeoutMs, int x, int y, int opacity,
@@ -204,6 +227,7 @@ void Config::updateOsd(int screen, int timeoutMs, int x, int y, int opacity,
 
 HotkeyConfig Config::hotkeys() const
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     QJsonObject o = m_data[QStringLiteral("hotkeys")].toObject();
     HotkeyConfig h;
     h.volumeUp   = o[QStringLiteral("volume_up")].toInt(115);
@@ -214,10 +238,11 @@ HotkeyConfig Config::hotkeys() const
 
 void Config::setHotkeys(int volumeUp, int volumeDown, int mute)
 {
+    std::lock_guard<std::mutex> lock(m_mutex);
     m_data[QStringLiteral("hotkeys")] = QJsonObject {
         { QStringLiteral("volume_up"),   volumeUp },
         { QStringLiteral("volume_down"), volumeDown },
         { QStringLiteral("mute"),        mute },
     };
-    save();
+    saveUnlocked();
 }
