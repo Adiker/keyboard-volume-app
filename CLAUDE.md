@@ -31,7 +31,7 @@ keyboard-volume-app/
 │   ├── resources.qrc            # Qt resource file — embeds icon.png
 │   └── src/
 │       ├── main.cpp             # Entry point; App class wires all modules
-│       ├── config.h/cpp         # JSON config r/w (~/.config/keyboard-volume-app/config.json)
+│       ├── config.h/cpp         # JSON config r/w (XDG config dir via QStandardPaths)
 │       ├── i18n.h/cpp           # PL/EN translations; tr() lookup function
 │       ├── volumecontroller.h/cpp  # Per-app volume/mute via libpulse + pw-dump/pw-cli
 │       ├── inputhandler.h/cpp   # evdev QThread — global key capture + uinput re-injection
@@ -251,6 +251,18 @@ sudo usermod -aG input $USER
 # log out and back in
 ```
 
+### Git Workflow
+
+- **Never commit directly to `main`** unless explicitly asked.
+- Always create a branch from the latest `origin/main`.
+- Use branch prefixes: `feature/`, `fix/`, `refactor/`, `docs/`, `chore/`.
+- Push the branch and open a PR to `main`.
+- Never force-push to `main`.
+- Never delete branches without explicit consent.
+- Never rewrite published history without explicit consent.
+- Before opening a PR, run relevant build/tests if the change warrants it.
+- For risky areas (evdev, libpulse, D-Bus, MPRIS, threading, CMake, config migration), add a short risk/rollback note in the PR description.
+
 ### Adding a Translation Key
 
 1. Add the key + English string to the `_en` map in `cpp/src/i18n.cpp`
@@ -265,6 +277,17 @@ sudo usermod -aG input $USER
 ### OSD Styling
 
 OSD background is not set via stylesheet (Qt skips it for translucent top-level windows). Background is drawn in `OSDWindow::paintEvent()` using `QPainter::drawRoundedRect()`.
+
+---
+
+## Branch Layout
+
+| Branch | Purpose |
+|---|---|
+| `main` | Primary C++/Qt6 implementation |
+| `python-legacy` | Archived Python/PyQt6 implementation |
+| `python-last` | Tag pointing to last Python `main` commit |
+| `cpp-rewrite` | Preserved migration branch, inactive for new changes |
 
 ---
 
