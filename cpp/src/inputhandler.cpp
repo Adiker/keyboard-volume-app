@@ -204,6 +204,13 @@ done:
         qDebug() << "[CaptureThread] Released device";
 }
 
+// ─── Shared helpers ────────────────────────────────────────────────────────────
+static inline void forwardUinputEvent(EvdevDevice *dev, const input_event &ev)
+{
+    if (dev->isGrabbed() && dev->uinput())
+        libevdev_uinput_write_event(dev->uinput(), ev.type, ev.code, ev.value);
+}
+
 // ─── InputHandler ─────────────────────────────────────────────────────────────
 InputHandler::InputHandler(QObject *parent)
     : QThread(parent)
@@ -307,10 +314,8 @@ void InputHandler::run()
             int rc;
             while ((rc = libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
                 if (rc == LIBEVDEV_READ_STATUS_SYNC) {
-                    while (libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_SYNC, &ev) >= 0) {
-                        if (e->isGrabbed() && e->uinput())
-                            libevdev_uinput_write_event(e->uinput(), ev.type, ev.code, ev.value);
-                    }
+                    while (libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_SYNC, &ev) >= 0)
+                        forwardUinputEvent(e, ev);
                     continue;
                 }
 
@@ -334,11 +339,9 @@ void InputHandler::run()
                         }
                         continue;
                     }
-                    if (e->isGrabbed() && e->uinput())
-                        libevdev_uinput_write_event(e->uinput(), ev.type, ev.code, ev.value);
+                    forwardUinputEvent(e, ev);
                 } else {
-                    if (e->isGrabbed() && e->uinput())
-                        libevdev_uinput_write_event(e->uinput(), ev.type, ev.code, ev.value);
+                    forwardUinputEvent(e, ev);
                 }
             }
             if (rc == -EIO) { m_running = false; break; }
