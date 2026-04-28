@@ -12,6 +12,14 @@ cpp/build/keyboard-volume-app
 
 User must be in the `input` group for evdev access (`sudo usermod -aG input $USER`, re-login).
 
+## CLI flags
+
+The app supports `--version` and `--help` via `QCommandLineParser`. `APP_VERSION` is injected from `CMakeLists.txt` at build time.
+
+## Singleton
+
+Only one instance is allowed. On startup, the app checks if `org.keyboardvolumeapp` is already registered on the D-Bus session bus — if so, it prints a warning and exits with code 1.
+
 ## Environment — Wayland
 
 The app reads `WAYLAND_DISPLAY` / `XDG_SESSION_TYPE` at startup. If a Wayland session is detected and `QT_QPA_PLATFORM` is unset, it forces `xcb` (XWayland). Without this, `QWidget::move()` is ignored by the compositor and the OSD lands at (0,0). Do not remove this logic from `main.cpp`.
@@ -20,10 +28,14 @@ The app reads `WAYLAND_DISPLAY` / `XDG_SESSION_TYPE` at startup. If a Wayland se
 
 Config `hotkeys` and all internal key handling use **Linux evdev key codes** (e.g. `KEY_VOLUMEUP` = 115). Conversion from X11 keycodes: `evdev = X11_keycode − 8`. The `KeyCaptureDialog` in `settingsdialog.cpp` uses two capture paths in parallel: evdev thread for media keys, `QKeyEvent::nativeScanCode()` for regular keys.
 
+Key repeat events (`ev.value == 2`) are handled alongside regular press events (`ev.value == 1`) in `InputHandler::run()`, with 100ms debounce per key code.
+
 ## Threading — critical rules
 
-- **`InputHandler` IS a `QThread`** — direct subclass, runs `select()` in `run()`.
+- **`InputHandler` IS a `QThread`** — direct subclass, runs `epoll()` in `run()` (50ms timeout).
 - **`PaWorker` uses `moveToThread()`** — not a subclass. All PulseAudio calls go through `QMetaObject::invokeMethod` targeting the PaWorker thread. **Never call libpulse from the main thread** — it will block the Qt event loop and freeze the tray menu.
+- **`std::atomic<bool>`** used for all thread-shared flags (`m_running`, `m_stopping`) — never `volatile bool`.
+- **`EvdevDevice`** (RAII, move-only) in `evdevdevice.h/cpp` — manages fd, `libevdev*`, grab/ungrab, and `libevdev_uinput*` with automatic cleanup in destructor. Used by `InputHandler`, `DeviceSelectorDialog`, and `FirstRunWizard`.
 
 ## VolumeController fallback strategy
 
@@ -45,7 +57,8 @@ After `show()`, position is also set via `QWindow::setPosition()` on `windowHand
 
 - Reads/writes `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (uses `QStandardPaths::ConfigLocation`, not hardcoded `~/.config`).
 - Deep-merges existing config with built-in defaults so new keys are always present.
-- **Every setter calls `save()` immediately` — no explicit save step, no Config::save() to call manually.
+- **Every setter calls `save()` immediately** — no explicit save step, no Config::save() to call manually.
+- **Thread-safe** — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`. All public methods lock.
 - Hotkey values are evdev codes (see above).
 - `isFirstRun()` returns `true` when the config file did not exist at load time. Used by `main()` to show the first-run wizard.
 
@@ -76,6 +89,12 @@ The app registers two D-Bus services on the session bus:
 
 The tray icon is embedded as a Qt resource: `cpp/resources.qrc` maps `../resources/icon.png` to `:/icon.png`. `CMAKE_AUTORCC` is ON so the `.qrc` only needs to be listed in `SOURCES`. Do not add separate `POST_BUILD` copy commands — the icon is already in the binary.
 
-## No tests, no lint, no CI
+## Tests
 
-There is no test framework, no linter config, and no CI workflow yet. Build verification is the only gate. The `ROADMAP.md` lists planned improvements.
+Unit tests are in `cpp/tests/`, integrated with CTest:
+- `test_config` — 14 tests (merge, load/save, thread-safety)
+- `test_i18n` — 8 tests (lookup, fallback)
+- `test_volumecontroller` — 4 smoke tests
+- `test_inputhandler` — 8 tests (API, evdev device listing)
+
+Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.

@@ -42,6 +42,7 @@ keyboard-volume-app/
 │       ├── firstrunwizard.h/cpp # QWizard — first-run language + device setup
 │       ├── dbusinterface.h/cpp  # Custom D-Bus interface (org.keyboardvolumeapp.VolumeControl)
 │       ├── mprisinterface.h/cpp # MPRIS adaptors (org.mpris.MediaPlayer2 + Player)
+│       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (fd, libevdev*, uinput)
 │       └── audioapp.h           # AudioApp struct (display name, PA index, muted, volume)
 └── resources/
     └── icon.png
@@ -59,6 +60,12 @@ The root coordinator. `App` uses **two-phase initialization**:
 
 On first run (`Config::isFirstRun()`), a `FirstRunWizard` is shown before `App::init()` to guide the user through language and device selection. If the wizard is cancelled the app exits immediately.
 
+**Singleton:** Only one instance allowed. On startup, the app checks if `org.keyboardvolumeapp` is already registered on the D-Bus session bus — if so, prints a warning and exits with code 1.
+
+**CLI flags:** `--version` and `--help` via `QCommandLineParser`. `APP_VERSION` is injected from `CMakeLists.txt` at build time.
+
+`Config` is held as `std::unique_ptr<Config>`; `m_osd` is explicitly `delete`d in `~App()`.
+
 Signal wiring:
 - `InputHandler` signals (`volume_up`, `volume_down`, `volume_mute`) → `changeVolume()` / `onMute()`
 - `VolumeController` signal `volumeChanged(app, vol, muted)` → `OSDWindow::showVolume()`
@@ -73,6 +80,8 @@ Run: `cpp/build/keyboard-volume-app`
 ### `cpp/src/config.h/cpp` — `Config`
 
 Reads/writes `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (via `QStandardPaths`). Uses deep-merge so new default keys are always present when loading old config files. All setters call `save()` immediately.
+
+Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`. All public methods lock.
 
 `isFirstRun()` returns `true` when the config file did not exist at load time — used by `main()` to decide whether to show the first-run wizard.
 
@@ -110,6 +119,12 @@ All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved v
 ### `cpp/src/inputhandler.h/cpp` — `InputHandler`, `KeyCaptureThread`
 
 **`InputHandler`** (extends `QThread`): reads evdev events from the selected device and all other devices advertising the configured hotkey codes. All such devices are grabbed exclusively and mirrored via uinput so non-hotkey events pass through transparently. Hotkey events are swallowed (never re-injected). Uses 100ms debounce per key code.
+
+Key repeat events (`ev.value == 2`) are handled alongside regular press events (`ev.value == 1`).
+
+`std::atomic<bool>` used for all thread-shared flags (`m_running`) — never `volatile bool`.
+
+**`EvdevDevice`** (RAII, move-only) in `evdevdevice.h/cpp` — manages fd, `libevdev*`, grab/ungrab, and `libevdev_uinput*` with automatic cleanup in destructor. Used by `InputHandler`, `DeviceSelectorDialog`, and `FirstRunWizard`. `getVolumeDevices()` also lives in `inputhandler.h/cpp`.
 
 **Device selection logic:**
 - `findSiblingDevices(path)` — finds all nodes sharing the same `phys` prefix
@@ -250,6 +265,18 @@ sudo usermod -aG input $USER
 ### OSD Styling
 
 OSD background is not set via stylesheet (Qt skips it for translucent top-level windows). Background is drawn in `OSDWindow::paintEvent()` using `QPainter::drawRoundedRect()`.
+
+---
+
+## Tests
+
+Unit tests are in `cpp/tests/`, integrated with CTest:
+- `test_config` — 14 tests (merge, load/save, thread-safety)
+- `test_i18n` — 8 tests (lookup, fallback)
+- `test_volumecontroller` — 4 smoke tests
+- `test_inputhandler` — 8 tests (API, evdev device listing)
+
+Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.
 
 ---
 

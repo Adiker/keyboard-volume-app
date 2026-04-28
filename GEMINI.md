@@ -20,9 +20,11 @@ This file contains the core context, architectural constraints, and rules specif
 - **Permissions:** You must be in the `input` group to access `/dev/input/event*` devices.
 
 ### Threading & Concurrency (CRITICAL)
-- **`InputHandler`:** Extends `QThread`. Runs `epoll()` in `run()` (recently updated from `select()`).
+- **`InputHandler`:** Extends `QThread`. Runs `epoll()` in `run()` (50ms timeout).
 - **`PaWorker`:** Uses `moveToThread()`. All PulseAudio and `pw-dump` operations MUST go through `QMetaObject::invokeMethod` targeting this thread. 
 - **Rule:** NEVER call libpulse or PipeWire subprocesses from the main thread. It will block the Qt event loop and freeze the UI/tray.
+- **`std::atomic<bool>`** used for all thread-shared flags (`m_running`, `m_stopping`) — never `volatile bool`.
+- **`EvdevDevice`** (RAII, move-only) in `evdevdevice.h/cpp` — manages fd, `libevdev*`, grab/ungrab, and `libevdev_uinput*` with automatic cleanup. Used by `InputHandler`, `DeviceSelectorDialog`, and `FirstRunWizard`.
 
 ### Wayland & OSD Positioning
 - On Wayland, Qt cannot position pure Wayland windows via `move()`. 
@@ -34,6 +36,7 @@ This file contains the core context, architectural constraints, and rules specif
 - Internal key routing and config use **Linux evdev key codes** (e.g., `KEY_VOLUMEUP` = 115).
 - Conversion from X11 keycodes to evdev: `evdev = X11_keycode - 8`.
 - `KeyCaptureDialog` (settings) uses two parallel paths: a background `QThread` for media keys, and Qt's `QKeyEvent::nativeScanCode()` for regular keys.
+- Key repeat events (`ev.value == 2`) are handled alongside regular press events (`ev.value == 1`), with 100ms debounce per key code.
 
 ### Volume Controller Fallback
 Volume changes use a 4-level fallback (in hot-path order):
@@ -46,6 +49,7 @@ Volume changes use a 4-level fallback (in hot-path order):
 - Uses `QStandardPaths::ConfigLocation` (`~/.config/keyboard-volume-app/config.json`).
 - Always deep-merges config read from disk with built-in defaults.
 - **Auto-save:** Every setter method calls `save()` automatically. Do not call `save()` manually.
+- **Thread-safe** — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`. All public methods lock.
 - `isFirstRun()` determines if the setup wizard (`FirstRunWizard`) should be shown before the main `App::init()`.
 
 ### D-Bus & MPRIS Integration
@@ -57,6 +61,8 @@ Volume changes use a 4-level fallback (in hot-path order):
 - The tray icon is embedded via `cpp/resources.qrc` (`:/icon.png`). There is no need to copy icon files post-build. `CMAKE_AUTORCC` is ON and handles it automatically.
 
 ## 3. Current State & Roadmap Context
-- There are **no tests**, **no linting**, and **no CI** yet. Build verification is the primary gate.
-- Input polling uses `epoll()` with a 50ms timeout to reduce latency without hogging CPU.
-- **Future plans (from `ROADMAP.md`):** Packaging (PKGBUILD/CPack), Unit testing (GTest/Catch2), native libpipewire support (to replace `pw-dump` sub-processes), and supporting multiple applications via user profiles. Keep these in mind if architectural changes are requested.
+- **Singleton:** Only one instance allowed. On startup, the app checks if `org.keyboardvolumeapp` is already registered on the D-Bus session bus — if so, prints a warning and exits with code 1.
+- **CLI flags:** `--version` and `--help` via `QCommandLineParser`. `APP_VERSION` is injected from `CMakeLists.txt`.
+- **Tests** are in `cpp/tests/` (integrated with CTest): `test_config` (14), `test_i18n` (8), `test_volumecontroller` (4), `test_inputhandler` (8). Run: `cd cpp/build && ctest --output-on-failure`. No CI yet.
+- Input polling uses `epoll()` with a 50ms timeout.
+- **Future plans (from `ROADMAP.md`):** Packaging (PKGBUILD/CPack), native libpipewire support (to replace `pw-dump` sub-processes), and supporting multiple applications via user profiles. Keep these in mind if architectural changes are requested.
