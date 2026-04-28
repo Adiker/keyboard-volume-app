@@ -2,6 +2,8 @@
 
 ---
 
+> **Notice:** C++/Qt6 is now the primary version of this project. The original Python/PyQt6 implementation is preserved in the [`python-legacy`](https://github.com/Adiker/keyboard-volume-app/tree/python-legacy) branch and tagged as [`python-last`](https://github.com/Adiker/keyboard-volume-app/releases/tag/python-last).
+
 <h2 id="english">🇬🇧 English</h2>
 
 # keyboard-volume-app
@@ -209,6 +211,8 @@ The volume change hot path (keypress → OSD update) uses a single libpulse IPC 
 MIT
 
 ---
+
+> **Uwaga:** C++/Qt6 jest teraz główną wersją tego projektu. Oryginalna implementacja Python/PyQt6 została zachowana w gałęzi [`python-legacy`](https://github.com/Adiker/keyboard-volume-app/tree/python-legacy) i oznaczona tagiem [`python-last`](https://github.com/Adiker/keyboard-volume-app/releases/tag/python-last).
 
 <h2 id="polski">🇵🇱 Polski</h2>
 
