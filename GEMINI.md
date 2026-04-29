@@ -32,10 +32,17 @@ This is the concise working guide for Gemini / Antigravity agents in this reposi
 
 - `cpp/src/main.cpp`: entry point and `App` coordinator. Uses two-phase init: constructor creates only `Config`, then `init()` creates UI, input, audio, and D-Bus/MPRIS integration after the optional first-run wizard.
 - `cpp/src/config.h/cpp`: thread-safe JSON config via `QStandardPaths::ConfigLocation`. Loads with deep-merge defaults. Setters save automatically.
-- `cpp/src/inputhandler.h/cpp`: evdev hotkey capture, device grabbing, uinput mirroring, and `KeyCaptureThread` for hotkey rebinding.
+- `cpp/src/i18n.h/cpp`: PL/EN translation tables; `tr(key)` lookup with English fallback.
+- `cpp/src/inputhandler.h/cpp`: evdev hotkey capture, device grabbing, uinput mirroring, and `KeyCaptureThread` for hotkey rebinding. Also exposes `getVolumeDevices()` for device enumeration.
 - `cpp/src/volumecontroller.h/cpp`: async per-app volume/mute controller. Fast path is libpulse active sink input, then stream restore, then PipeWire node fallback, then pending watcher.
+- `cpp/src/pwutils.h/cpp`: shared PipeWire client listing via `pw-dump` subprocess (`listPipeWireClients()`). Exports `PipeWireClient` struct and filter constants (`SYSTEM_BINARIES`, `SKIP_APP_NAMES`). Used by `VolumeController`, `AppListWidget`, and `AppSelectorDialog`.
+- `cpp/src/applistwidget.h/cpp`: reusable `QWidget` with a `QListWidget` + Refresh button. `populate(Config*)` lists PW clients, pre-selects current config choice. Shared between `AppPage` (wizard) and `AppSelectorDialog` (tray).
+- `cpp/src/appselectordialog.h/cpp`: modal `QDialog` for changing the default audio app. Embeds an `AppListWidget`. Opened from tray via "Change default application..." action.
 - `cpp/src/osdwindow.h/cpp`: frameless always-on-top OSD with custom translucent painting and explicit XWayland positioning.
-- `cpp/src/trayapp.h/cpp`: tray icon and app selection menu.
+- `cpp/src/trayapp.h/cpp`: tray icon and context menu. Radio-list for audio app selection, "Change default application..." (opens `AppSelectorDialog`), Refresh, Change device, Settings, Quit.
+- `cpp/src/deviceselector.h/cpp`: dialog for picking an evdev input device with volume keys.
+- `cpp/src/settingsdialog.h/cpp`: settings dialog for OSD position/colors/timeout, volume step, hotkey rebinding, and language.
+- `cpp/src/firstrunwizard.h/cpp`: first-run `QWizard` with 3 pages — `WelcomePage` (language), `DevicePage` (evdev device), `AppPage` (default application via `AppListWidget`).
 - `cpp/src/dbusinterface.h/cpp`: custom D-Bus interface `org.keyboardvolumeapp.VolumeControl`.
 - `cpp/src/mprisinterface.h/cpp`: MPRIS endpoint `org.mpris.MediaPlayer2.keyboardvolumeapp`.
 - `cpp/src/evdevdevice.h/cpp`: shared RAII wrapper for evdev/uinput resources.
