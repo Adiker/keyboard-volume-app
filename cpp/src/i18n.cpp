@@ -47,6 +47,11 @@ static const QMap<QString, QMap<QString, QString>> &strings()
                 "Let's quickly configure the basics. You can change everything later in Settings.") },
             { QStringLiteral("wizard.lang_label"),    QStringLiteral("Language:") },
             { QStringLiteral("wizard.device_title"),  QStringLiteral("Input device") },
+            { QStringLiteral("wizard.app_title"),     QStringLiteral("Default application") },
+            { QStringLiteral("wizard.app_subtitle"),  QStringLiteral("Select which audio application receives volume key events.") },
+            { QStringLiteral("wizard.app_empty"),     QStringLiteral("No default application") },
+            { QStringLiteral("wizard.app_no_apps"),   QStringLiteral("No audio applications found") },
+            { QStringLiteral("wizard.app_refresh"),   QStringLiteral("Refresh") },
             // warnings
             { QStringLiteral("warn.no_device.title"), QStringLiteral("No device selected") },
             { QStringLiteral("warn.no_device.text"),  QStringLiteral(
@@ -96,6 +101,11 @@ static const QMap<QString, QMap<QString, QString>> &strings()
                 "Skonfigurujmy podstawowe ustawienia. Wszystko mo\u017cna p\u00f3\u017aniej zmieni\u0107 w Ustawieniach.") },
             { QStringLiteral("wizard.lang_label"),    QStringLiteral("J\u0119zyk:") },
             { QStringLiteral("wizard.device_title"),  QStringLiteral("Urz\u0105dzenie wej\u015bciowe") },
+            { QStringLiteral("wizard.app_title"),     QStringLiteral("Domy\u015blna aplikacja") },
+            { QStringLiteral("wizard.app_subtitle"),  QStringLiteral("Wybierz aplikacj\u0119 audio, kt\u00f3ra otrzymuje zdarzenia klawiszy g\u0142o\u015bno\u015bci.") },
+            { QStringLiteral("wizard.app_empty"),     QStringLiteral("Bez domy\u015blnej aplikacji") },
+            { QStringLiteral("wizard.app_no_apps"),   QStringLiteral("Nie znaleziono aplikacji audio") },
+            { QStringLiteral("wizard.app_refresh"),   QStringLiteral("Od\u015bwie\u017c") },
             // warnings
             { QStringLiteral("warn.no_device.title"), QStringLiteral("Brak urz\u0105dzenia") },
             { QStringLiteral("warn.no_device.text"),  QStringLiteral(

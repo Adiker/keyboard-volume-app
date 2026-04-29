@@ -30,6 +30,7 @@ set(SOURCES
     src/dbusinterface.cpp
     src/mprisinterface.cpp
     src/evdevdevice.cpp
+    src/pwutils.cpp
     resources.qrc
 )
 

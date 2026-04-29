@@ -1,4 +1,5 @@
 #include "volumecontroller.h"
+#include "pwutils.h"
 
 #include <QDateTime>
 #include <QProcess>
@@ -23,24 +24,6 @@
 #include <pulse/subscribe.h>
 #include <pulse/volume.h>
 #include <pulse/ext-stream-restore.h>
-
-// ─── App / binary filter lists ────────────────────────────────────────────────
-static const QSet<QString> SYSTEM_BINARIES {
-    QStringLiteral("wireplumber"), QStringLiteral("pipewire"),
-    QStringLiteral("kwin_wayland"), QStringLiteral("plasmashell"),
-    QStringLiteral("kded5"), QStringLiteral("kded6"),
-    QStringLiteral("xdg-desktop-portal"), QStringLiteral("xdg-desktop-portal-kde"),
-    QStringLiteral("polkit-kde-authentication-agent-1"),
-    QStringLiteral("pactl"), QStringLiteral("pw-cli"), QStringLiteral("pw-dump"),
-    QStringLiteral("python3"), QStringLiteral("python3.14"), QStringLiteral("python"),
-    QStringLiteral("QtWebEngineProcess"), QString{},
-};
-
-static const QSet<QString> SKIP_APP_NAMES {
-    QStringLiteral("ringrtc"),
-    QStringLiteral("WEBRTC VoiceEngine"),
-    QStringLiteral("Chromium input"),
-};
 
 // ─── PaWatcherThread ──────────────────────────────────────────────────────────
 // Maintains its own PA connection and subscribes to sink-input events.
@@ -359,18 +342,18 @@ public slots:
         }
 
         // 2. Idle PW clients (subprocess — runs here in PA thread, not main thread)
-        for (const auto &[name, binary] : listPipeWireClients()) {
-            if (SKIP_APP_NAMES.contains(name)) continue;
-            if (activeBinaries.contains(binary)) continue;
-            if (apps.contains(name)) continue;
+        for (const PipeWireClient &client : ::listPipeWireClients()) {
+            if (SKIP_APP_NAMES.contains(client.name)) continue;
+            if (activeBinaries.contains(client.binary)) continue;
+            if (apps.contains(client.name)) continue;
 
             AudioApp app;
-            app.name   = name;
-            app.binary = binary;
+            app.name   = client.name;
+            app.binary = client.binary;
             app.volume = 1.0;
             app.muted  = false;
             app.active = false;
-            apps[name] = app;
+            apps[client.name] = app;
         }
 
         QList<AudioApp> result = apps.values();
@@ -647,41 +630,6 @@ private:
     }
 
     // ── PipeWire subprocess helpers ───────────────────────────────────────────
-    QList<std::pair<QString,QString>> listPipeWireClients()
-    {
-        QProcess p;
-        p.start(QStringLiteral("pw-dump"), QStringList{});
-        if (!p.waitForFinished(2000)) return {};
-
-        QJsonParseError err;
-        QJsonDocument doc = QJsonDocument::fromJson(p.readAllStandardOutput(), &err);
-        if (err.error != QJsonParseError::NoError || !doc.isArray()) return {};
-
-        QMap<QString, QString> seen;
-        for (const QJsonValue &val : doc.array()) {
-            QJsonObject obj = val.toObject();
-            if (!obj[QStringLiteral("type")].toString().contains(QStringLiteral("Client")))
-                continue;
-            QJsonObject props = obj[QStringLiteral("info")].toObject()
-                                   [QStringLiteral("props")].toObject();
-            QString binary = props[QStringLiteral("application.process.binary")].toString();
-            if (binary.isEmpty() || SYSTEM_BINARIES.contains(binary)) continue;
-
-            QString name = props[QStringLiteral("application.name")].toString();
-            if (name.isEmpty()) name = binary;
-            if (SKIP_APP_NAMES.contains(name)
-                || name.toLower().contains(QStringLiteral("input")))
-                name = binary;
-            if (name.trimmed().isEmpty()) continue;
-            seen[name] = binary;
-        }
-
-        QList<std::pair<QString,QString>> result;
-        for (auto it = seen.begin(); it != seen.end(); ++it)
-            result.append({ it.key(), it.value() });
-        return result;
-    }
-
     struct PwNode { int id; double volume; bool muted; };
 
     std::optional<PwNode> findPwNodeForApp(const QString &appName)

@@ -4,6 +4,7 @@
 class Config;
 class QListWidget;
 class QComboBox;
+class QPushButton;
 
 class FirstRunWizard : public QWizard
 {
@@ -40,4 +41,24 @@ public:
 private:
     Config *m_config;
     QListWidget *m_list = nullptr;
+};
+
+class AppPage : public QWizardPage
+{
+    Q_OBJECT
+public:
+    explicit AppPage(Config *config, QWidget *parent = nullptr);
+
+    void initializePage() override;
+    bool validatePage() override;
+
+private slots:
+    void onRefresh();
+
+private:
+    void populateList();
+
+    Config      *m_config;
+    QListWidget *m_list       = nullptr;
+    QPushButton *m_refreshBtn = nullptr;
 };

@@ -2,6 +2,7 @@
 #include "config.h"
 #include "i18n.h"
 #include "inputhandler.h"
+#include "pwutils.h"
 
 #include <QLabel>
 #include <QComboBox>
@@ -9,6 +10,7 @@
 #include <QListWidgetItem>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
+#include <QPushButton>
 
 FirstRunWizard::FirstRunWizard(Config *config, QWidget *parent)
     : QWizard(parent), m_config(config)
@@ -19,6 +21,7 @@ FirstRunWizard::FirstRunWizard(Config *config, QWidget *parent)
 
     addPage(new WelcomePage(config, this));
     addPage(new DevicePage(config, this));
+    addPage(new AppPage(config, this));
 }
 
 WelcomePage::WelcomePage(Config *config, QWidget *parent)
@@ -102,4 +105,80 @@ bool DevicePage::validatePage()
         }
     }
     return true;
+}
+
+// ─── AppPage ─────────────────────────────────────────────────────────────────
+AppPage::AppPage(Config *config, QWidget *parent)
+    : QWizardPage(parent)
+    , m_config(config)
+{
+    setTitle(::tr(QStringLiteral("wizard.app_title")));
+    setSubTitle(::tr(QStringLiteral("wizard.app_subtitle")));
+
+    auto *layout = new QVBoxLayout(this);
+
+    m_list = new QListWidget(this);
+    m_list->setAlternatingRowColors(true);
+    layout->addWidget(m_list);
+
+    m_refreshBtn = new QPushButton(::tr(QStringLiteral("wizard.app_refresh")), this);
+    connect(m_refreshBtn, &QPushButton::clicked, this, &AppPage::onRefresh);
+    layout->addWidget(m_refreshBtn);
+}
+
+void AppPage::initializePage()
+{
+    populateList();
+}
+
+bool AppPage::validatePage()
+{
+    auto *item = m_list->currentItem();
+    if (item) {
+        QString name = item->data(Qt::UserRole).toString();
+        m_config->setSelectedApp(name);
+    }
+    return true;
+}
+
+void AppPage::onRefresh()
+{
+    populateList();
+}
+
+void AppPage::populateList()
+{
+    m_list->clear();
+
+    // "No default application" — always first, always enabled
+    auto *emptyItem = new QListWidgetItem(::tr(QStringLiteral("wizard.app_empty")));
+    emptyItem->setData(Qt::UserRole, QString{});
+    m_list->addItem(emptyItem);
+
+    const auto clients = ::listPipeWireClients();
+    if (clients.isEmpty()) {
+        auto *noAppsItem = new QListWidgetItem(::tr(QStringLiteral("wizard.app_no_apps")));
+        noAppsItem->setFlags(noAppsItem->flags() & ~Qt::ItemIsEnabled);
+        m_list->addItem(noAppsItem);
+    } else {
+        for (const PipeWireClient &client : clients) {
+            auto *item = new QListWidgetItem(client.name);
+            item->setData(Qt::UserRole, client.name);
+            m_list->addItem(item);
+        }
+    }
+
+    // Select matching item from config
+    const QString selected = m_config->selectedApp();
+    int targetRow = 0; // default: "No default application"
+    if (!selected.isEmpty()) {
+        for (int i = 0; i < m_list->count(); ++i) {
+            if (m_list->item(i)->data(Qt::UserRole).toString() == selected) {
+                targetRow = i;
+                break;
+            }
+        }
+    }
+    if (targetRow < m_list->count())
+        m_list->setCurrentRow(targetRow);
 }

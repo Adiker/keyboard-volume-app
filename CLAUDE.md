@@ -34,12 +34,13 @@ keyboard-volume-app/
 │       ├── config.h/cpp         # JSON config r/w (XDG config dir via QStandardPaths)
 │       ├── i18n.h/cpp           # PL/EN translations; tr() lookup function
 │       ├── volumecontroller.h/cpp  # Per-app volume/mute via libpulse + pw-dump/pw-cli
+│       ├── pwutils.h/cpp           # Shared PipeWire client listing (pw-dump subprocess)
 │       ├── inputhandler.h/cpp   # evdev QThread — global key capture + uinput re-injection
 │       ├── osdwindow.h/cpp      # Frameless always-on-top Qt6 OSD overlay
 │       ├── trayapp.h/cpp        # System tray icon and context menu
 │       ├── deviceselector.h/cpp # Dialog for picking an evdev input device
 │       ├── settingsdialog.h/cpp # Settings dialog (OSD, volume step, hotkeys, colors)
-│       ├── firstrunwizard.h/cpp # QWizard — first-run language + device setup
+│       ├── firstrunwizard.h/cpp # QWizard — first-run language + device + app setup
 │       ├── dbusinterface.h/cpp  # Custom D-Bus interface (org.keyboardvolumeapp.VolumeControl)
 │       ├── mprisinterface.h/cpp # MPRIS adaptors (org.mpris.MediaPlayer2 + Player)
 │       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (fd, libevdev*, uinput)
@@ -58,7 +59,7 @@ The root coordinator. `App` uses **two-phase initialization**:
 - **Constructor** creates only `Config`
 - **`init()`** creates all remaining components, connects signals, starts evdev, and registers D-Bus interfaces
 
-On first run (`Config::isFirstRun()`), a `FirstRunWizard` is shown before `App::init()` to guide the user through language and device selection. If the wizard is cancelled the app exits immediately.
+On first run (`Config::isFirstRun()`), a `FirstRunWizard` is shown before `App::init()` to guide the user through language, input device, and default application selection. If the wizard is cancelled the app exits immediately.
 
 **Singleton:** Only one instance allowed. On startup, the app checks if `org.keyboardvolumeapp` is already registered on the D-Bus session bus — if so, prints a warning and exits with code 1.
 
@@ -103,6 +104,14 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 
 Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113).
 
+### `cpp/src/pwutils.h/cpp` — PipeWire client listing utility
+
+Shared utility for listing idle PipeWire audio clients via `pw-dump` subprocess. Used by both `VolumeController` (via `PaWorker`) and the first-run wizard (`AppPage`).
+
+- **`PipeWireClient` struct** — `{ QString name; QString binary; }`
+- **`SYSTEM_BINARIES` / `SKIP_APP_NAMES`** — `QSet<QString>` filter constants shared between `pwutils` and `VolumeController`
+- **`listPipeWireClients()`** — spawns `pw-dump`, waits up to 3s for start + 3s for finish, checks exit code, parses JSON, filters system binaries, renames skipped app names to their binary, returns deduplicated list. `qWarning()` on every failure path. Returns empty list on any error.
+
 ### `cpp/src/volumecontroller.h/cpp` — `VolumeController`, `PaWorker`, `AudioApp`
 
 All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved via `moveToThread`). The public API is **async**: `changeVolume`/`toggleMute` post work via `QMetaObject::invokeMethod`; results come back as signals.
@@ -115,6 +124,8 @@ All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved v
 4. **Pending watcher** — stores desired volume; applies when app reconnects
 
 `listApps()` returns cached data immediately and posts a background refresh that emits `appsReady(list)`. The background watcher listens for new sink-input events and applies pending volumes.
+
+App/binary filter constants (`SYSTEM_BINARIES`, `SKIP_APP_NAMES`) live in `pwutils.h` and are shared with `AppPage`.
 
 ### `cpp/src/inputhandler.h/cpp` — `InputHandler`, `KeyCaptureThread`
 
@@ -149,12 +160,13 @@ The tray icon is loaded from Qt resources (`:/icon.png` via `resources.qrc`) —
 Filters `/dev/input/event*` to show only devices exposing `KEY_VOLUMEUP`/`KEY_VOLUMEDOWN`.
 `firstRun=true` shows a different window title ("first launch" variant).
 
-### `cpp/src/firstrunwizard.h/cpp` — `FirstRunWizard`, `WelcomePage`, `DevicePage`
+### `cpp/src/firstrunwizard.h/cpp` — `FirstRunWizard`, `WelcomePage`, `DevicePage`, `AppPage`
 
 `QWizard`-based first-run dialog shown when `Config::isFirstRun()` returns `true`.
 - **WelcomePage** — welcome text + language selection (`QComboBox` with EN/PL)
 - **DevicePage** — reuses evdev scan logic (same as `DeviceSelectorDialog`) to list compatible devices
-- On accept: saves language and device to `Config`; on reject: app exits.
+- **AppPage** — lists idle PipeWire audio clients via `pwutils::listPipeWireClients()` (pw-dump subprocess), always includes a "No default application" option first, has a Refresh button in case the target app wasn't running at startup time
+- On accept: saves language, device, and selected app to `Config`; on reject: app exits.
 
 ### `cpp/src/dbusinterface.h/cpp` — `DbusInterface`
 

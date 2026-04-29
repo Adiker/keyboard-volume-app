@@ -44,6 +44,7 @@ add_test(NAME test_i18n COMMAND test_i18n)
 add_executable(test_volumecontroller
     test_volumecontroller.cpp
     ../src/volumecontroller.cpp
+    ../src/pwutils.cpp
 )
 target_include_directories(test_volumecontroller PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
