@@ -8,9 +8,11 @@
 #include "firstrunwizard.h"
 #include "dbusinterface.h"
 #include "mprisinterface.h"
+#include "screenutils.h"
 
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QCursor>
 #include <QMessageBox>
 #include <QObject>
 #include <QDBusConnection>
@@ -132,7 +134,9 @@ private:
 
     void onDeviceChangeRequested(bool startup)
     {
+        const QPoint anchor = QCursor::pos();
         DeviceSelectorDialog dlg(m_config.get(), startup);
+        centerDialogOnScreenAt(&dlg, anchor);
         int res = dlg.exec();
         if (res == QDialog::Accepted && !dlg.selectedPath().isEmpty()) {
             m_input->startDevice(dlg.selectedPath());
@@ -241,7 +245,9 @@ int main(int argc, char *argv[])
 
     // First-run wizard: guide the user through language and device selection.
     if (app.config()->isFirstRun()) {
+        const QPoint anchor = QCursor::pos();
         FirstRunWizard wizard(app.config());
+        centerDialogOnScreenAt(&wizard, anchor);
         if (wizard.exec() != QWizard::Accepted)
             return 0;
     }

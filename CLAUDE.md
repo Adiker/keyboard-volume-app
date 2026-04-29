@@ -46,6 +46,7 @@ keyboard-volume-app/
 │       ├── dbusinterface.h/cpp  # Custom D-Bus interface (org.keyboardvolumeapp.VolumeControl)
 │       ├── mprisinterface.h/cpp # MPRIS adaptors (org.mpris.MediaPlayer2 + Player)
 │       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (fd, libevdev*, uinput)
+│       ├── screenutils.h        # Header-only: centerDialogOnScreenAt() for multi-monitor XWayland
 │       └── audioapp.h           # AudioApp struct (display name, PA index, muted, volume)
 └── resources/
     └── icon.png
@@ -130,6 +131,24 @@ Modal `QDialog` for changing the default audio application. Opened from the tray
 - Embeds an `AppListWidget`, subtitle label, OK/Cancel `QDialogButtonBox`.
 - On accept: reads `selectedAppName()` from the widget, saves via `Config::setSelectedApp()`, accepts.
 - Window title: `app_selector.title`, subtitle: `app_selector.subtitle`.
+
+### `cpp/src/screenutils.h` — `centerDialogOnScreenAt()`
+
+Header-only utility that centers a dialog on the screen containing the given global position. Used to fix dialog placement on XWayland multi-monitor setups where Qt defaults to the primary screen, which is often wrong.
+
+```cpp
+inline void centerDialogOnScreenAt(QWidget *window, const QPoint &globalPos)
+```
+
+- `QApplication::screenAt(globalPos)` → fallback to `primaryScreen()`.
+- `ensurePolished()` + `adjustSize()` to compute layout before measuring.
+- Final size = `sizeHint` expanded to `minimumSizeHint` and `minimumSize`; `resize()` if needed.
+- Position centered inside `screen->availableGeometry()`, clamped to screen bounds.
+- `window->move(x, y)` — no event filters, QTimer, or window-flag manipulation.
+
+**Call sites:** All 4 parentless dialogs capture `QCursor::pos()` before construction and call `centerDialogOnScreenAt()` before `exec()`:
+- `SettingsDialog` and `AppSelectorDialog` in `cpp/src/trayapp.cpp`
+- `DeviceSelectorDialog` and `FirstRunWizard` in `cpp/src/main.cpp`
 
 ### `cpp/src/volumecontroller.h/cpp` — `VolumeController`, `PaWorker`, `AudioApp`
 
@@ -345,6 +364,7 @@ Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.
 - **All hotkey devices grabbed exclusively** — siblings of the primary device AND every other device advertising the hotkey codes; non-hotkey events re-injected via uinput so typing is unaffected
 - **`pw-dump` is slow** (~30ms) — only called for idle-app lookup and PW-node fallback; never in the main hotkey path
 - **Wayland position workaround** — after every `widget.show()` that positions the OSD, also call `QWindow::setPosition()` on `windowHandle()`
+- **Dialog centering on multi-monitor** — use `centerDialogOnScreenAt(window, QCursor::pos())` from `screenutils.h` before `exec()` for parentless dialogs. Never use event filters, QTimer hacks, or `Qt::Dialog` flag changes for positioning.
 - **Icon embedded as Qt resource** — loaded via `:/icon.png` from `resources.qrc`; no external file needed at runtime
 - **Two-phase App init** — constructor creates only `Config`; `init()` creates the rest after optional first-run wizard
 - **`QDBusConnection::sessionBus()` returns by value** in Qt6 (not by reference as in Qt5) — use `auto bus = ...` not `auto &bus`

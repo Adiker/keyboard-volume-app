@@ -5,8 +5,10 @@
 #include "i18n.h"
 #include "settingsdialog.h"
 #include "appselectordialog.h"
+#include "screenutils.h"
 
 #include <QApplication>
+#include <QCursor>
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QActionGroup>
@@ -126,6 +128,7 @@ void TrayApp::onAppSelected(const QString &name)
 
 void TrayApp::openSettings()
 {
+    const QPoint anchor = QCursor::pos();
     SettingsDialog dlg(m_config, m_inputHandler);
     connect(&dlg, &SettingsDialog::positionPreview,        this, &TrayApp::osdPreviewRequested);
     connect(&dlg, &SettingsDialog::stylePreview,           this, &TrayApp::osdStylePreviewRequested);
@@ -134,6 +137,7 @@ void TrayApp::openSettings()
     connect(&dlg, &QDialog::finished, this, [this](int) {
         emit osdPreviewFinished();
     });
+    centerDialogOnScreenAt(&dlg, anchor);
     dlg.exec();
     // Reload styles regardless of accepted/rejected so preview colors revert
     emit settingsChanged();
@@ -141,7 +145,9 @@ void TrayApp::openSettings()
 
 void TrayApp::openAppSelector()
 {
+    const QPoint anchor = QCursor::pos();
     AppSelectorDialog dlg(m_config);
+    centerDialogOnScreenAt(&dlg, anchor);
     if (dlg.exec() == QDialog::Accepted)
         onAppSelected(m_config->selectedApp());
 }
