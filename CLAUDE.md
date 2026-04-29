@@ -35,6 +35,8 @@ keyboard-volume-app/
 │       ├── i18n.h/cpp           # PL/EN translations; tr() lookup function
 │       ├── volumecontroller.h/cpp  # Per-app volume/mute via libpulse + pw-dump/pw-cli
 │       ├── pwutils.h/cpp           # Shared PipeWire client listing (pw-dump subprocess)
+│       ├── applistwidget.h/cpp     # Reusable PW app list widget + Refresh button
+│       ├── appselectordialog.h/cpp # QDialog for changing the default audio app from tray
 │       ├── inputhandler.h/cpp   # evdev QThread — global key capture + uinput re-injection
 │       ├── osdwindow.h/cpp      # Frameless always-on-top Qt6 OSD overlay
 │       ├── trayapp.h/cpp        # System tray icon and context menu
@@ -112,6 +114,23 @@ Shared utility for listing idle PipeWire audio clients via `pw-dump` subprocess.
 - **`SYSTEM_BINARIES` / `SKIP_APP_NAMES`** — `QSet<QString>` filter constants shared between `pwutils` and `VolumeController`
 - **`listPipeWireClients()`** — spawns `pw-dump`, waits up to 3s for start + 3s for finish, checks exit code, parses JSON, filters system binaries, renames skipped app names to their binary, returns deduplicated list. `qWarning()` on every failure path. Returns empty list on any error.
 
+### `cpp/src/applistwidget.h/cpp` — `AppListWidget`
+
+Reusable `QWidget` containing a `QListWidget` + Refresh button for PipeWire audio client selection. Shared between `AppPage` (first-run wizard) and `AppSelectorDialog` (tray).
+
+- **`populate(Config *)`** — calls `listPipeWireClients()`, adds "No default application" (enabled, first), adds "No audio applications found" (disabled) if empty, otherwise lists each client; pre-selects the current `Config::selectedApp()`.
+- **`selectedAppName()`** — returns the `Qt::UserRole` data of the selected item.
+- **`setSelectedApp(name)`** — selects the item with matching data.
+- Uses `app_selector.*` translation keys (`app_selector.no_default`, `app_selector.no_apps`, `app_selector.refresh`).
+
+### `cpp/src/appselectordialog.h/cpp` — `AppSelectorDialog`
+
+Modal `QDialog` for changing the default audio application. Opened from the tray menu via "Change default application..." action.
+
+- Embeds an `AppListWidget`, subtitle label, OK/Cancel `QDialogButtonBox`.
+- On accept: reads `selectedAppName()` from the widget, saves via `Config::setSelectedApp()`, accepts.
+- Window title: `app_selector.title`, subtitle: `app_selector.subtitle`.
+
 ### `cpp/src/volumecontroller.h/cpp` — `VolumeController`, `PaWorker`, `AudioApp`
 
 All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved via `moveToThread`). The public API is **async**: `changeVolume`/`toggleMute` post work via `QMetaObject::invokeMethod`; results come back as signals.
@@ -155,6 +174,8 @@ After `show()`, position is also set via `QWindow::setPosition()` for XWayland c
 System tray icon with context menu. Rebuilds the app list when `VolumeController::appsReady` fires.
 The tray icon is loaded from Qt resources (`:/icon.png` via `resources.qrc`) — no external icon file required at runtime.
 
+Menu actions: current app list (checkable radio items), Refresh, **Change default application...** (opens `AppSelectorDialog`), Change input device..., Settings..., Quit.
+
 ### `cpp/src/deviceselector.h/cpp` — `DeviceSelectorDialog`
 
 Filters `/dev/input/event*` to show only devices exposing `KEY_VOLUMEUP`/`KEY_VOLUMEDOWN`.
@@ -165,7 +186,7 @@ Filters `/dev/input/event*` to show only devices exposing `KEY_VOLUMEUP`/`KEY_VO
 `QWizard`-based first-run dialog shown when `Config::isFirstRun()` returns `true`.
 - **WelcomePage** — welcome text + language selection (`QComboBox` with EN/PL)
 - **DevicePage** — reuses evdev scan logic (same as `DeviceSelectorDialog`) to list compatible devices
-- **AppPage** — lists idle PipeWire audio clients via `pwutils::listPipeWireClients()` (pw-dump subprocess), always includes a "No default application" option first, has a Refresh button in case the target app wasn't running at startup time
+- **AppPage** — embeds an `AppListWidget` (shared with `AppSelectorDialog`) to let the user pick the default audio application at first launch. Includes a "No default application" option and a Refresh button in case the target app wasn't running
 - On accept: saves language, device, and selected app to `Config`; on reject: app exits.
 
 ### `cpp/src/dbusinterface.h/cpp` — `DbusInterface`

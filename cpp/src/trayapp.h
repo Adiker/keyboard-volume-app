@@ -42,6 +42,7 @@ private slots:
     void onRefresh();
     void onAppSelected(const QString &name);
     void openSettings();
+    void openAppSelector();
 
 private:
     void buildMenu();

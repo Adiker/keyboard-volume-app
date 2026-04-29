@@ -8,6 +8,7 @@ static const QMap<QString, QMap<QString, QString>> &strings()
             // tray
             { QStringLiteral("tray.section.audio_app"),    QStringLiteral("Audio application") },
             { QStringLiteral("tray.action.refresh"),       QStringLiteral("Refresh app list") },
+            { QStringLiteral("tray.action.change_app"),    QStringLiteral("Change default application...") },
             { QStringLiteral("tray.action.change_device"), QStringLiteral("Change input device...") },
             { QStringLiteral("tray.action.settings"),      QStringLiteral("Settings...") },
             { QStringLiteral("tray.action.quit"),          QStringLiteral("Quit") },
@@ -39,6 +40,12 @@ static const QMap<QString, QMap<QString, QString>> &strings()
             { QStringLiteral("settings.hotkey.capture_cancel"),    QStringLiteral("Cancel") },
             // osd
             { QStringLiteral("osd.preview"),                       QStringLiteral("OSD Preview") },
+            // app selector
+            { QStringLiteral("app_selector.title"),     QStringLiteral("Default application") },
+            { QStringLiteral("app_selector.subtitle"),  QStringLiteral("Select which audio application receives volume key events.") },
+            { QStringLiteral("app_selector.no_default"), QStringLiteral("No default application") },
+            { QStringLiteral("app_selector.no_apps"),   QStringLiteral("No audio applications found") },
+            { QStringLiteral("app_selector.refresh"),   QStringLiteral("Refresh") },
             // wizard
             { QStringLiteral("wizard.welcome_title"), QStringLiteral("Welcome") },
             { QStringLiteral("wizard.welcome_text"),  QStringLiteral(
@@ -62,6 +69,7 @@ static const QMap<QString, QMap<QString, QString>> &strings()
             // tray
             { QStringLiteral("tray.section.audio_app"),    QStringLiteral("Aplikacja audio") },
             { QStringLiteral("tray.action.refresh"),       QStringLiteral("Od\u015bwie\u017c list\u0119 aplikacji") },
+            { QStringLiteral("tray.action.change_app"),    QStringLiteral("Zmie\u0144 domy\u015bln\u0105 aplikacj\u0119...") },
             { QStringLiteral("tray.action.change_device"), QStringLiteral("Zmie\u0144 urz\u0105dzenie wej\u015bciowe...") },
             { QStringLiteral("tray.action.settings"),      QStringLiteral("Ustawienia...") },
             { QStringLiteral("tray.action.quit"),          QStringLiteral("Wyj\u015bcie") },
@@ -93,6 +101,12 @@ static const QMap<QString, QMap<QString, QString>> &strings()
             { QStringLiteral("settings.hotkey.capture_cancel"),    QStringLiteral("Anuluj") },
             // osd
             { QStringLiteral("osd.preview"),                       QStringLiteral("Podgl\u0105d OSD") },
+            // app selector
+            { QStringLiteral("app_selector.title"),     QStringLiteral("Domy\u015blna aplikacja") },
+            { QStringLiteral("app_selector.subtitle"),  QStringLiteral("Wybierz aplikacj\u0119 audio, kt\u00f3ra otrzymuje zdarzenia klawiszy g\u0142o\u015bno\u015bci.") },
+            { QStringLiteral("app_selector.no_default"), QStringLiteral("Bez domy\u015blnej aplikacji") },
+            { QStringLiteral("app_selector.no_apps"),   QStringLiteral("Nie znaleziono aplikacji audio") },
+            { QStringLiteral("app_selector.refresh"),   QStringLiteral("Od\u015bwie\u017c") },
             // wizard
             { QStringLiteral("wizard.welcome_title"), QStringLiteral("Witamy") },
             { QStringLiteral("wizard.welcome_text"),  QStringLiteral(

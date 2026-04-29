@@ -4,6 +4,7 @@
 #include "inputhandler.h"
 #include "i18n.h"
 #include "settingsdialog.h"
+#include "appselectordialog.h"
 
 #include <QApplication>
 #include <QSystemTrayIcon>
@@ -51,6 +52,9 @@ void TrayApp::buildMenu()
 
     QAction *refreshAct = m_menu->addAction(::tr(QStringLiteral("tray.action.refresh")));
     connect(refreshAct, &QAction::triggered, this, &TrayApp::onRefresh);
+
+    QAction *changeAppAct = m_menu->addAction(::tr(QStringLiteral("tray.action.change_app")));
+    connect(changeAppAct, &QAction::triggered, this, &TrayApp::openAppSelector);
 
     m_menu->addSeparator();
 
@@ -133,6 +137,13 @@ void TrayApp::openSettings()
     dlg.exec();
     // Reload styles regardless of accepted/rejected so preview colors revert
     emit settingsChanged();
+}
+
+void TrayApp::openAppSelector()
+{
+    AppSelectorDialog dlg(m_config);
+    if (dlg.exec() == QDialog::Accepted)
+        onAppSelected(m_config->selectedApp());
 }
 
 void TrayApp::rebuildMenu()

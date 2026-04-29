@@ -2,7 +2,7 @@
 #include "config.h"
 #include "i18n.h"
 #include "inputhandler.h"
-#include "pwutils.h"
+#include "applistwidget.h"
 
 #include <QLabel>
 #include <QComboBox>
@@ -10,7 +10,6 @@
 #include <QListWidgetItem>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
-#include <QPushButton>
 
 FirstRunWizard::FirstRunWizard(Config *config, QWidget *parent)
     : QWizard(parent), m_config(config)
@@ -116,69 +115,17 @@ AppPage::AppPage(Config *config, QWidget *parent)
     setSubTitle(::tr(QStringLiteral("wizard.app_subtitle")));
 
     auto *layout = new QVBoxLayout(this);
-
-    m_list = new QListWidget(this);
-    m_list->setAlternatingRowColors(true);
-    layout->addWidget(m_list);
-
-    m_refreshBtn = new QPushButton(::tr(QStringLiteral("wizard.app_refresh")), this);
-    connect(m_refreshBtn, &QPushButton::clicked, this, &AppPage::onRefresh);
-    layout->addWidget(m_refreshBtn);
+    m_appList = new AppListWidget(this);
+    layout->addWidget(m_appList);
 }
 
 void AppPage::initializePage()
 {
-    populateList();
+    m_appList->populate(m_config);
 }
 
 bool AppPage::validatePage()
 {
-    auto *item = m_list->currentItem();
-    if (item) {
-        QString name = item->data(Qt::UserRole).toString();
-        m_config->setSelectedApp(name);
-    }
+    m_config->setSelectedApp(m_appList->selectedAppName());
     return true;
-}
-
-void AppPage::onRefresh()
-{
-    populateList();
-}
-
-void AppPage::populateList()
-{
-    m_list->clear();
-
-    // "No default application" — always first, always enabled
-    auto *emptyItem = new QListWidgetItem(::tr(QStringLiteral("wizard.app_empty")));
-    emptyItem->setData(Qt::UserRole, QString{});
-    m_list->addItem(emptyItem);
-
-    const auto clients = ::listPipeWireClients();
-    if (clients.isEmpty()) {
-        auto *noAppsItem = new QListWidgetItem(::tr(QStringLiteral("wizard.app_no_apps")));
-        noAppsItem->setFlags(noAppsItem->flags() & ~Qt::ItemIsEnabled);
-        m_list->addItem(noAppsItem);
-    } else {
-        for (const PipeWireClient &client : clients) {
-            auto *item = new QListWidgetItem(client.name);
-            item->setData(Qt::UserRole, client.name);
-            m_list->addItem(item);
-        }
-    }
-
-    // Select matching item from config
-    const QString selected = m_config->selectedApp();
-    int targetRow = 0; // default: "No default application"
-    if (!selected.isEmpty()) {
-        for (int i = 0; i < m_list->count(); ++i) {
-            if (m_list->item(i)->data(Qt::UserRole).toString() == selected) {
-                targetRow = i;
-                break;
-            }
-        }
-    }
-    if (targetRow < m_list->count())
-        m_list->setCurrentRow(targetRow);
 }

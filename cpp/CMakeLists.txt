@@ -31,6 +31,8 @@ set(SOURCES
     src/mprisinterface.cpp
     src/evdevdevice.cpp
     src/pwutils.cpp
+    src/applistwidget.cpp
+    src/appselectordialog.cpp
     resources.qrc
 )
 
