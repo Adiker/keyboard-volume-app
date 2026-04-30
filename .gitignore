@@ -37,7 +37,7 @@ compile_commands.json
 
 # Config (user-specific, not for repo)
 config.json
-keyboard-volume-app.desktop
+/keyboard-volume-app.desktop
 
 # Logs
 *.log

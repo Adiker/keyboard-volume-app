@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Keyboard Volume App
+Comment=Per-app volume control via keyboard with OSD
+Exec=keyboard-volume-app
+Icon=keyboard-volume-app
+Terminal=false
+StartupNotify=false
+Categories=AudioVideo;Audio;
+X-KDE-autostart-condition=kded5|Module|kded_autostart|true

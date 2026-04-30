@@ -46,6 +46,7 @@ This is the concise working guide for Gemini / Antigravity agents in this reposi
 - `cpp/src/dbusinterface.h/cpp`: custom D-Bus interface `org.keyboardvolumeapp.VolumeControl`.
 - `cpp/src/mprisinterface.h/cpp`: MPRIS endpoint `org.mpris.MediaPlayer2.keyboardvolumeapp`.
 - `cpp/src/evdevdevice.h/cpp`: shared RAII wrapper for evdev/uinput resources.
+- `cpp/src/screenutils.h`: header-only utility `centerDialogOnScreenAt(QWidget*, QPoint)` — centers a parentless dialog on the screen containing the given cursor position. Used before `exec()` in all 4 parentless dialogs (`SettingsDialog`, `AppSelectorDialog`, `DeviceSelectorDialog`, `FirstRunWizard`). No event filters, QTimer, or window-flag changes.
 
 ## Development Workflow
 
