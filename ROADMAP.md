@@ -1,0 +1,152 @@
+# keyboard-volume-app — rekomendacje rozwoju
+
+Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje infrastruktury wokół kodu. Poniżej priorytety rozwoju.
+
+---
+
+## Priorytet 1 — Krytyczne / wysoki wpływ
+
+### 1. Paczkowanie i dystrybucja (PKGBUILD + CPack) ✓
+
+**Problem:** Użytkownik musi budować ze źródeł. Brak jakiegokolwiek paczkowania.
+**Rekomendacja:** Stworzyć PKGBUILD dla Arch Linux, rozważyć .deb/.rpm przez CMake/CPack.
+**Pliki:** Nowy `pkg/arch/PKGBUILD`, ewentualnie `cmake/cpack.cmake`
+**Status:** Zrealizowane. `pkg/arch/PKGBUILD` — paczka `keyboard-volume-app-git` budująca z brancha `main` via `git clone`. `pkgver()` generowany przez `git describe`. `depends`: `qt6-base libevdev libpulse pipewire`. CMake Release build z `DESTDIR` install. Dodano `resources/keyboard-volume-app.desktop` (bez hardkodowanych ścieżek) oraz reguły `install()` dla `.desktop` → `share/applications/` i ikony → `share/pixmaps/`. Dodano plik `LICENSE` (GPL-2.0-or-later).
+
+### 2. Testy jednostkowe i integracyjne ✓
+
+**Problem:** Zero testów. Narzędzie systemowe bez testów to ryzyko regresji przy każdej zmianie.
+**Rekomendacja:** Dodać Google Test lub Catch2, pokryć minimum:
+
+- Config (merge, load/save)
+- VolumeController (mock PA)
+- InputHandler (mock evdev)
+- i18n (lookup, fallback)
+**Pliki:** `cpp/tests/`, zmiana w `cpp/CMakeLists.txt` (subdirectory)
+**Status:** Zrealizowane. 4 pliki testowe (test_config 14 testów, test_i18n 8 testów, test_volumecontroller 4 smoke testy, test_inputhandler 8 testów), zintegrowane z CTest, 100% pass.
+
+### 3. Poszanowanie XDG_CONFIG_HOME ✓
+
+**Problem:** Config ścieżka zahardkodowana jako `~/.config/keyboard-volume-app/`. Na NixOS i innych dystrybucjach nie zadziała.
+**Rekomendacja:** Użyć `QStandardPaths::writableLocation(QStandardPaths::ConfigLocation)`.
+**Pliki:** `cpp/src/config.cpp` — zmiana ~1 linii
+**Status:** Zrealizowane (już używa QStandardPaths).
+
+---
+
+## Priorytet 2 — Istotne ulepszenia
+
+### 4. Zmniejszenie latencji klawiszy (200ms → 50ms) ✓
+
+**Problem:** InputHandler polluje evdev z select() timeout 200ms. Odczuwalne opóźnienie.
+**Rekomendacja:** Zmniejszyć timeout do 50ms lub użyć epoll/inotify na deskryptorze evdev.
+**Pliki:** `cpp/src/inputhandler.cpp` — zmiana stałej timeoutu
+**Status:** Zrealizowane. Zastąpiono `select()` wydajniejszym `epoll()` z limitem 50ms, co minimalizuje zużycie CPU i skraca okno sprawdzania warunku zatrzymania pętli.
+
+### 5. Konfiguracja pierwszego uruchomienia (first-run wizard) ✓
+
+**Problem:** Nowy użytkownik musi ręcznie wybrać urządzenie evdev, skonfigurować OSD itp.
+**Rekomendacja:** Prosty dialog powitalny przy pierwszym uruchomieniu (gdy config.json nie istnieje).
+**Pliki:** Nowy `cpp/src/firstrunwizard.h/cpp`, modyfikacja `cpp/src/main.cpp`
+**Status:** Zrealizowane. `QWizard` z 2 stronami (język + urządzenie). `Config::isFirstRun()`. `App` — dwufazowa inicjalizacja.
+
+### 5a. Wybór domyślnej aplikacji w first-run wizard ✓
+
+**Problem:** Użytkownik musi po pierwszym uruchomieniu wejść do tray menu aby wybrać aplikację audio.
+**Rekomendacja:** Dodać trzecią stronę w `FirstRunWizard` umożliwiającą wybór domyślnej aplikacji już przy pierwszym uruchomieniu.
+**Pliki:** Nowe `cpp/src/pwutils.h/cpp`, modyfikacja `cpp/src/firstrunwizard.h/cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/i18n.cpp`, `cpp/CMakeLists.txt`, `cpp/tests/CMakeLists.txt`
+**Status:** Zrealizowane. `AppPage` z listą klientów PipeWire (poprzez `pw-dump` subprocess). Zawiera opcję "Bez domyślnej aplikacji", przycisk Refresh, i zapisuje wybór do `Config::selectedApp`. Wydzielono `listPipeWireClients()` do wspólnego modułu `pwutils.h/cpp`. Lista wydzielona później do reusable `AppListWidget`. 4/4 testów przechodzi.
+
+### 5b. Zmiana domyślnej aplikacji z tray menu ✓
+
+**Problem:** Użytkownik nie może zmienić domyślnej aplikacji inaczej niż przez radio listę w tray menu (tylko aktualnie wykryte aplikacje).
+**Rekomendacja:** Dodać "Change default application..." do tray menu, otwierające dialog z listą PipeWire, odświeżaniem i opcją "No default application".
+**Pliki:** Nowe `cpp/src/applistwidget.h/cpp`, `cpp/src/appselectordialog.h/cpp`, modyfikacja `cpp/src/trayapp.h/cpp`, `cpp/src/firstrunwizard.h/cpp`, `cpp/src/i18n.cpp`, `cpp/CMakeLists.txt`, `CLAUDE.md`
+**Status:** Zrealizowane. Tray menu ma "Change default application..." — modal dialog (`AppSelectorDialog`) z listą PipeWire, przyciskiem Refresh, opcją "Bez domyślnej aplikacji". Reusable `AppListWidget` współdzielony między `AppPage` (first-run wizard) i `AppSelectorDialog`. Bezpośrednie wybieranie aplikacji z tray listy (radio items) działa bez zmian. 4/4 testów przechodzi.
+
+### 5c. Automatyczne odświeżanie listy aplikacji audio ✓
+
+**Problem:** Użytkownik musi ręcznie klikać "Refresh" w tray menu po uruchomieniu/zamknięciu aplikacji audio.
+**Rekomendacja:** Rozszerzyć PaWatcherThread o obsługę eventów REMOVE, dodać debounced auto-refresh (500ms) w PaWorker.
+**Pliki:** `cpp/src/volumecontroller.cpp`
+**Status:** Zrealizowane. PaWatcherThread emituje na NEW i REMOVE. PaWorker debounce timer (500ms) odświeża listę automatycznie. Istniejące połączenie appsReady → rebuildMenu obsługuje update tray menu. Brak zmian w API publicznym.
+
+### 6. Osadzenie ikony jako Qt resource ✓
+
+**Problem:** Ikona ładowana z pliku obok binarki. Jeśli plik zniknie — brak ikony w tray.
+**Rekomendacja:** Dodać plik `.qrc`, osadzić icon.png jako zasób Qt.
+**Pliki:** Nowy `cpp/resources.qrc`, zmiany w `trayapp.cpp` i `osdwindow.cpp`
+**Status:** Zrealizowane. `resources.qrc` w SOURCES, ikona `:/icon.png` przez QRC, usunięto POST_BUILD kopiowanie.
+
+### 7. Wsparcie dla PipeWire przez API libpipewire
+
+**Problem:** `pw-dump` i `pw-cli` subprocesy są wolne (~30ms) i wymagają obecności tych binarek.
+**Rekomendacja:** Rozważyć libpipewire bezpośrednio zamiast subprocesów. Alternatywnie: PulseAudio API działa przez pipewire-pulse.
+**Pliki:** `cpp/src/volumecontroller.cpp` — zmiana strategii fallbacku
+
+---
+
+## Priorytet 3 — Dobre mieć
+
+### 8. Obsługa wielu aplikacji jednocześnie
+
+**Problem:** Tylko jedna aplikacja audio może być kontrolowana naraz.
+**Rekomendacja:** Profile/keybinds — np. Ctrl+Vol dla przeglądarki, sam Vol dla Spotify.
+**Pliki:** Zmiany w `config`, `inputhandler`, `volumecontroller`
+
+### 9. Integracja DBus / MPRIS ✓
+
+**Problem:** Aplikacja działa tylko na poziomie evdev, nie integruje się z desktopowymi API.
+**Rekomendacja:** Wystawić interfejs DBus (get/set volume, wybór aplikacji). MPRIS dałby integrację z KDE Connect, widgetami.
+**Pliki:** Nowy `cpp/src/dbusinterface.h/cpp`, `cpp/src/mprisinterface.h/cpp`, zmiana CMakeLists.txt
+**Status:** Zrealizowane. Własny interfejs `org.keyboardvolumeapp.VolumeControl` + MPRIS `org.mpris.MediaPlayer2`/`.Player`. Cache stanu, delegacja async do VolumeController. ExportAdaptors dla adaptorów MPRIS. Cleanup w App::cleanup().
+
+### 10. CI/CD (GitHub Actions)
+
+**Problem:** Brak automatycznej walidacji przy PR/commit.
+**Rekomendacja:** Workflow: build (Release + Debug), testy, lint (clang-format, clang-tidy).
+**Pliki:** Nowy `.github/workflows/ci.yml`
+
+### 11. Systemd user service
+
+**Problem:** Autostart tylko przez KDE autostart, brak mechanizmu dla innych DE/WM.
+**Rekomendacja:** Dodać `keyboard-volume-app.service` dla systemd user mode.
+**Pliki:** Nowy `deploy/keyboard-volume-app.service`
+
+### 12. Refaktoryzacja — deduplikacja kodu evdev ✓
+
+**Problem:** `openDev`/`closeDev` i grab/release powtarzają się w `inputhandler.cpp` i `deviceselector.cpp`; `getVolumeDevices()` zduplikowane w `deviceselector.cpp` i `firstrunwizard.cpp`.
+**Rekomendacja:** Wydzielić RAII wrapper `EvdevDevice`.
+**Pliki:** Nowy `cpp/src/evdevdevice.h/cpp`, zmiany w `inputhandler.cpp`, `deviceselector.cpp`, `firstrunwizard.cpp`
+**Status:** Zrealizowane. Klasa RAII `EvdevDevice` (move-only) zarządza fd, `libevdev*`, grab/ungrab i `libevdev_uinput*` z automatycznym cleanupem w destruktorze. Zduplikowana `getVolumeDevices()` wydobyta do `inputhandler.h/cpp`. 4/4 testów przechodzi.
+
+### 13. Wersjonowanie binarki (--version, --help) ✓
+
+**Problem:** Binarka nie ma `--version` ani `--help`.
+**Rekomendacja:** Dodać QCommandLineParser z `--version` (z CMakeLists.txt) i `--help`.
+**Pliki:** `cpp/src/main.cpp`
+**Status:** Zrealizowane. Dodano `QCommandLineParser` obsługujący te flagi oraz wstrzykiwanie `APP_VERSION` zdefiniowanego w `CMakeLists.txt`.
+
+### 14. Poprawki jakości kodu i stabilności ✓
+
+**Problem:** Kilka nieformalnych bugów i brakujących guardsów wykrytych podczas przeglądu kodu: `volatile bool` zamiast `std::atomic<bool>` (data race), memory leaki (`Config`, `OSDWindow`), brak obsługi key repeat, brak singletona, brak walidacji pustej listy monitorów, połykanie wyjątków.
+**Rekomendacja:** Batch quick-fix — 6 zmian w 6 plikach.
+**Pliki:** `inputhandler.h`, `inputhandler.cpp`, `volumecontroller.cpp`, `main.cpp`, `osdwindow.cpp`, `settingsdialog.cpp`
+**Status:** Zrealizowane. `volatile bool` → `std::atomic<bool>` (3 miejsca). `Config` → `std::unique_ptr`, `OSDWindow` → explicit delete. Key repeat (`ev.value == 2`). Singleton via D-Bus name check. Guard `screens.isEmpty()`. `catch(...)` → `qWarning()`. Build + 4/4 testów OK.
+
+### 15. Pozycjonowanie dialogów na właściwym monitorze (XWayland) ✓
+
+**Problem:** Na XWayland z wieloma monitorami dialogi (Settings, AppSelector, DeviceSelector, FirstRunWizard) wyskakują na złym monitorze — Qt domyślnie centruje na primary screen, który na XWayland jest zawodny.
+**Rekomendacja:** API `centerDialogOnScreenAt(window, QCursor::pos())` przed `exec()` — robi `ensurePolished`, `adjustSize`, wylicza rozmiar z `sizeHint/minimumSizeHint/minimumSize`, centruje w `screen->availableGeometry()` z clampem do granic.
+**Pliki:** Nowy `cpp/src/screenutils.h`, zmiany w `cpp/src/trayapp.cpp`, `cpp/src/main.cpp`
+**Status:** Zrealizowane. Header-only utility `centerDialogOnScreenAt(QWidget*, QPoint)` z fallbackiem do `primaryScreen()`. Bez event filterów, QTimer ani zmian flag Qt::Dialog. 4/4 testów OK.
+
+---
+
+## Weryfikacja (dla każdej zmiany)
+
+1. `cmake --build cpp/build -j$(nproc)` — build bez błędów
+2. Dla testów: `cd cpp/build && ctest --output-on-failure`
+3. Dla paczkowania: `makepkg -f` (Arch) / `cpack` (deb/rpm)
+4. Dla zmian UI: uruchomić i przetestować manualnie
+
