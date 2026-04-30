@@ -49,6 +49,18 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 
 ### Installation
 
+#### Arch Linux (PKGBUILD)
+
+```bash
+git clone https://github.com/Adiker/keyboard-volume-app.git
+cd keyboard-volume-app/pkg/arch
+makepkg -si
+```
+
+This clones `main`, builds a Release binary, and installs everything to `/usr` including the `.desktop` entry and icon.
+
+#### Build from source
+
 ```bash
 git clone git@github.com:Adiker/keyboard-volume-app.git
 cd keyboard-volume-app
@@ -194,8 +206,13 @@ keyboard-volume-app/
 │       ├── test_i18n.cpp
 │       ├── test_inputhandler.cpp
 │       └── test_volumecontroller.cpp
+├── pkg/
+│   └── arch/
+│       └── PKGBUILD             # Arch Linux package (keyboard-volume-app-git)
 ├── resources/
-│   └── icon.png
+│   ├── icon.png
+│   └── keyboard-volume-app.desktop  # Desktop entry for distribution
+├── LICENSE
 ├── AGENTS.md
 ├── CLAUDE.md
 ├── GEMINI.md
@@ -208,7 +225,7 @@ The volume change hot path (keypress → OSD update) uses a single libpulse IPC 
 
 ### License
 
-MIT
+GPL-2.0-or-later — see [LICENSE](LICENSE)
 
 ---
 
@@ -258,6 +275,18 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 | Kompilator C++20 | GCC 11+ lub Clang 13+ |
 
 ### Instalacja
+
+#### Arch Linux (PKGBUILD)
+
+```bash
+git clone https://github.com/Adiker/keyboard-volume-app.git
+cd keyboard-volume-app/pkg/arch
+makepkg -si
+```
+
+Pobiera branch `main`, buduje binarę Release i instaluje wszystko do `/usr` wraz z wpisem `.desktop` i ikoną.
+
+#### Budowanie ze źródeł
 
 ```bash
 git clone git@github.com:Adiker/keyboard-volume-app.git
@@ -404,8 +433,13 @@ keyboard-volume-app/
 │       ├── test_i18n.cpp
 │       ├── test_inputhandler.cpp
 │       └── test_volumecontroller.cpp
+├── pkg/
+│   └── arch/
+│       └── PKGBUILD             # Paczka Arch Linux (keyboard-volume-app-git)
 ├── resources/
-│   └── icon.png
+│   ├── icon.png
+│   └── keyboard-volume-app.desktop  # Wpis .desktop do dystrybucji
+├── LICENSE
 ├── AGENTS.md
 ├── CLAUDE.md
 ├── GEMINI.md
@@ -418,4 +452,4 @@ Hot path zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykon
 
 ### Licencja
 
-MIT
+GPL-2.0-or-later — patrz [LICENSE](LICENSE)

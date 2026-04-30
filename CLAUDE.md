@@ -48,8 +48,13 @@ keyboard-volume-app/
 │       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (fd, libevdev*, uinput)
 │       ├── screenutils.h        # Header-only: centerDialogOnScreenAt() for multi-monitor XWayland
 │       └── audioapp.h           # AudioApp struct (display name, PA index, muted, volume)
-└── resources/
-    └── icon.png
+├── pkg/
+│   └── arch/
+│       └── PKGBUILD             # Arch Linux package (keyboard-volume-app-git)
+├── resources/
+│   ├── icon.png
+│   └── keyboard-volume-app.desktop  # Desktop entry (distribution copy, no hardcoded paths)
+└── LICENSE                      # GPL-2.0-or-later
 ```
 
 ---
@@ -279,6 +284,24 @@ MPRIS external call
 | `PaWorker` | `QThread` (via `moveToThread`) | All PulseAudio/pw-dump operations |
 
 D-Bus calls arrive on the main thread and are forwarded to `VolumeController` (which posts to `PaWorker`). `DbusInterface` property reads are served from main-thread caches — no blocking.
+
+### `pkg/arch/PKGBUILD` — Arch Linux package
+
+`keyboard-volume-app-git` package for Arch Linux / AUR. Builds from the `main` branch via `git clone`.
+
+- `pkgver()` uses `git describe --tags --long` to generate a version like `r0.1.0.24.gc2cd813`
+- `depends`: `qt6-base libevdev libpulse pipewire`
+- `makedepends`: `cmake gcc pkg-config git`
+- CMake Release build with `BUILD_TESTING=OFF` and `DESTDIR` install
+- Installs: binary → `/usr/bin/`, `.desktop` → `/usr/share/applications/`, icon → `/usr/share/pixmaps/` and `/usr/share/keyboard-volume-app/`
+
+To build locally: `cd pkg/arch && makepkg -f --skipchecksums`  
+To validate: `namcap PKGBUILD`  
+Before AUR submission: `makepkg --printsrcinfo > .SRCINFO`
+
+**Distribution files installed by CMake:**
+- `resources/keyboard-volume-app.desktop` — clean `.desktop` without hardcoded paths; tracked in git (the root-level `keyboard-volume-app.desktop` with dev paths remains gitignored)
+- `resources/icon.png` — installed to both `share/keyboard-volume-app/` (legacy) and `share/pixmaps/keyboard-volume-app.png` (DE icon lookup)
 
 ---
 
