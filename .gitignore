@@ -46,5 +46,11 @@ config.json
 .DS_Store
 Thumbs.db
 
+# Arch Linux packaging artifacts
+pkg/arch/pkg/
+pkg/arch/src/
+pkg/arch/keyboard-volume-app-git/
+pkg/arch/*.pkg.tar.*
+
 # Claude Code local settings
 .claude/
