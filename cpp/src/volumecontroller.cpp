@@ -50,6 +50,7 @@ public:
 
 signals:
     void sinkInputAppeared();
+    void sinkInputRemoved();
 
 protected:
     void run() override
@@ -113,10 +114,11 @@ private:
         PaWatcherThread *self = static_cast<PaWatcherThread *>(ud);
         int facility = t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK;
         int type     = t & PA_SUBSCRIPTION_EVENT_TYPE_MASK;
-        if (facility == PA_SUBSCRIPTION_EVENT_SINK_INPUT
-            && type   == PA_SUBSCRIPTION_EVENT_NEW)
-        {
-            emit self->sinkInputAppeared();
+        if (facility == PA_SUBSCRIPTION_EVENT_SINK_INPUT) {
+            if (type == PA_SUBSCRIPTION_EVENT_NEW)
+                emit self->sinkInputAppeared();
+            else if (type == PA_SUBSCRIPTION_EVENT_REMOVE)
+                emit self->sinkInputRemoved();
         }
     }
 };
@@ -150,6 +152,22 @@ public slots:
             if (m_stopping) return;
             QTimer::singleShot(100, this, &PaWorker::doApplyPending);
         });
+
+        // Debounced app-list refresh on sink input changes (500ms).
+        m_refreshTimer = new QTimer(this);
+        m_refreshTimer->setSingleShot(true);
+        m_refreshTimer->setInterval(500);
+        connect(m_refreshTimer, &QTimer::timeout, this, [this]() {
+            doListApps(/*forceRefresh=*/true);
+        });
+
+        connect(m_watcher, &PaWatcherThread::sinkInputAppeared, this, [this]() {
+            if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
+        });
+        connect(m_watcher, &PaWatcherThread::sinkInputRemoved, this, [this]() {
+            if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
+        });
+
         m_watcher->start();
 
         // Initial app list
@@ -161,6 +179,10 @@ public slots:
         if (m_cleanedUp) { emit cleanupFinished(); return; }
         m_stopping = true;
         if (m_mainloop) pa_threaded_mainloop_signal(m_mainloop, 0);
+
+        if (m_refreshTimer) {
+            m_refreshTimer->stop();
+        }
 
         if (m_watcher) {
             disconnect(m_watcher, nullptr, this, nullptr);
@@ -432,6 +454,7 @@ private:
     bool                  m_stopping     = false;
     bool                  m_cleanedUp    = false;
 
+    QTimer               *m_refreshTimer = nullptr;
     QMap<QString, double>  m_appVolumes;
     QMap<QString, bool>    m_appMutes;
     QList<AudioApp>        m_listCache;

@@ -163,6 +163,8 @@ All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved v
 
 `listApps()` returns cached data immediately and posts a background refresh that emits `appsReady(list)`. The background watcher listens for new sink-input events and applies pending volumes.
 
+`PaWatcherThread` emits both `sinkInputAppeared` (PA NEW event) and `sinkInputRemoved` (PA REMOVE event). `PaWorker` connects both to a 500ms debounce `QTimer` (`m_refreshTimer`) that calls `doListApps(true)` — so the tray menu rebuilds automatically whenever an audio app starts or stops, without any manual Refresh click. The existing `appsReady → TrayApp::rebuildMenu` connection handles the UI update. `doApplyPending` (100ms one-shot) always fires before the debounce timer, so pending volumes are applied before the refreshed list is emitted.
+
 App/binary filter constants (`SYSTEM_BINARIES`, `SKIP_APP_NAMES`) live in `pwutils.h` and are shared with `AppPage`.
 
 ### `cpp/src/inputhandler.h/cpp` — `InputHandler`, `KeyCaptureThread`
