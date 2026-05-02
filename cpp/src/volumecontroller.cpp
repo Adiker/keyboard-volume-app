@@ -15,8 +15,6 @@
 #include <QJsonParseError>
 #include <algorithm>
 #include <atomic>
-#include <chrono>
-#include <thread>
 
 #include <pulse/thread-mainloop.h>
 #include <pulse/context.h>
@@ -24,6 +22,17 @@
 #include <pulse/subscribe.h>
 #include <pulse/volume.h>
 #include <pulse/ext-stream-restore.h>
+
+namespace {
+constexpr int PA_CONNECT_TIMEOUT_MS = 1000;
+constexpr int RECONNECT_BACKOFF_MAX_MS = 30000;
+
+int nextReconnectBackoff(int currentMs)
+{
+    if (currentMs <= 0) return 500;
+    return std::min(currentMs * 2, RECONNECT_BACKOFF_MAX_MS);
+}
+}
 
 // ─── PaWatcherThread ──────────────────────────────────────────────────────────
 // Maintains its own PA connection and subscribes to sink-input events.
@@ -40,27 +49,56 @@ public:
     void stop()
     {
         m_stopping = true;
-        if (m_mainloop) pa_threaded_mainloop_signal(m_mainloop, 0);
         if (isRunning()) { wait(1000); if (isRunning()) terminate(); }
     }
-
-    QMutex                pendingMutex;
-    QMap<QString, double> pendingVolumes;
-    QMap<QString, bool>   pendingMutes;
 
 signals:
     void sinkInputAppeared();
     void sinkInputRemoved();
+    void connectionReady();
 
 protected:
     void run() override
     {
+        while (!m_stopping) {
+            bool connected = connectOnce();
+            if (connected) {
+                m_backoffMs = 0;
+                emit connectionReady();
+
+                while (!m_stopping && contextIsGood())
+                    msleep(100);
+            }
+
+            disconnectContext();
+            if (m_stopping) break;
+
+            m_backoffMs = nextReconnectBackoff(m_backoffMs);
+            int sleptMs = 0;
+            while (!m_stopping && sleptMs < m_backoffMs) {
+                msleep(100);
+                sleptMs += 100;
+            }
+        }
+    }
+
+private:
+    pa_threaded_mainloop *m_mainloop = nullptr;
+    pa_context           *m_ctx      = nullptr;
+    std::atomic<bool>     m_stopping{false};
+    int                   m_backoffMs = 0;
+
+    bool connectOnce()
+    {
         m_mainloop = pa_threaded_mainloop_new();
-        if (!m_mainloop) return;
+        if (!m_mainloop) return false;
 
         pa_mainloop_api *api = pa_threaded_mainloop_get_api(m_mainloop);
         m_ctx = pa_context_new(api, "keyboard-volume-app-watcher");
-        if (!m_ctx) { pa_threaded_mainloop_free(m_mainloop); m_mainloop = nullptr; return; }
+        if (!m_ctx) {
+            disconnectContext();
+            return false;
+        }
 
         pa_context_set_state_callback(m_ctx, contextStateCallback, this);
         pa_threaded_mainloop_lock(m_mainloop);
@@ -68,44 +106,63 @@ protected:
 
         if (pa_context_connect(m_ctx, nullptr, PA_CONTEXT_NOAUTOSPAWN, nullptr) < 0) {
             pa_threaded_mainloop_unlock(m_mainloop);
-            pa_context_unref(m_ctx); m_ctx = nullptr;
-            pa_threaded_mainloop_stop(m_mainloop);
-            pa_threaded_mainloop_free(m_mainloop); m_mainloop = nullptr;
-            return;
+            disconnectContext();
+            return false;
         }
 
-        while (!m_stopping) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!m_stopping && timer.elapsed() < PA_CONNECT_TIMEOUT_MS) {
             pa_context_state_t st = pa_context_get_state(m_ctx);
-            if (st == PA_CONTEXT_READY) break;
+            if (st == PA_CONTEXT_READY) {
+                pa_context_subscribe(m_ctx, PA_SUBSCRIPTION_MASK_SINK_INPUT, nullptr, nullptr);
+                pa_context_set_subscribe_callback(m_ctx, subscribeCallback, this);
+                pa_threaded_mainloop_unlock(m_mainloop);
+                return true;
+            }
             if (!PA_CONTEXT_IS_GOOD(st)) break;
-            pa_threaded_mainloop_wait(m_mainloop);
+            pa_threaded_mainloop_unlock(m_mainloop);
+            msleep(20);
+            pa_threaded_mainloop_lock(m_mainloop);
         }
         pa_threaded_mainloop_unlock(m_mainloop);
-
-        // Keep this Qt thread alive; the PA internal thread drives events.
-        while (!m_stopping) msleep(100);
-
-        pa_threaded_mainloop_lock(m_mainloop);
-        pa_context_disconnect(m_ctx);
-        pa_context_unref(m_ctx); m_ctx = nullptr;
-        pa_threaded_mainloop_unlock(m_mainloop);
-        pa_threaded_mainloop_stop(m_mainloop);
-        pa_threaded_mainloop_free(m_mainloop); m_mainloop = nullptr;
+        return false;
     }
 
-private:
-    pa_threaded_mainloop *m_mainloop = nullptr;
-    pa_context           *m_ctx      = nullptr;
-    std::atomic<bool>     m_stopping{false};
+    bool contextIsGood()
+    {
+        if (!m_mainloop || !m_ctx) return false;
+        pa_threaded_mainloop_lock(m_mainloop);
+        const pa_context_state_t st = pa_context_get_state(m_ctx);
+        const bool good = PA_CONTEXT_IS_GOOD(st);
+        pa_threaded_mainloop_unlock(m_mainloop);
+        return good;
+    }
+
+    void disconnectContext()
+    {
+        if (!m_mainloop) return;
+
+        if (m_ctx) {
+            pa_threaded_mainloop_lock(m_mainloop);
+            pa_context_set_state_callback(m_ctx, nullptr, nullptr);
+            pa_context_set_subscribe_callback(m_ctx, nullptr, nullptr);
+            pa_context_disconnect(m_ctx);
+            pa_context_unref(m_ctx);
+            m_ctx = nullptr;
+            pa_threaded_mainloop_unlock(m_mainloop);
+        }
+
+        pa_threaded_mainloop_stop(m_mainloop);
+        pa_threaded_mainloop_free(m_mainloop);
+        m_mainloop = nullptr;
+    }
 
     static void contextStateCallback(pa_context *ctx, void *ud)
     {
         PaWatcherThread *self = static_cast<PaWatcherThread *>(ud);
-        if (pa_context_get_state(ctx) == PA_CONTEXT_READY) {
-            pa_context_subscribe(ctx, PA_SUBSCRIPTION_MASK_SINK_INPUT, nullptr, nullptr);
-            pa_context_set_subscribe_callback(ctx, subscribeCallback, self);
-        }
-        pa_threaded_mainloop_signal(self->m_mainloop, 0);
+        Q_UNUSED(ctx);
+        Q_UNUSED(self);
     }
 
     static void subscribeCallback(pa_context *, pa_subscription_event_type_t t,
@@ -139,19 +196,6 @@ public slots:
     void init()
     {
         if (m_stopping) return;
-        if (!connectContext()) {
-            qWarning() << "[PaWorker] Cannot connect to PulseAudio";
-        }
-
-        m_watcher = new PaWatcherThread(); // no parent — lives in PA thread
-        m_watcher->moveToThread(QThread::currentThread());
-
-        // Use a one-shot timer instead of msleep so the PA thread event loop
-        // stays free to process other queued calls during the 100 ms wait.
-        connect(m_watcher, &PaWatcherThread::sinkInputAppeared, this, [this]() {
-            if (m_stopping) return;
-            QTimer::singleShot(100, this, &PaWorker::doApplyPending);
-        });
 
         // Debounced app-list refresh on sink input changes (500ms).
         m_refreshTimer = new QTimer(this);
@@ -161,25 +205,21 @@ public slots:
             doListApps(/*forceRefresh=*/true);
         });
 
-        connect(m_watcher, &PaWatcherThread::sinkInputAppeared, this, [this]() {
-            if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
-        });
-        connect(m_watcher, &PaWatcherThread::sinkInputRemoved, this, [this]() {
-            if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
-        });
+        m_reconnectTimer = new QTimer(this);
+        m_reconnectTimer->setSingleShot(true);
+        connect(m_reconnectTimer, &QTimer::timeout, this, &PaWorker::attemptReconnect);
 
-        m_watcher->start();
-
-        // Initial app list
-        doListApps(/*forceRefresh=*/true);
+        attemptReconnect();
     }
 
     void cleanup()
     {
         if (m_cleanedUp) { emit cleanupFinished(); return; }
-        m_stopping = true;
-        if (m_mainloop) pa_threaded_mainloop_signal(m_mainloop, 0);
+        requestStop();
 
+        if (m_reconnectTimer) {
+            m_reconnectTimer->stop();
+        }
         if (m_refreshTimer) {
             m_refreshTimer->stop();
         }
@@ -190,16 +230,40 @@ public slots:
             delete m_watcher;
             m_watcher = nullptr;
         }
-        if (m_mainloop && m_ctx) {
-            pa_threaded_mainloop_lock(m_mainloop);
-            pa_context_disconnect(m_ctx);
-            pa_context_unref(m_ctx); m_ctx = nullptr;
-            pa_threaded_mainloop_unlock(m_mainloop);
-            pa_threaded_mainloop_stop(m_mainloop);
-            pa_threaded_mainloop_free(m_mainloop); m_mainloop = nullptr;
-        }
+        disconnectContext();
         m_cleanedUp = true;
         emit cleanupFinished();
+    }
+
+    void requestStop()
+    {
+        m_stopping = true;
+    }
+
+    void attemptReconnect()
+    {
+        if (m_stopping || contextReady()) return;
+
+        disconnectContext();
+        if (connectContext()) {
+            m_reconnectBackoffMs = 0;
+            startWatcher();
+            doApplyPending();
+            doListApps(/*forceRefresh=*/true);
+            return;
+        }
+
+        qWarning() << "[PaWorker] Cannot connect to PulseAudio";
+        scheduleReconnect();
+        doListApps(/*forceRefresh=*/true);
+    }
+
+    void handleContextLost()
+    {
+        if (m_stopping) return;
+        disconnectContext();
+        scheduleReconnect();
+        doListApps(/*forceRefresh=*/true);
     }
 
     void doChangeVolume(const QString &appName, double delta)
@@ -207,7 +271,7 @@ public slots:
         if (m_stopping) return;
 
         // 1. Active sink input (fast path)
-        if (m_mainloop && m_ctx) {
+        if (contextReady()) {
             pa_threaded_mainloop_lock(m_mainloop);
             const auto inputs = getSinkInputs();
             for (const auto &si : inputs) {
@@ -258,9 +322,9 @@ public slots:
         double base   = m_appVolumes.value(appName, 1.0);
         double newVol = std::clamp(base + delta, 0.0, 1.0);
         m_appVolumes[appName] = newVol;
-        if (m_watcher) {
-            QMutexLocker lk(&m_watcher->pendingMutex);
-            m_watcher->pendingVolumes[appName] = newVol;
+        {
+            QMutexLocker lk(&m_pendingMutex);
+            m_pendingVolumes[appName] = newVol;
         }
         emit volumeChanged(appName, newVol, m_appMutes.value(appName, false));
     }
@@ -270,7 +334,7 @@ public slots:
         if (m_stopping) return;
 
         // 1. Active sink input
-        if (m_mainloop && m_ctx) {
+        if (contextReady()) {
             pa_threaded_mainloop_lock(m_mainloop);
             const auto inputs = getSinkInputs();
             for (const auto &si : inputs) {
@@ -298,9 +362,9 @@ public slots:
         auto result = streamRestoreToggleMute(appName);
         if (result) {
             m_appMutes[appName] = result->first;
-            if (m_watcher) {
-                QMutexLocker lk(&m_watcher->pendingMutex);
-                m_watcher->pendingMutes.remove(appName);
+            {
+                QMutexLocker lk(&m_pendingMutex);
+                m_pendingMutes.remove(appName);
             }
             emit volumeChanged(appName, result->second, result->first);
             return;
@@ -312,9 +376,9 @@ public slots:
             bool newMuted = !node->muted;
             if (setPwNodeMute(node->id, newMuted)) {
                 m_appMutes[appName] = newMuted;
-                if (m_watcher) {
-                    QMutexLocker lk(&m_watcher->pendingMutex);
-                    m_watcher->pendingMutes.remove(appName);
+                {
+                    QMutexLocker lk(&m_pendingMutex);
+                    m_pendingMutes.remove(appName);
                 }
                 emit volumeChanged(appName, node->volume, newMuted);
                 return;
@@ -326,9 +390,9 @@ public slots:
         double vol    = m_appVolumes.value(appName, 1.0);
         bool newMuted = !curMuted;
         m_appMutes[appName] = newMuted;
-        if (m_watcher) {
-            QMutexLocker lk(&m_watcher->pendingMutex);
-            m_watcher->pendingMutes[appName] = newMuted;
+        {
+            QMutexLocker lk(&m_pendingMutex);
+            m_pendingMutes[appName] = newMuted;
         }
         emit volumeChanged(appName, vol, newMuted);
     }
@@ -345,7 +409,7 @@ public slots:
         QSet<QString> activeBinaries;
 
         // 1. Active sink inputs
-        if (m_mainloop && m_ctx) {
+        if (contextReady()) {
             pa_threaded_mainloop_lock(m_mainloop);
             const auto inputs = getSinkInputs();
             pa_threaded_mainloop_unlock(m_mainloop);
@@ -392,16 +456,16 @@ public slots:
     // Called via QTimer::singleShot(100ms) — runs in PA thread.
     void doApplyPending()
     {
-        if (m_stopping || !m_mainloop || !m_ctx || !m_watcher) return;
+        if (m_stopping || !contextReady()) return;
 
         QMap<QString, double> pendVols;
         QMap<QString, bool>   pendMutes;
         {
-            QMutexLocker lk(&m_watcher->pendingMutex);
-            if (m_watcher->pendingVolumes.isEmpty() && m_watcher->pendingMutes.isEmpty())
+            QMutexLocker lk(&m_pendingMutex);
+            if (m_pendingVolumes.isEmpty() && m_pendingMutes.isEmpty())
                 return;
-            pendVols  = m_watcher->pendingVolumes;
-            pendMutes = m_watcher->pendingMutes;
+            pendVols  = m_pendingVolumes;
+            pendMutes = m_pendingMutes;
         }
 
         pa_threaded_mainloop_lock(m_mainloop);
@@ -434,10 +498,10 @@ public slots:
         pa_threaded_mainloop_unlock(m_mainloop);
 
         if (!applied.isEmpty()) {
-            QMutexLocker lk(&m_watcher->pendingMutex);
+            QMutexLocker lk(&m_pendingMutex);
             for (const auto &app : applied) {
-                m_watcher->pendingVolumes.remove(app);
-                m_watcher->pendingMutes.remove(app);
+                m_pendingVolumes.remove(app);
+                m_pendingMutes.remove(app);
             }
         }
     }
@@ -451,10 +515,15 @@ private:
     pa_threaded_mainloop *m_mainloop     = nullptr;
     pa_context           *m_ctx          = nullptr;
     PaWatcherThread      *m_watcher      = nullptr;
-    bool                  m_stopping     = false;
+    std::atomic<bool>     m_stopping{false};
     bool                  m_cleanedUp    = false;
 
     QTimer               *m_refreshTimer = nullptr;
+    QTimer               *m_reconnectTimer = nullptr;
+    int                   m_reconnectBackoffMs = 0;
+    QMutex                m_pendingMutex;
+    QMap<QString, double> m_pendingVolumes;
+    QMap<QString, bool>   m_pendingMutes;
     QMap<QString, double>  m_appVolumes;
     QMap<QString, bool>    m_appMutes;
     QList<AudioApp>        m_listCache;
@@ -464,6 +533,8 @@ private:
     // ── PA context ────────────────────────────────────────────────────────────
     bool connectContext()
     {
+        disconnectContext();
+
         m_mainloop = pa_threaded_mainloop_new();
         if (!m_mainloop) return false;
 
@@ -480,53 +551,109 @@ private:
 
         if (pa_context_connect(m_ctx, nullptr, PA_CONTEXT_NOAUTOSPAWN, nullptr) < 0) {
             pa_threaded_mainloop_unlock(m_mainloop);
+            disconnectContext();
             return false;
         }
 
         QElapsedTimer timer;
         timer.start();
-        while (!m_stopping && timer.elapsed() < 3000) {
+        while (!m_stopping && timer.elapsed() < PA_CONNECT_TIMEOUT_MS) {
             pa_context_state_t st = pa_context_get_state(m_ctx);
             if (st == PA_CONTEXT_READY) break;
             if (!PA_CONTEXT_IS_GOOD(st)) {
                 pa_threaded_mainloop_unlock(m_mainloop);
+                disconnectContext();
                 return false;
             }
-            waitForMainloopSignal(100);
+            pa_threaded_mainloop_unlock(m_mainloop);
+            QThread::msleep(20);
+            pa_threaded_mainloop_lock(m_mainloop);
         }
         pa_threaded_mainloop_unlock(m_mainloop);
-        return pa_context_get_state(m_ctx) == PA_CONTEXT_READY;
+        if (!contextReady()) {
+            disconnectContext();
+            return false;
+        }
+        return true;
     }
 
-    static void contextStateCallback(pa_context *, void *ud)
+    void disconnectContext()
+    {
+        if (!m_mainloop) return;
+
+        if (m_ctx) {
+            pa_threaded_mainloop_lock(m_mainloop);
+            pa_context_set_state_callback(m_ctx, nullptr, nullptr);
+            pa_context_disconnect(m_ctx);
+            pa_context_unref(m_ctx);
+            m_ctx = nullptr;
+            pa_threaded_mainloop_unlock(m_mainloop);
+        }
+
+        pa_threaded_mainloop_stop(m_mainloop);
+        pa_threaded_mainloop_free(m_mainloop);
+        m_mainloop = nullptr;
+    }
+
+    bool contextReady()
+    {
+        if (!m_mainloop || !m_ctx) return false;
+        pa_threaded_mainloop_lock(m_mainloop);
+        const bool ready = pa_context_get_state(m_ctx) == PA_CONTEXT_READY;
+        pa_threaded_mainloop_unlock(m_mainloop);
+        return ready;
+    }
+
+    void scheduleReconnect()
+    {
+        if (m_stopping || !m_reconnectTimer) return;
+        if (m_reconnectTimer->isActive()) return;
+
+        m_reconnectBackoffMs = nextReconnectBackoff(m_reconnectBackoffMs);
+        qWarning() << "[PaWorker] Scheduling PulseAudio reconnect in"
+                   << m_reconnectBackoffMs << "ms";
+        m_reconnectTimer->start(m_reconnectBackoffMs);
+    }
+
+    static void contextStateCallback(pa_context *ctx, void *ud)
     {
         PaWorker *self = static_cast<PaWorker *>(ud);
-        pa_threaded_mainloop_signal(self->m_mainloop, 0);
+        const pa_context_state_t st = pa_context_get_state(ctx);
+
+        if ((st == PA_CONTEXT_FAILED || st == PA_CONTEXT_TERMINATED) && !self->m_stopping) {
+            QMetaObject::invokeMethod(self, "handleContextLost", Qt::QueuedConnection);
+        }
     }
 
     static void operationDoneCallback(pa_context *, int, void *ud)
     {
-        PaWorker *self = static_cast<PaWorker *>(ud);
-        if (self && self->m_mainloop)
-            pa_threaded_mainloop_signal(self->m_mainloop, 0);
+        Q_UNUSED(ud);
     }
 
-    void waitForMainloopSignal(int timeoutMs)
+    void startWatcher()
     {
-        pa_threaded_mainloop *mainloop = m_mainloop;
-        std::atomic_bool waiting { true };
-        std::thread watchdog([mainloop, timeoutMs, &waiting]() {
-            int waitedMs = 0;
-            while (waiting && waitedMs < timeoutMs) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                waitedMs += 10;
-            }
-            if (waiting && mainloop)
-                pa_threaded_mainloop_signal(mainloop, 0);
+        if (m_watcher) return;
+
+        m_watcher = new PaWatcherThread(); // no parent — lives in PA thread
+        m_watcher->moveToThread(QThread::currentThread());
+
+        // Use a one-shot timer instead of msleep so the PA thread event loop
+        // stays free to process other queued calls during the 100 ms wait.
+        connect(m_watcher, &PaWatcherThread::sinkInputAppeared, this, [this]() {
+            if (m_stopping) return;
+            QTimer::singleShot(100, this, &PaWorker::doApplyPending);
         });
-        pa_threaded_mainloop_wait(m_mainloop);
-        waiting = false;
-        watchdog.join();
+        connect(m_watcher, &PaWatcherThread::sinkInputAppeared, this, [this]() {
+            if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
+        });
+        connect(m_watcher, &PaWatcherThread::sinkInputRemoved, this, [this]() {
+            if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
+        });
+        connect(m_watcher, &PaWatcherThread::connectionReady, this, [this]() {
+            if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
+        });
+
+        m_watcher->start();
     }
 
     bool waitForOperation(pa_operation *op, const char *what, int timeoutMs = 1500)
@@ -541,7 +668,9 @@ private:
         while (!m_stopping && pa_operation_get_state(op) == PA_OPERATION_RUNNING) {
             if (timer.elapsed() >= timeoutMs)
                 break;
-            waitForMainloopSignal(100);
+            pa_threaded_mainloop_unlock(m_mainloop);
+            QThread::msleep(20);
+            pa_threaded_mainloop_lock(m_mainloop);
         }
 
         bool ok = pa_operation_get_state(op) == PA_OPERATION_DONE;
@@ -561,7 +690,7 @@ private:
                                       int eol, void *ud)
     {
         auto *d = static_cast<SinkInputListCbData *>(ud);
-        if (eol || !info) { pa_threaded_mainloop_signal(d->self->m_mainloop, 0); return; }
+        if (eol || !info) return;
 
         SinkInputInfo si;
         si.index  = info->index;
@@ -579,6 +708,9 @@ private:
     QList<SinkInputInfo> getSinkInputs() // caller must hold mainloop lock
     {
         QList<SinkInputInfo> result;
+        if (!m_ctx || pa_context_get_state(m_ctx) != PA_CONTEXT_READY)
+            return result;
+
         SinkInputListCbData d { this, &result };
         waitForOperation(pa_context_get_sink_input_info_list(m_ctx, sinkInputListCallback, &d),
                          "list sink inputs");
@@ -600,7 +732,7 @@ private:
                                           int eol, void *ud)
     {
         auto *d = static_cast<StreamRestoreCbData *>(ud);
-        if (eol) { pa_threaded_mainloop_signal(d->self->m_mainloop, 0); return; }
+        if (eol) return;
         if (!info || QString::fromUtf8(info->name) != d->target) return;
 
         double vol = static_cast<double>(pa_cvolume_avg(&info->volume)) / PA_VOLUME_NORM;
@@ -626,7 +758,7 @@ private:
 
     std::optional<double> streamRestoreChangeVolume(const QString &app, double delta)
     {
-        if (!m_mainloop || !m_ctx) return std::nullopt;
+        if (!contextReady()) return std::nullopt;
         std::optional<double> result;
         StreamRestoreCbData d { this,
             QStringLiteral("sink-input-by-application-name:") + app,
@@ -640,7 +772,7 @@ private:
 
     std::optional<std::pair<bool,double>> streamRestoreToggleMute(const QString &app)
     {
-        if (!m_mainloop || !m_ctx) return std::nullopt;
+        if (!contextReady()) return std::nullopt;
         std::optional<std::pair<bool,double>> result;
         StreamRestoreCbData d { this,
             QStringLiteral("sink-input-by-application-name:") + app,
@@ -719,11 +851,9 @@ private:
 
     void removePending(const QString &app)
     {
-        if (m_watcher) {
-            QMutexLocker lk(&m_watcher->pendingMutex);
-            m_watcher->pendingVolumes.remove(app);
-            m_watcher->pendingMutes.remove(app);
-        }
+        QMutexLocker lk(&m_pendingMutex);
+        m_pendingVolumes.remove(app);
+        m_pendingMutes.remove(app);
     }
 };
 
@@ -761,6 +891,7 @@ void VolumeController::close()
         m_closing = true;
         disconnect(m_worker, &PaWorker::volumeChanged, this, &VolumeController::volumeChanged);
         disconnect(m_worker, nullptr, this, nullptr);
+        m_worker->requestStop();
 
         QEventLoop cleanupLoop;
         bool cleanupDone = false;
