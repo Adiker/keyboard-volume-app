@@ -34,12 +34,12 @@ This is the concise working guide for Gemini / Antigravity agents in this reposi
 - `cpp/src/config.h/cpp`: thread-safe JSON config via `QStandardPaths::ConfigLocation`. Loads with deep-merge defaults. Setters save automatically.
 - `cpp/src/i18n.h/cpp`: PL/EN translation tables; `tr(key)` lookup with English fallback.
 - `cpp/src/inputhandler.h/cpp`: evdev hotkey capture, device grabbing, uinput mirroring, and `KeyCaptureThread` for hotkey rebinding. Also exposes `getVolumeDevices()` for device enumeration.
-- `cpp/src/volumecontroller.h/cpp`: async per-app volume/mute controller. Fast path is libpulse active sink input, then stream restore, then PipeWire node fallback, then pending watcher.
+- `cpp/src/volumecontroller.h/cpp`: async per-app volume/mute controller. Fast path is libpulse active sink input, then stream restore, then PipeWire node fallback, then pending state in `PaWorker`. Reconnects PA context with backoff after daemon/context loss.
 - `cpp/src/pwutils.h/cpp`: shared PipeWire client listing via `pw-dump` subprocess (`listPipeWireClients()`). Exports `PipeWireClient` struct and filter constants (`SYSTEM_BINARIES`, `SKIP_APP_NAMES`). Used by `VolumeController`, `AppListWidget`, and `AppSelectorDialog`.
 - `cpp/src/applistwidget.h/cpp`: reusable `QWidget` with a `QListWidget` + Refresh button. `populate(Config*)` lists PW clients, pre-selects current config choice. Shared between `AppPage` (wizard) and `AppSelectorDialog` (tray).
 - `cpp/src/appselectordialog.h/cpp`: modal `QDialog` for changing the default audio app. Embeds an `AppListWidget`. Opened from tray via "Change default application..." action.
 - `cpp/src/osdwindow.h/cpp`: frameless always-on-top OSD with custom translucent painting and explicit XWayland positioning.
-- `cpp/src/trayapp.h/cpp`: tray icon and context menu. Radio-list for audio app selection, "Change default application..." (opens `AppSelectorDialog`), Refresh, Change device, Settings, Quit.
+- `cpp/src/trayapp.h/cpp`: tray icon and context menu. Radio-list for audio app selection, "Change default application..." (opens `AppSelectorDialog`), Refresh, Change device, Settings, Quit. Rebuilds never replace the configured selected app just because it temporarily disappeared from the refreshed list.
 - `cpp/src/deviceselector.h/cpp`: dialog for picking an evdev input device with volume keys.
 - `cpp/src/settingsdialog.h/cpp`: settings dialog for OSD position/colors/timeout, volume step, hotkey rebinding, and language.
 - `cpp/src/firstrunwizard.h/cpp`: first-run `QWizard` with 3 pages — `WelcomePage` (language), `DevicePage` (evdev device), `AppPage` (default application via `AppListWidget`).
@@ -76,6 +76,7 @@ Common edits:
 - **evdev/libuinput:** exclusive grabs must not swallow normal keyboard input. Non-hotkey events should still be mirrored through uinput.
 - **Threading:** main-thread blocking freezes tray/UI/D-Bus dispatch. Audio operations belong on PaWorker; evdev polling belongs in `InputHandler`.
 - **Volume fallback:** keep the hot path fast. `pw-dump` is only for idle-app listing and PipeWire node fallback.
+- **PA reconnect/cleanup:** context loss is expected; keep reconnect/backoff and cleanup on the PA worker side, preserve pending volume/mute, and do not clear `selected_app` during transient app-list refreshes.
 - **Wayland/OSD:** removing XWayland forcing or `QWindow::setPosition()` can make the OSD land at `(0,0)`.
 - **Config migration:** preserve deep-merge behavior so old config files receive new defaults.
 - **D-Bus/MPRIS:** unregister both objects and services during cleanup; keep `Qt6::DBus` in CMake when touching these modules.
@@ -86,7 +87,7 @@ Unit tests are in `cpp/tests/` and run through CTest:
 
 - `test_config` — config merge, load/save, thread-safety
 - `test_i18n` — lookup and fallback
-- `test_volumecontroller` — smoke tests
+- `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — API and evdev device listing
 
 Run:

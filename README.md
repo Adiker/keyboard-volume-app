@@ -26,6 +26,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists all apps connected to PipeWire, not just those currently playing audio
+- **Audio backend recovery** — reconnects to PulseAudio/pipewire-pulse after daemon restarts while keeping the configured selected app
 - **Mute toggle** — press the mute key to toggle mute on the selected app only; OSD shows current level with a 🔇 indicator
 - **Persistent config** — all settings saved to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
 - **PL / EN interface** — switch language in Settings
@@ -221,7 +222,7 @@ keyboard-volume-app/
 
 ### Performance
 
-The volume change hot path (keypress → OSD update) uses a single libpulse IPC call (~1ms). The heavier `pw-dump` subprocess is only invoked when listing idle apps, with a cached result to avoid redundant calls. All PulseAudio operations run on a dedicated worker thread — the Qt event loop is never blocked. D-Bus property reads are served from a local cache (zero IPC); writes delegate asynchronously to the PulseAudio worker thread.
+The volume change hot path (keypress → OSD update) uses a single libpulse IPC call (~1ms). The heavier `pw-dump` subprocess is only invoked when listing idle apps, with a cached result to avoid redundant calls. All PulseAudio operations run on a dedicated worker thread — the Qt event loop is never blocked. If the PulseAudio context fails or terminates, the worker reconnects with backoff and keeps pending volume/mute state until the target app reconnects. Transient app-list refreshes during audio daemon restarts do not replace the configured selected app. D-Bus property reads are served from a local cache (zero IPC); writes delegate asynchronously to the PulseAudio worker thread.
 
 ### License
 
@@ -253,6 +254,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; znika automatycznie po upływie skonfigurowanego czasu
 - **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego oraz dostęp do ustawień
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera wszystkie aplikacje podłączone do PipeWire, nie tylko aktualnie odtwarzające dźwięk
+- **Odzyskiwanie backendu audio** — ponownie łączy się z PulseAudio/pipewire-pulse po restarcie daemona i zachowuje skonfigurowaną wybraną aplikację
 - **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇
 - **Trwała konfiguracja** — wszystkie ustawienia zapisywane w `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`)
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
@@ -448,7 +450,7 @@ keyboard-volume-app/
 
 ### Wydajność
 
-Hot path zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykonuje jedno wywołanie IPC przez libpulse (~1ms). Cięższy subprocess `pw-dump` jest uruchamiany wyłącznie przy listowaniu nieaktywnych aplikacji. Wszystkie operacje PulseAudio działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Odczyty właściwości D-Bus są serwowane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku PulseAudio.
+Hot path zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykonuje jedno wywołanie IPC przez libpulse (~1ms). Cięższy subprocess `pw-dump` jest uruchamiany wyłącznie przy listowaniu nieaktywnych aplikacji. Wszystkie operacje PulseAudio działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Jeśli kontekst PulseAudio zakończy się błędem lub zostanie zerwany, worker reconnectuje z backoffem i zachowuje pending volume/mute do czasu ponownego pojawienia się aplikacji. Przejściowe odświeżenia listy podczas restartu daemona audio nie zmieniają skonfigurowanej wybranej aplikacji. Odczyty właściwości D-Bus są serwowane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku PulseAudio.
 
 ### Licencja
 

@@ -164,11 +164,13 @@ All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved v
 1. **Active sink input** (libpulse IPC, ~0.5ms) — fastest, for currently playing apps
 2. **Stream restore DB** (libpulse) — persists across pause/resume
 3. **PipeWire node** (`pw-dump` + `pw-cli`, ~30ms) — for paused apps with an idle node
-4. **Pending watcher** — stores desired volume; applies when app reconnects
+4. **Pending watcher** — stores desired volume/mute in `PaWorker`; applies when app reconnects
 
 `listApps()` returns cached data immediately and posts a background refresh that emits `appsReady(list)`. The background watcher listens for new sink-input events and applies pending volumes.
 
-`PaWatcherThread` emits both `sinkInputAppeared` (PA NEW event) and `sinkInputRemoved` (PA REMOVE event). `PaWorker` connects both to a 500ms debounce `QTimer` (`m_refreshTimer`) that calls `doListApps(true)` — so the tray menu rebuilds automatically whenever an audio app starts or stops, without any manual Refresh click. The existing `appsReady → TrayApp::rebuildMenu` connection handles the UI update. `doApplyPending` (100ms one-shot) always fires before the debounce timer, so pending volumes are applied before the refreshed list is emitted.
+`PaWorker` detects `PA_CONTEXT_FAILED` / `PA_CONTEXT_TERMINATED`, tears down the stale libpulse context, and reconnects with exponential backoff (500ms up to 30s). PA hot paths first check `contextReady()`; if PA is down, they skip libpulse, try the existing PipeWire subprocess fallback, and otherwise park pending volume/mute until the app reconnects.
+
+`PaWatcherThread` emits both `sinkInputAppeared` (PA NEW event) and `sinkInputRemoved` (PA REMOVE event). It also rebuilds its PA subscription after context loss. `PaWorker` connects both sink-input signals to a 500ms debounce `QTimer` (`m_refreshTimer`) that calls `doListApps(true)` — so the tray menu rebuilds automatically whenever an audio app starts or stops, without any manual Refresh click. The existing `appsReady → TrayApp::rebuildMenu` connection handles the UI update. `doApplyPending` (100ms one-shot) always fires before the debounce timer, so pending volumes are applied before the refreshed list is emitted.
 
 App/binary filter constants (`SYSTEM_BINARIES`, `SKIP_APP_NAMES`) live in `pwutils.h` and are shared with `AppPage`.
 
@@ -197,7 +199,7 @@ After `show()`, position is also set via `QWindow::setPosition()` for XWayland c
 
 ### `cpp/src/trayapp.h/cpp` — `TrayApp`
 
-System tray icon with context menu. Rebuilds the app list when `VolumeController::appsReady` fires.
+System tray icon with context menu. Rebuilds the app list when `VolumeController::appsReady` fires. If a transient refresh/reconnect list does not contain the configured app, `TrayApp` keeps `Config::selectedApp()` unchanged instead of auto-selecting the first available app.
 The tray icon is loaded from Qt resources (`:/icon.png` via `resources.qrc`) — no external icon file required at runtime.
 
 Menu actions: current app list (checkable radio items), Refresh, **Change default application...** (opens `AppSelectorDialog`), Change input device..., Settings..., Quit.
@@ -373,7 +375,7 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_config` — 14 tests (merge, load/save, thread-safety)
 - `test_i18n` — 8 tests (lookup, fallback)
-- `test_volumecontroller` — 4 smoke tests
+- `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 8 tests (API, evdev device listing)
 
 Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.
@@ -386,6 +388,7 @@ Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.
 - **Evdev key codes** in config/hotkeys, not Qt key codes. Conversion: evdev = X11 keycode − 8
 - **Config saves on every setter** — no explicit "save all" step needed
 - **All PA operations on PaWorker thread** — never block the Qt event loop with libpulse or pw-dump calls
+- **PA reconnect is part of the audio contract** — on context failure/termination, reconnect in `PaWorker` with backoff; do not lose pending volume/mute or the configured `selected_app`.
 - **All hotkey devices grabbed exclusively** — siblings of the primary device AND every other device advertising the hotkey codes; non-hotkey events re-injected via uinput so typing is unaffected
 - **`pw-dump` is slow** (~30ms) — only called for idle-app lookup and PW-node fallback; never in the main hotkey path
 - **Wayland position workaround** — after every `widget.show()` that positions the OSD, also call `QWindow::setPosition()` on `windowHandle()`

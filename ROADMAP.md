@@ -23,7 +23,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 - InputHandler (mock evdev)
 - i18n (lookup, fallback)
 **Pliki:** `cpp/tests/`, zmiana w `cpp/CMakeLists.txt` (subdirectory)
-**Status:** Zrealizowane. 4 pliki testowe (test_config 14 testów, test_i18n 8 testów, test_volumecontroller 4 smoke testy, test_inputhandler 8 testów), zintegrowane z CTest, 100% pass.
+**Status:** Zrealizowane. 4 pliki testowe (test_config 14 testów, test_i18n 8 testów, test_volumecontroller 5 smoke testów, test_inputhandler 8 testów), zintegrowane z CTest, 100% pass.
 
 ### 3. Poszanowanie XDG_CONFIG_HOME ✓
 
@@ -70,6 +70,13 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Rekomendacja:** Rozszerzyć PaWatcherThread o obsługę eventów REMOVE, dodać debounced auto-refresh (500ms) w PaWorker.
 **Pliki:** `cpp/src/volumecontroller.cpp`
 **Status:** Zrealizowane. PaWatcherThread emituje na NEW i REMOVE. PaWorker debounce timer (500ms) odświeża listę automatycznie. Istniejące połączenie appsReady → rebuildMenu obsługuje update tray menu. Brak zmian w API publicznym.
+
+### 5d. Automatyczne ponowne połączenie PulseAudio ✓
+
+**Problem:** Po restarcie `pipewire-pulse` / PulseAudio `PaWorker` mógł utracić kontekst PA i wymagać restartu aplikacji w scenariuszach, których nie obsłużył fallback PipeWire.
+**Rekomendacja:** Wykrywać `PA_CONTEXT_FAILED` / `PA_CONTEXT_TERMINATED`, czyścić kontekst PA i reconnectować z backoffem. Pending volume/mute trzymać w `PaWorker`, żeby nie ginęły przy restarcie watchera.
+**Pliki:** `cpp/src/volumecontroller.cpp`, `cpp/src/trayapp.cpp`, `cpp/tests/test_volumecontroller.cpp`
+**Status:** Zrealizowane. `PaWorker` reconnectuje kontekst PA z backoffem 500ms → 30s, `PaWatcherThread` odbudowuje subskrypcję sink-input, a hot path sprawdza `contextReady()` przed użyciem libpulse. Transient refresh listy aplikacji nie nadpisuje już `selected_app`. `test_volumecontroller` ma dodatkowy smoke test dla niedostępnego PulseAudio.
 
 ### 6. Osadzenie ikony jako Qt resource ✓
 
@@ -149,4 +156,3 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 2. Dla testów: `cd cpp/build && ctest --output-on-failure`
 3. Dla paczkowania: `makepkg -f` (Arch) / `cpack` (deb/rpm)
 4. Dla zmian UI: uruchomić i przetestować manualnie
-
