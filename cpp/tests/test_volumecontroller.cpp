@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <QCoreApplication>
+#include <QByteArray>
 #include <chrono>
 #include <thread>
 
@@ -49,6 +50,31 @@ TEST(VolumeController, CloseIsIdempotent)
     vc.close();  // second close must be harmless
 
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    SUCCEED();
+}
+
+TEST(VolumeController, UnavailablePulseAudioDoesNotBlockOperations)
+{
+    const bool hadPulseServer = qEnvironmentVariableIsSet("PULSE_SERVER");
+    const QByteArray oldPulseServer = qgetenv("PULSE_SERVER");
+    qputenv("PULSE_SERVER", "unix:/tmp/keyboard-volume-app-missing-pa.sock");
+
+    {
+        VolumeController vc;
+
+        vc.listApps(true);
+        vc.changeVolume("nonexistent_app", 0.05);
+        vc.toggleMute("nonexistent_app");
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        vc.close();
+    }
+
+    if (hadPulseServer)
+        qputenv("PULSE_SERVER", oldPulseServer);
+    else
+        qunsetenv("PULSE_SERVER");
+
     SUCCEED();
 }
 

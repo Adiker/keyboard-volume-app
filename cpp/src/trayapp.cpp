@@ -102,12 +102,8 @@ void TrayApp::populateAppList()
         });
     }
 
-    if (!m_config->selectedApp().isEmpty()
-        && !m_appActions.contains(m_config->selectedApp())
-        && !apps.isEmpty())
-    {
-        onAppSelected(apps.first().name);
-    }
+    // Keep the user's configured app even if a transient refresh/reconnect
+    // produces a list that does not currently contain it.
 }
 
 void TrayApp::onRefresh()
