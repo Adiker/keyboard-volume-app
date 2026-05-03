@@ -211,21 +211,74 @@ static inline void forwardUinputEvent(EvdevDevice *dev, const input_event &ev)
         libevdev_uinput_write_event(dev->uinput(), ev.type, ev.code, ev.value);
 }
 
+// ─── Profile resolution helpers ───────────────────────────────────────────────
+bool isTrackedModifierCode(int code)
+{
+    return code == KEY_LEFTCTRL  || code == KEY_RIGHTCTRL
+        || code == KEY_LEFTSHIFT || code == KEY_RIGHTSHIFT;
+}
+
+QSet<Modifier> normalizeHeldModifiers(const QSet<int> &heldRaw)
+{
+    QSet<Modifier> out;
+    for (int c : heldRaw) {
+        if (c == KEY_LEFTCTRL  || c == KEY_RIGHTCTRL)  out.insert(Modifier::Ctrl);
+        if (c == KEY_LEFTSHIFT || c == KEY_RIGHTSHIFT) out.insert(Modifier::Shift);
+    }
+    return out;
+}
+
+QString resolveProfile(int code,
+                       const QSet<Modifier> &held,
+                       const QList<Profile> &profiles)
+{
+    QString bestId;
+    int bestSpec = -1;
+    for (const Profile &p : profiles) {
+        const bool codeMatches =
+               p.hotkeys.volumeUp   == code
+            || p.hotkeys.volumeDown == code
+            || p.hotkeys.mute       == code;
+        if (!codeMatches) continue;
+
+        // profile.modifiers must be a subset of held modifiers
+        bool subset = true;
+        for (Modifier m : p.modifiers) {
+            if (!held.contains(m)) { subset = false; break; }
+        }
+        if (!subset) continue;
+
+        const int spec = p.modifiers.size();
+        if (spec > bestSpec) {
+            bestSpec = spec;
+            bestId   = p.id;
+        }
+    }
+    return bestId;
+}
+
 // ─── InputHandler ─────────────────────────────────────────────────────────────
 InputHandler::InputHandler(QObject *parent)
     : QThread(parent)
-{}
-
-void InputHandler::setHotkeys(int up, int down, int mute)
 {
-    m_keyUp   = up;
-    m_keyDown = down;
-    m_keyMute = mute;
+    // Seed with one default profile so a fresh InputHandler is usable
+    // even before the App calls setProfiles().
+    Profile def;
+    def.id   = QStringLiteral("default");
+    def.name = QStringLiteral("Default");
+    m_profiles = { def };
 }
 
-std::tuple<int,int,int> InputHandler::currentHotkeys() const
+void InputHandler::setProfiles(const QList<Profile> &profiles)
 {
-    return { m_keyUp, m_keyDown, m_keyMute };
+    QMutexLocker lock(&m_profilesMutex);
+    m_profiles = profiles;
+}
+
+QList<Profile> InputHandler::currentProfiles() const
+{
+    QMutexLocker lock(&m_profilesMutex);
+    return m_profiles;
 }
 
 void InputHandler::startDevice(const QString &newPath)
@@ -253,8 +306,24 @@ void InputHandler::run()
 {
     if (m_devicePath.isEmpty()) return;
 
-    const QSet<int> hotkeys { m_keyUp, m_keyDown, m_keyMute };
-    const auto candidates = findHotkeyDevices(m_devicePath, hotkeys);
+    // Snapshot current profiles for the lifetime of this run. Caller (App)
+    // restarts the thread on profile changes, so this snapshot is fresh
+    // for each restart.
+    const QList<Profile> profiles = currentProfiles();
+
+    // Union of every hotkey code used by any profile.
+    QSet<int> hotkeySet;
+    for (const Profile &p : profiles) {
+        hotkeySet.insert(p.hotkeys.volumeUp);
+        hotkeySet.insert(p.hotkeys.volumeDown);
+        hotkeySet.insert(p.hotkeys.mute);
+    }
+    if (hotkeySet.isEmpty()) {
+        qWarning() << "[InputHandler] No hotkeys configured — nothing to grab";
+        return;
+    }
+
+    const auto candidates = findHotkeyDevices(m_devicePath, hotkeySet);
 
     std::vector<std::unique_ptr<EvdevDevice>> devices;
 
@@ -284,10 +353,6 @@ void InputHandler::run()
 
     if (devices.empty()) return;
 
-    const int keyUp   = m_keyUp;
-    const int keyDown = m_keyDown;
-    const int keyMute = m_keyMute;
-
     int epfd = epoll_create1(0);
     if (epfd >= 0) {
         for (auto &dev : devices) {
@@ -297,6 +362,9 @@ void InputHandler::run()
             epoll_ctl(epfd, EPOLL_CTL_ADD, dev->fd(), &evnt);
         }
     }
+
+    // Modifier state — observed only on grabbed devices (v1 limitation).
+    QSet<int> heldModifiers;
 
     while (m_running) {
         if (epfd < 0) { m_running = false; break; }
@@ -320,25 +388,53 @@ void InputHandler::run()
                 }
 
                 if (ev.type == EV_KEY) {
-                    bool isHotkey = (ev.code == static_cast<unsigned>(keyUp)
-                                  || ev.code == static_cast<unsigned>(keyDown)
-                                  || ev.code == static_cast<unsigned>(keyMute));
-                    if (isHotkey) {
-                        if (ev.value == 1 || ev.value == 2) {  // press or repeat
-                            qint64 now  = QDateTime::currentMSecsSinceEpoch();
-                            qint64 last = m_lastTriggerMs.value(ev.code, 0LL);
-                            if (now - last >= 100) {
-                                m_lastTriggerMs[ev.code] = now;
-                                if (static_cast<int>(ev.code) == keyUp)
-                                    emit volume_up();
-                                else if (static_cast<int>(ev.code) == keyDown)
-                                    emit volume_down();
-                                else if (static_cast<int>(ev.code) == keyMute)
-                                    emit volume_mute();
-                            }
-                        }
+                    const int code = static_cast<int>(ev.code);
+
+                    if (isTrackedModifierCode(code)) {
+                        // Update modifier state, then forward — the desktop
+                        // must still see Ctrl/Shift presses for normal use.
+                        if (ev.value == 1)      heldModifiers.insert(code);
+                        else if (ev.value == 0) heldModifiers.remove(code);
+                        // value == 2 (repeat) leaves state unchanged
+                        forwardUinputEvent(e, ev);
                         continue;
                     }
+
+                    if (hotkeySet.contains(code)) {
+                        if (ev.value == 1 || ev.value == 2) {  // press or repeat
+                            const QString profileId = resolveProfile(
+                                code, normalizeHeldModifiers(heldModifiers), profiles);
+                            if (!profileId.isEmpty()) {
+                                const QPair<int, QString> key{code, profileId};
+                                qint64 now  = QDateTime::currentMSecsSinceEpoch();
+                                qint64 last = m_lastTriggerMs.value(key, 0LL);
+                                if (now - last >= 100) {
+                                    m_lastTriggerMs[key] = now;
+                                    // Look up which kind of hotkey this is
+                                    // for the matched profile.
+                                    for (const Profile &p : profiles) {
+                                        if (p.id != profileId) continue;
+                                        if (p.hotkeys.volumeUp == code)
+                                            emit volume_up(profileId);
+                                        else if (p.hotkeys.volumeDown == code)
+                                            emit volume_down(profileId);
+                                        else if (p.hotkeys.mute == code)
+                                            emit volume_mute(profileId);
+                                        break;
+                                    }
+                                }
+                                // Hotkey consumed — do NOT forward.
+                                continue;
+                            }
+                            // No profile matched (unusual modifier combo) —
+                            // forward as a normal key so typing isn't blocked.
+                        }
+                        // Release of a hotkey code with no matched profile,
+                        // or value == 2 with no match — forward.
+                        forwardUinputEvent(e, ev);
+                        continue;
+                    }
+
                     forwardUinputEvent(e, ev);
                 } else {
                     forwardUinputEvent(e, ev);
