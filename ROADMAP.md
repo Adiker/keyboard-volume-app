@@ -95,11 +95,12 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 
 ## Priorytet 3 — Dobre mieć
 
-### 8. Obsługa wielu aplikacji jednocześnie
+### 8. Obsługa wielu aplikacji jednocześnie ✓
 
 **Problem:** Tylko jedna aplikacja audio może być kontrolowana naraz.
 **Rekomendacja:** Profile/keybinds — np. Ctrl+Vol dla przeglądarki, sam Vol dla Spotify.
-**Pliki:** Zmiany w `config`, `inputhandler`, `volumecontroller`
+**Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/inputhandler.{h,cpp}`, `cpp/src/main.cpp`, `cpp/src/trayapp.{h,cpp}`, `cpp/src/settingsdialog.{h,cpp}`, `cpp/src/profileeditdialog.{h,cpp}` (nowe), `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/i18n.cpp`, `cpp/CMakeLists.txt`, `cpp/tests/test_config.cpp`, `cpp/tests/test_inputhandler.cpp`
+**Status:** Zrealizowane. Wprowadzono profile audio z osobnymi hotkeyami i opcjonalnymi modyfikatorami (Ctrl/Shift, L+R znormalizowane do kanonicznej postaci). Schema config rozszerzona o `profiles` array; migracja ze starego `selected_app`/`hotkeys` (deprecated mirror profile[0] dla backwards compat). InputHandler śledzi modyfikatory z grabowanych urządzeń, dispatch per-profile z debounce per-`(code, profileId)`. Settings dialog ma sekcję Profiles + nowy `ProfileEditDialog`. D-Bus wystawia `Profiles` property + `VolumeUp/Down/ToggleMuteProfile(id)` metody; bare metody i MPRIS targetują profile domyślny (backwards compat). Pending volume z `PaWorker` obsługuje brak działającej apki bez zmian. 35 testów przechodzi (20 config + 15 inputhandler).
 
 ### 9. Integracja DBus / MPRIS ✓
 
