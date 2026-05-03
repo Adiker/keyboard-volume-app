@@ -90,6 +90,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Problem:** `pw-dump` i `pw-cli` subprocesy są wolne (~30ms) i wymagają obecności tych binarek.
 **Rekomendacja:** Rozważyć libpipewire bezpośrednio zamiast subprocesów. Alternatywnie: PulseAudio API działa przez pipewire-pulse.
 **Pliki:** `cpp/src/volumecontroller.cpp` — zmiana strategii fallbacku
+**Status:** Planowane.
 
 ---
 
@@ -114,6 +115,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Problem:** Brak automatycznej walidacji przy PR/commit.
 **Rekomendacja:** Workflow: build (Release + Debug), testy, lint (clang-format, clang-tidy).
 **Pliki:** Nowy `.github/workflows/ci.yml`
+**Status:** Planowane.
 
 ### 11. Systemd user service ✓
 
@@ -149,6 +151,45 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Rekomendacja:** API `centerDialogOnScreenAt(window, QCursor::pos())` przed `exec()` — robi `ensurePolished`, `adjustSize`, wylicza rozmiar z `sizeHint/minimumSizeHint/minimumSize`, centruje w `screen->availableGeometry()` z clampem do granic.
 **Pliki:** Nowy `cpp/src/screenutils.h`, zmiany w `cpp/src/trayapp.cpp`, `cpp/src/main.cpp`
 **Status:** Zrealizowane. Header-only utility `centerDialogOnScreenAt(QWidget*, QPoint)` z fallbackiem do `primaryScreen()`. Bez event filterów, QTimer ani zmian flag Qt::Dialog. 4/4 testów OK.
+
+---
+
+## Priorytet 4 — Funkcje Power User (Killer Features)
+
+### 16. Tryb "Follow Focus" (Dynamiczne śledzenie aktywnego okna)
+
+**Problem:** Konieczność ręcznej zmiany profili lub zapamiętywania wielu skrótów klawiszowych dla poszczególnych aplikacji.
+**Rekomendacja:** Dodanie profilu `Focus`, który poprzez zapytania do systemu (X11 / D-Bus / KDE / Sway) śledzi PID/nazwę aktywnego okna na pulpicie i dynamicznie łączy go z odpowiednim węzłem w PipeWire. Sterowanie głośnością zawsze wpływa na okno będące na wierzchu.
+**Pliki:** Do określenia (np. nowy moduł integracji WM, modyfikacja `config` i `volumecontroller`).
+**Status:** Planowane.
+
+### 17. Zaawansowane dopasowywanie aplikacji (Regex)
+
+**Problem:** Niektóre aplikacje (szczególnie gry uruchamiane przez Wine/Proton lub aplikacje oparte na Electronie) zmieniają nazwy procesów lub generują wiele podprocesów, co psuje sztywne dopasowywanie po nazwie binarki.
+**Rekomendacja:** Dodanie obsługi wyrażeń regularnych (`app_regex`) w definicji profili `config.json`. Możliwość zdefiniowania jednego profilu do obsługi całej grupy komunikatorów (np. `.*(discord|teams|slack|zoom).*`).
+**Pliki:** `cpp/src/config.cpp`, `cpp/src/pwutils.cpp`, `cpp/src/volumecontroller.cpp`.
+**Status:** Planowane.
+
+### 18. Tryb "Audio Ducking" (Izolacja dźwiękowa / Focus Mode)
+
+**Problem:** Gdy użytkownik odbiera połączenie (np. na Discordzie), musi ręcznie ściszać inne aplikacje w tle (muzykę, grę).
+**Rekomendacja:** Wprowadzenie dedykowanej akcji / skrótu klawiszowego, który automatycznie obniża o np. 70% (lub całkowicie wycisza) głośność *wszystkich innych aplikacji* w PipeWire, oprócz aktualnie wybranego profilu. Drugie wciśnięcie przywraca stary stan.
+**Pliki:** `cpp/src/volumecontroller.cpp`, `cpp/src/inputhandler.cpp`.
+**Status:** Planowane.
+
+### 19. Wbudowane CLI (Sub-komendy dla skryptów / Tiling WM)
+
+**Problem:** Używanie `qdbus` w konfiguracjach takich środowisk jak Sway, Hyprland czy i3 jest uciążliwe ze względu na bardzo długie komendy.
+**Rekomendacja:** Rozbudowa `QCommandLineParser`, by główna binarka mogła zadziałać w trybie lekkiego klienta CLI (np. `keyboard-volume-app cli --vol-up --profile firefox`), wysyłającego po prostu komendę DBus do głównego demona i kończącego od razu proces.
+**Pliki:** `cpp/src/main.cpp`.
+**Status:** Planowane.
+
+### 20. Relatywne pozycjonowanie OSD (Anchor) oraz Custom CSS
+
+**Problem:** Sztywne współrzędne X/Y dla OSD psują się przy przepinaniu monitorów, stacjach dokujących lub zmianach rozdzielczości na laptopie. Hardkodowany wygląd OSD nie pasuje do wszystkich ricingów.
+**Rekomendacja:** Zastąpienie X/Y kotwicami (np. `anchor: "bottom-right", margin: 20`) oraz wczytywanie zewnętrznego pliku `theme.qss` (Qt Stylesheet) dla pełnej kastomizacji wyglądu okienka OSD.
+**Pliki:** `cpp/src/config.cpp`, `cpp/src/osdwindow.cpp`, `cpp/src/settingsdialog.cpp`.
+**Status:** Planowane.
 
 ---
 
