@@ -583,8 +583,20 @@ private:
 
         if (m_ctx) {
             pa_threaded_mainloop_lock(m_mainloop);
-            pa_context_set_state_callback(m_ctx, nullptr, nullptr);
             pa_context_disconnect(m_ctx);
+            
+            // Allow libpulse to process the disconnect and free pending operations
+            QElapsedTimer timer;
+            timer.start();
+            while (pa_context_get_state(m_ctx) != PA_CONTEXT_UNCONNECTED && 
+                   pa_context_get_state(m_ctx) != PA_CONTEXT_TERMINATED &&
+                   timer.elapsed() < 500) {
+                pa_threaded_mainloop_unlock(m_mainloop);
+                QThread::msleep(10);
+                pa_threaded_mainloop_lock(m_mainloop);
+            }
+            
+            pa_context_set_state_callback(m_ctx, nullptr, nullptr);
             pa_context_unref(m_ctx);
             m_ctx = nullptr;
             pa_threaded_mainloop_unlock(m_mainloop);
@@ -678,6 +690,9 @@ private:
             qWarning() << "[PaWorker]" << what << "timed out or was cancelled after"
                        << timer.elapsed() << "ms";
         }
+        if (!ok && op) {
+            pa_operation_cancel(op);
+        }
         if (op) pa_operation_unref(op);
         return ok;
     }
@@ -694,12 +709,14 @@ private:
 
         SinkInputInfo si;
         si.index  = info->index;
+        const char *appName = pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_NAME);
+        const char *mediaName = pa_proplist_gets(info->proplist, PA_PROP_MEDIA_NAME);
+        const char *processBinary = pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_PROCESS_BINARY);
+
         si.name   = QString::fromUtf8(
-            pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_NAME)
-            ?: pa_proplist_gets(info->proplist, PA_PROP_MEDIA_NAME)
-            ?: "Unknown");
+            appName ? appName : (mediaName ? mediaName : "Unknown"));
         si.binary = QString::fromUtf8(
-            pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_PROCESS_BINARY) ?: "");
+            processBinary ? processBinary : "");
         si.volume = static_cast<double>(pa_cvolume_avg(&info->volume)) / PA_VOLUME_NORM;
         si.muted  = info->mute != 0;
         d->result->append(si);
