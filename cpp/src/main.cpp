@@ -68,10 +68,13 @@ private:
             m_osd->showVolume(app, vol, muted);
         });
 
-        // Input → volume
-        connect(m_input, &InputHandler::volume_up,   this, &App::onVolumeUp);
-        connect(m_input, &InputHandler::volume_down, this, &App::onVolumeDown);
-        connect(m_input, &InputHandler::volume_mute, this, &App::onMute);
+        // Input → volume (per-profile dispatch)
+        connect(m_input, &InputHandler::volume_up, this,
+                [this](const QString &id){ changeVolume(id, +1); });
+        connect(m_input, &InputHandler::volume_down, this,
+                [this](const QString &id){ changeVolume(id, -1); });
+        connect(m_input, &InputHandler::volume_mute, this,
+                [this](const QString &id){ onMute(id); });
 
         // Tray
         connect(m_tray, &TrayApp::deviceChangeRequested, this,
@@ -93,8 +96,7 @@ private:
 
     void initDevice()
     {
-        HotkeyConfig hks = m_config->hotkeys();
-        m_input->setHotkeys(hks.volumeUp, hks.volumeDown, hks.mute);
+        m_input->setProfiles(m_config->profiles());
         if (!m_config->inputDevice().isEmpty()) {
             m_input->startDevice(m_config->inputDevice());
         } else {
@@ -104,32 +106,37 @@ private:
 
     void onHotkeysMaybeChanged()
     {
-        HotkeyConfig hks = m_config->hotkeys();
-        auto [up, down, mute] = m_input->currentHotkeys();
-        if (up == hks.volumeUp && down == hks.volumeDown && mute == hks.mute)
+        const QList<Profile> newProfiles = m_config->profiles();
+        if (newProfiles == m_input->currentProfiles())
             return;
         m_input->stop();
-        m_input->setHotkeys(hks.volumeUp, hks.volumeDown, hks.mute);
+        m_input->setProfiles(newProfiles);
         if (!m_config->inputDevice().isEmpty())
             m_input->startDevice(m_config->inputDevice());
     }
 
-    void onVolumeUp()   { changeVolume(+1); }
-    void onVolumeDown() { changeVolume(-1); }
-
-    void changeVolume(int direction)
+    // Lookup profile by id; returns empty Profile when not found.
+    Profile findProfile(const QString &profileId) const
     {
-        const QString app = m_tray->currentApp();
-        if (app.isEmpty()) return;
-        double step = m_config->volumeStep() / 100.0;
-        m_volumeCtrl->changeVolume(app, direction * step); // async → volumeChanged signal
+        for (const Profile &p : m_config->profiles()) {
+            if (p.id == profileId) return p;
+        }
+        return Profile{};
     }
 
-    void onMute()
+    void changeVolume(const QString &profileId, int direction)
     {
-        const QString app = m_tray->currentApp();
-        if (app.isEmpty()) return;
-        m_volumeCtrl->toggleMute(app); // async → volumeChanged signal
+        const Profile p = findProfile(profileId);
+        if (p.app.isEmpty()) return;
+        double step = m_config->volumeStep() / 100.0;
+        m_volumeCtrl->changeVolume(p.app, direction * step); // async → volumeChanged signal
+    }
+
+    void onMute(const QString &profileId)
+    {
+        const Profile p = findProfile(profileId);
+        if (p.app.isEmpty()) return;
+        m_volumeCtrl->toggleMute(p.app); // async → volumeChanged signal
     }
 
     void onDeviceChangeRequested(bool startup)
@@ -150,6 +157,8 @@ private:
     void initDbus()
     {
         m_dbus = new DbusInterface(m_config.get(), m_volumeCtrl, m_tray, this);
+        connect(m_tray, &TrayApp::settingsChanged,
+                m_dbus, &DbusInterface::reloadProfiles);
 
         auto bus = QDBusConnection::sessionBus();
 
