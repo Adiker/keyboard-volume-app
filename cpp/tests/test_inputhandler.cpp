@@ -2,44 +2,64 @@
 #include <QCoreApplication>
 #include <QSignalSpy>
 #include <QSet>
-#include <tuple>
+#include <QList>
+
+#include <linux/input.h>
 
 #include "inputhandler.h"
+#include "config.h"
 
-TEST(InputHandler, DefaultHotkeys)
+// ─── Construction / API ───────────────────────────────────────────────────────
+TEST(InputHandler, DefaultProfileSeed)
 {
     InputHandler handler;
-
-    auto [up, down, mute] = handler.currentHotkeys();
-    EXPECT_EQ(up,   115);  // KEY_VOLUMEUP
-    EXPECT_EQ(down, 114);  // KEY_VOLUMEDOWN
-    EXPECT_EQ(mute, 113);  // KEY_MUTE
+    QList<Profile> profs = handler.currentProfiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_EQ(profs[0].id, QStringLiteral("default"));
+    EXPECT_EQ(profs[0].hotkeys.volumeUp,   115);
+    EXPECT_EQ(profs[0].hotkeys.volumeDown, 114);
+    EXPECT_EQ(profs[0].hotkeys.mute,       113);
 }
 
-TEST(InputHandler, SetHotkeys)
+TEST(InputHandler, SetProfilesRoundTrip)
 {
     InputHandler handler;
 
-    handler.setHotkeys(200, 201, 202);
+    Profile a;
+    a.id   = QStringLiteral("a");
+    a.name = QStringLiteral("A");
+    a.app  = QStringLiteral("spotify");
+    a.hotkeys.volumeUp   = 200;
+    a.hotkeys.volumeDown = 201;
+    a.hotkeys.mute       = 202;
 
-    auto [up, down, mute] = handler.currentHotkeys();
-    EXPECT_EQ(up,   200);
-    EXPECT_EQ(down, 201);
-    EXPECT_EQ(mute, 202);
+    Profile b;
+    b.id   = QStringLiteral("b");
+    b.name = QStringLiteral("B");
+    b.app  = QStringLiteral("firefox");
+    b.modifiers.insert(Modifier::Ctrl);
+    b.hotkeys.volumeUp   = 200;
+    b.hotkeys.volumeDown = 201;
+    b.hotkeys.mute       = 202;
+
+    handler.setProfiles({ a, b });
+
+    QList<Profile> got = handler.currentProfiles();
+    ASSERT_EQ(got.size(), 2);
+    EXPECT_EQ(got[0], a);
+    EXPECT_EQ(got[1], b);
 }
 
 TEST(InputHandler, DevicePathInitiallyEmpty)
 {
     InputHandler handler;
-
     EXPECT_TRUE(handler.devicePath().isEmpty());
 }
 
 TEST(InputHandler, SignalsConnectable)
 {
-    // Verify signals are valid for Qt MOC (no compile warnings at runtime).
     InputHandler handler;
-    QSignalSpy spyUp(&handler, &InputHandler::volume_up);
+    QSignalSpy spyUp  (&handler, &InputHandler::volume_up);
     QSignalSpy spyDown(&handler, &InputHandler::volume_down);
     QSignalSpy spyMute(&handler, &InputHandler::volume_mute);
 
@@ -50,7 +70,6 @@ TEST(InputHandler, SignalsConnectable)
 
 TEST(InputHandler, ListEvdevDevices)
 {
-    // Enumerate /dev/input/event*.  Returns a (possibly empty) list of paths.
     QList<QString> devices = listEvdevDevices();
     for (const QString &d : devices) {
         EXPECT_TRUE(d.startsWith("/dev/input/event"))
@@ -60,18 +79,125 @@ TEST(InputHandler, ListEvdevDevices)
 
 TEST(InputHandler, FindWithNonExistentPath)
 {
-    // None of these should crash or throw when given a device that does not exist.
     findSiblingDevices("/dev/input/event99999");
     findCaptureDevices("/dev/input/event99999");
-    QSet<int> hotkeys{115, 114, 113};
+    QSet<int> hotkeys{ 115, 114, 113 };
     findHotkeyDevices("/dev/input/event99999", hotkeys);
     SUCCEED();
+}
+
+// ─── normalizeHeldModifiers / isTrackedModifierCode ──────────────────────────
+TEST(Modifier, IsTrackedModifierCode)
+{
+    EXPECT_TRUE (isTrackedModifierCode(KEY_LEFTCTRL));
+    EXPECT_TRUE (isTrackedModifierCode(KEY_RIGHTCTRL));
+    EXPECT_TRUE (isTrackedModifierCode(KEY_LEFTSHIFT));
+    EXPECT_TRUE (isTrackedModifierCode(KEY_RIGHTSHIFT));
+    EXPECT_FALSE(isTrackedModifierCode(KEY_LEFTALT));
+    EXPECT_FALSE(isTrackedModifierCode(KEY_VOLUMEUP));
+}
+
+TEST(Modifier, LeftRightCollapseToCanonical)
+{
+    QSet<int> raw{ KEY_LEFTCTRL, KEY_RIGHTCTRL };
+    QSet<Modifier> norm = normalizeHeldModifiers(raw);
+    EXPECT_EQ(norm.size(), 1);
+    EXPECT_TRUE(norm.contains(Modifier::Ctrl));
+
+    QSet<int> raw2{ KEY_RIGHTSHIFT, KEY_LEFTCTRL };
+    QSet<Modifier> norm2 = normalizeHeldModifiers(raw2);
+    EXPECT_EQ(norm2.size(), 2);
+    EXPECT_TRUE(norm2.contains(Modifier::Ctrl));
+    EXPECT_TRUE(norm2.contains(Modifier::Shift));
+}
+
+// ─── resolveProfile ──────────────────────────────────────────────────────────
+namespace {
+Profile mkProfile(const QString &id, int up, int down, int mute,
+                  std::initializer_list<Modifier> mods = {})
+{
+    Profile p;
+    p.id = id;
+    p.name = id;
+    p.app = id;
+    p.hotkeys.volumeUp   = up;
+    p.hotkeys.volumeDown = down;
+    p.hotkeys.mute       = mute;
+    for (Modifier m : mods) p.modifiers.insert(m);
+    return p;
+}
+}  // namespace
+
+TEST(ResolveProfile, BareKeyPrefersBareProfile)
+{
+    QList<Profile> profs {
+        mkProfile("default", 115, 114, 113, {}),
+        mkProfile("ctrl",    115, 114, 113, { Modifier::Ctrl }),
+    };
+    EXPECT_EQ(resolveProfile(115, {}, profs), QStringLiteral("default"));
+}
+
+TEST(ResolveProfile, CtrlHeldPrefersCtrlProfile)
+{
+    QList<Profile> profs {
+        mkProfile("default", 115, 114, 113, {}),
+        mkProfile("ctrl",    115, 114, 113, { Modifier::Ctrl }),
+    };
+    EXPECT_EQ(resolveProfile(115, { Modifier::Ctrl }, profs),
+              QStringLiteral("ctrl"));
+}
+
+TEST(ResolveProfile, MoreSpecificWinsOnSubsetTie)
+{
+    QList<Profile> profs {
+        mkProfile("ctrl",       115, 114, 113, { Modifier::Ctrl }),
+        mkProfile("ctrl-shift", 115, 114, 113, { Modifier::Ctrl, Modifier::Shift }),
+    };
+    QSet<Modifier> held{ Modifier::Ctrl, Modifier::Shift };
+    EXPECT_EQ(resolveProfile(115, held, profs),
+              QStringLiteral("ctrl-shift"));
+}
+
+TEST(ResolveProfile, ShiftRequiredButNotHeld_NoMatch)
+{
+    QList<Profile> profs {
+        mkProfile("shift", 87, 86, 85, { Modifier::Shift }),
+    };
+    EXPECT_TRUE(resolveProfile(87, {},                  profs).isEmpty());
+    EXPECT_TRUE(resolveProfile(87, { Modifier::Ctrl },  profs).isEmpty());
+    EXPECT_EQ  (resolveProfile(87, { Modifier::Shift }, profs),
+                QStringLiteral("shift"));
+}
+
+TEST(ResolveProfile, FirstWinsOnTie)
+{
+    QList<Profile> profs {
+        mkProfile("first",  115, 114, 113, {}),
+        mkProfile("second", 115, 114, 113, {}),
+    };
+    EXPECT_EQ(resolveProfile(115, {}, profs), QStringLiteral("first"));
+}
+
+TEST(ResolveProfile, NoProfileReturnsEmpty)
+{
+    QList<Profile> profs {
+        mkProfile("default", 115, 114, 113, {}),
+    };
+    // Code not bound to anything
+    EXPECT_TRUE(resolveProfile(99, {}, profs).isEmpty());
+}
+
+TEST(ResolveProfile, MuteCodeMatchesProfile)
+{
+    QList<Profile> profs {
+        mkProfile("default", 115, 114, 113, {}),
+    };
+    EXPECT_EQ(resolveProfile(113, {}, profs), QStringLiteral("default"));
 }
 
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
-
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }

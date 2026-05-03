@@ -268,3 +268,154 @@ TEST(Config, UpdateOsdPartial)
     EXPECT_EQ(r.screen,    3);
     EXPECT_EQ(r.colorBg.toStdString(), "#AAA");
 }
+
+// ─── Profiles tests ──────────────────────────────────────────────────────────
+
+TEST(ConfigProfiles, MigrationOldConfigSynthesizesDefaultProfile)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    // Old-schema config: legacy selected_app + hotkeys, no "profiles" key.
+    QFile f(tmp.path() + "/config.json");
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject json{
+        {"selected_app", "spotify"},
+        {"hotkeys", QJsonObject{
+            {"volume_up",   200},
+            {"volume_down", 201},
+            {"mute",        202},
+        }},
+    };
+    f.write(QJsonDocument(json).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    auto profs = config.profiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_EQ(profs[0].id.toStdString(),   "default");
+    EXPECT_EQ(profs[0].name.toStdString(), "Default");
+    EXPECT_EQ(profs[0].app.toStdString(),  "spotify");
+    EXPECT_EQ(profs[0].hotkeys.volumeUp,   200);
+    EXPECT_EQ(profs[0].hotkeys.volumeDown, 201);
+    EXPECT_EQ(profs[0].hotkeys.mute,       202);
+    EXPECT_TRUE(profs[0].modifiers.isEmpty());
+
+    // The config file should now contain a "profiles" array on disk.
+    QFile f2(tmp.path() + "/config.json");
+    ASSERT_TRUE(f2.open(QIODevice::ReadOnly));
+    QJsonDocument doc = QJsonDocument::fromJson(f2.readAll());
+    EXPECT_TRUE(doc.object().contains("profiles"));
+}
+
+TEST(ConfigProfiles, RoundTripTwoProfiles)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Profile a;
+    a.id = "default";
+    a.name = "Default";
+    a.app = "spotify";
+    a.hotkeys = {115, 114, 113};
+
+    Profile b;
+    b.id = "firefox-ctrl";
+    b.name = "Firefox (Ctrl)";
+    b.app = "firefox";
+    b.hotkeys = {115, 114, 113};
+    b.modifiers.insert(Modifier::Ctrl);
+
+    {
+        Config config(tmp.path());
+        config.setProfiles({a, b});
+    }
+
+    Config config2(tmp.path());
+    auto profs = config2.profiles();
+    ASSERT_EQ(profs.size(), 2);
+    EXPECT_EQ(profs[0], a);
+    EXPECT_EQ(profs[1], b);
+}
+
+TEST(ConfigProfiles, DefaultMirroringToLegacyKeys)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    Profile a;
+    a.id = "main";
+    a.name = "Main";
+    a.app = "vlc";
+    a.hotkeys = {300, 301, 302};
+
+    Profile b;
+    b.id = "other";
+    b.name = "Other";
+    b.app = "firefox";
+    b.hotkeys = {115, 114, 113};
+
+    config.setProfiles({a, b});
+
+    // Legacy keys must mirror profile[0].
+    EXPECT_EQ(config.selectedApp().toStdString(), "vlc");
+    EXPECT_EQ(config.hotkeys().volumeUp,   300);
+    EXPECT_EQ(config.hotkeys().volumeDown, 301);
+    EXPECT_EQ(config.hotkeys().mute,       302);
+}
+
+TEST(ConfigProfiles, RejectEmpty)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    auto before = config.profiles();
+    ASSERT_FALSE(before.isEmpty());
+
+    config.setProfiles({});  // should be no-op
+
+    auto after = config.profiles();
+    EXPECT_EQ(after, before);
+}
+
+TEST(ConfigProfiles, SetSelectedAppMirrorsToDefaultProfile)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    config.setSelectedApp("youtube-music");
+    EXPECT_EQ(config.defaultProfile().app.toStdString(), "youtube-music");
+    EXPECT_EQ(config.selectedApp().toStdString(),        "youtube-music");
+}
+
+TEST(ConfigProfiles, SetHotkeysMirrorsToDefaultProfile)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    config.setHotkeys(500, 501, 502);
+    auto def = config.defaultProfile();
+    EXPECT_EQ(def.hotkeys.volumeUp,   500);
+    EXPECT_EQ(def.hotkeys.volumeDown, 501);
+    EXPECT_EQ(def.hotkeys.mute,       502);
+}
+
+TEST(ConfigProfiles, SetProfilesUniqueifiesIds)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    Profile a; a.id = "x"; a.name = "X"; a.app = "spotify"; a.hotkeys = {1, 2, 3};
+    Profile b; b.id = "x"; b.name = "X2"; a.app = "firefox"; b.hotkeys = {4, 5, 6};
+
+    config.setProfiles({a, b});
+    auto profs = config.profiles();
+    ASSERT_EQ(profs.size(), 2);
+    EXPECT_EQ(profs[0].id.toStdString(), "x");
+    EXPECT_NE(profs[1].id.toStdString(), "x");  // suffixed
+}
