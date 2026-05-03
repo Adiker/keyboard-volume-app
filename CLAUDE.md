@@ -54,6 +54,8 @@ keyboard-volume-app/
 ├── resources/
 │   ├── icon.png
 │   └── keyboard-volume-app.desktop  # Desktop entry (distribution copy, no hardcoded paths)
+├── deploy/
+│   └── keyboard-volume-app.service  # systemd user service unit
 └── LICENSE                      # GPL-2.0-or-later
 ```
 
@@ -297,7 +299,7 @@ D-Bus calls arrive on the main thread and are forwarded to `VolumeController` (w
 - `depends`: `qt6-base libevdev libpulse pipewire`
 - `makedepends`: `cmake gcc pkg-config git`
 - CMake Release build with `BUILD_TESTING=OFF` and `DESTDIR` install
-- Installs: binary → `/usr/bin/`, `.desktop` → `/usr/share/applications/`, icon → `/usr/share/pixmaps/` and `/usr/share/keyboard-volume-app/`
+- Installs: binary → `/usr/bin/`, `.desktop` → `/usr/share/applications/`, icon → `/usr/share/pixmaps/`, systemd user service → `/usr/lib/systemd/user/`
 
 To build locally: `cd pkg/arch && makepkg -f --skipchecksums`  
 To validate: `namcap PKGBUILD`  
@@ -306,6 +308,7 @@ Before AUR submission: `makepkg --printsrcinfo > .SRCINFO`
 **Distribution files installed by CMake:**
 - `resources/keyboard-volume-app.desktop` — clean `.desktop` without hardcoded paths; tracked in git (the root-level `keyboard-volume-app.desktop` with dev paths remains gitignored)
 - `resources/icon.png` — installed to both `share/keyboard-volume-app/` (legacy) and `share/pixmaps/keyboard-volume-app.png` (DE icon lookup)
+- `deploy/keyboard-volume-app.service` — systemd user service for non-KDE/WM autostart; installed system-wide to `/usr/lib/systemd/user/`, while `$HOME/.config/systemd/user/` is only for manual per-user copies
 
 ---
 

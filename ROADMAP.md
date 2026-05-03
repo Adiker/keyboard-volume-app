@@ -114,11 +114,12 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Rekomendacja:** Workflow: build (Release + Debug), testy, lint (clang-format, clang-tidy).
 **Pliki:** Nowy `.github/workflows/ci.yml`
 
-### 11. Systemd user service
+### 11. Systemd user service ✓
 
 **Problem:** Autostart tylko przez KDE autostart, brak mechanizmu dla innych DE/WM.
 **Rekomendacja:** Dodać `keyboard-volume-app.service` dla systemd user mode.
 **Pliki:** Nowy `deploy/keyboard-volume-app.service`
+**Status:** Zrealizowane. Dodano user unit z `ExecStart=/usr/bin/keyboard-volume-app`, restartem `on-failure` i `WantedBy=default.target`. CMake instaluje go do `lib/systemd/user`, czyli przy prefixie `/usr` do `/usr/lib/systemd/user/keyboard-volume-app.service`; `$HOME/.config/systemd/user` opisano w README tylko jako wariant ręcznej per-user instalacji. Paczka Arch nie wymaga zmian, bo korzysta z `cmake --install`.
 
 ### 12. Refaktoryzacja — deduplikacja kodu evdev ✓
 

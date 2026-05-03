@@ -61,6 +61,8 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../resources/keyboard-volume-app.desk
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../resources/icon.png"
         DESTINATION share/pixmaps
         RENAME keyboard-volume-app.png)
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../deploy/keyboard-volume-app.service"
+        DESTINATION lib/systemd/user)
 
 include(CTest)
 if(BUILD_TESTING)
