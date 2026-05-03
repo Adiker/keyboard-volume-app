@@ -31,7 +31,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Mute toggle** — press the mute key to toggle mute on the selected app only; OSD shows current level with a 🔇 indicator
 - **Persistent config** — all settings saved to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
 - **PL / EN interface** — switch language in Settings
-- **First-run wizard** — on first launch, a QWizard guides through language selection and input device pick; the app is production-ready out of the box after two clicks
+- **First-run wizard** — on first launch, a QWizard guides through language, input device, and default audio app selection; the app is production-ready out of the box after a few clicks
 - **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles**; bare `VolumeUp/Down/ToggleMute/RefreshApps` methods plus per-profile `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
 - **MPRIS v2** — registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client
 - **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
@@ -115,7 +115,7 @@ For a manual per-user install without a package, copy `deploy/keyboard-volume-ap
 cpp/build/keyboard-volume-app
 ```
 
-On first launch the **first-run wizard** guides you through language selection and input device configuration. The device list is filtered to show only keyboards that expose volume keys (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
+On first launch the **first-run wizard** guides you through language selection, input device configuration, and default audio app selection. The device list is filtered to show only keyboards that expose volume keys (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
 
 **CLI flags:**
 
@@ -145,6 +145,7 @@ Tests cover the Config manager, i18n translations, VolumeController (smoke test)
    - Interface language (English / Polski)
    - OSD display timeout (ms)
    - OSD screen position (X / Y)
+   - OSD opacity (0–100%)
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
    - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers and target app; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls)
@@ -188,6 +189,7 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
     "x": 50,
     "y": 1150,
     "timeout_ms": 1200,
+    "opacity": 85,
     "color_bg": "#1A1A1A",
     "color_text": "#FFFFFF",
     "color_bar": "#0078D7"
@@ -233,6 +235,10 @@ keyboard-volume-app/
 │       ├── firstrunwizard.h/cpp  # First-run wizard (language + device + app)
 │       ├── dbusinterface.h/cpp   # D-Bus VolumeControl interface
 │       ├── mprisinterface.h/cpp  # MPRIS v2 adaptor
+│       ├── pwutils.h/cpp         # PipeWire client listing utility
+│       ├── applistwidget.h/cpp   # Reusable PW app list widget
+│       ├── appselectordialog.h/cpp  # Dialog for changing default audio app
+│       ├── screenutils.h         # Header-only multi-monitor dialog centering
 │       └── audioapp.h           # AudioApp struct
 │   └── tests/
 │       ├── CMakeLists.txt
@@ -240,6 +246,8 @@ keyboard-volume-app/
 │       ├── test_i18n.cpp
 │       ├── test_inputhandler.cpp
 │       └── test_volumecontroller.cpp
+├── deploy/
+│   └── keyboard-volume-app.service  # systemd user service
 ├── pkg/
 │   └── arch/
 │       └── PKGBUILD             # Arch Linux package (keyboard-volume-app-git)
@@ -292,7 +300,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇
 - **Trwała konfiguracja** — wszystkie ustawienia zapisywane w `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`)
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
-- **Asystent pierwszego uruchomienia** — przy pierwszym starcie QWizard przeprowadza przez wybór języka i urządzenia wejściowego; aplikacja działa od razu po dwóch kliknięciach
+- **Asystent pierwszego uruchomienia** — przy pierwszym starcie QWizard przeprowadza przez wybór języka, urządzenia wejściowego i domyślnej aplikacji audio; aplikacja działa od razu po kilku kliknięciach
 - **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile**; bare metody `VolumeUp/Down/ToggleMute/RefreshApps` plus per-profile `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
 - **MPRIS v2** — zarejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS
 - **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
@@ -376,7 +384,7 @@ Przy ręcznej instalacji per-user bez paczki skopiuj `deploy/keyboard-volume-app
 cpp/build/keyboard-volume-app
 ```
 
-Przy pierwszym uruchomieniu **asystent pierwszego uruchomienia** przeprowadzi przez wybór języka i urządzenia wejściowego. Lista urządzeń jest filtrowana — pokazuje tylko klawiatury posiadające klawisze głośności (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
+Przy pierwszym uruchomieniu **asystent pierwszego uruchomienia** przeprowadzi przez wybór języka, urządzenia wejściowego i domyślnej aplikacji audio. Lista urządzeń jest filtrowana — pokazuje tylko klawiatury posiadające klawisze głośności (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
 
 **Flagi CLI:**
 
@@ -406,6 +414,7 @@ Testy obejmują Config, i18n, VolumeController (test dymny) i InputHandler (API,
    - Język interfejsu (English / Polski)
    - Czas wyświetlania OSD (ms)
    - Pozycję OSD na ekranie (X / Y)
+   - Krycie OSD (0–100%)
    - Krok zmiany głośności na jedno naciśnięcie klawisza (%)
    - Kolory OSD (tło, tekst, pasek)
    - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją; pierwszy wiersz jest profilem domyślnym (używanym przez tray oraz przez bare metody D-Bus / MPRIS)
@@ -449,6 +458,7 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
     "x": 50,
     "y": 1150,
     "timeout_ms": 1200,
+    "opacity": 85,
     "color_bg": "#1A1A1A",
     "color_text": "#FFFFFF",
     "color_bar": "#0078D7"
@@ -494,6 +504,10 @@ keyboard-volume-app/
 │       ├── firstrunwizard.h/cpp  # Asystent pierwszego uruchomienia
 │       ├── dbusinterface.h/cpp   # Interfejs D-Bus VolumeControl
 │       ├── mprisinterface.h/cpp  # Adaptor MPRIS v2
+│       ├── pwutils.h/cpp         # Narzędzie do listowania klientów PipeWire
+│       ├── applistwidget.h/cpp   # Reusable widget listy aplikacji PW
+│       ├── appselectordialog.h/cpp  # Dialog zmiany domyślnej aplikacji audio
+│       ├── screenutils.h         # Header-only centrowanie dialogów na właściwym monitorze
 │       └── audioapp.h           # Struct AudioApp
 │   └── tests/
 │       ├── CMakeLists.txt
@@ -501,6 +515,8 @@ keyboard-volume-app/
 │       ├── test_i18n.cpp
 │       ├── test_inputhandler.cpp
 │       └── test_volumecontroller.cpp
+├── deploy/
+│   └── keyboard-volume-app.service  # Usługa systemd user
 ├── pkg/
 │   └── arch/
 │       └── PKGBUILD             # Paczka Arch Linux (keyboard-volume-app-git)

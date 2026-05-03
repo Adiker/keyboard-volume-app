@@ -23,7 +23,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 - InputHandler (mock evdev)
 - i18n (lookup, fallback)
 **Pliki:** `cpp/tests/`, zmiana w `cpp/CMakeLists.txt` (subdirectory)
-**Status:** Zrealizowane. 4 pliki testowe (test_config 14 testów, test_i18n 8 testów, test_volumecontroller 5 smoke testów, test_inputhandler 8 testów), zintegrowane z CTest, 100% pass.
+**Status:** Zrealizowane. 4 pliki testowe (test_config 22 testów, test_i18n 7 testów, test_volumecontroller 5 smoke testów, test_inputhandler 15 testów), zintegrowane z CTest, 100% pass.
 
 ### 3. Poszanowanie XDG_CONFIG_HOME ✓
 
@@ -101,7 +101,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Problem:** Tylko jedna aplikacja audio może być kontrolowana naraz.
 **Rekomendacja:** Profile/keybinds — np. Ctrl+Vol dla przeglądarki, sam Vol dla Spotify.
 **Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/inputhandler.{h,cpp}`, `cpp/src/main.cpp`, `cpp/src/trayapp.{h,cpp}`, `cpp/src/settingsdialog.{h,cpp}`, `cpp/src/profileeditdialog.{h,cpp}` (nowe), `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/i18n.cpp`, `cpp/CMakeLists.txt`, `cpp/tests/test_config.cpp`, `cpp/tests/test_inputhandler.cpp`
-**Status:** Zrealizowane. Wprowadzono profile audio z osobnymi hotkeyami i opcjonalnymi modyfikatorami (Ctrl/Shift, L+R znormalizowane do kanonicznej postaci). Schema config rozszerzona o `profiles` array; migracja ze starego `selected_app`/`hotkeys` (deprecated mirror profile[0] dla backwards compat). InputHandler śledzi modyfikatory z grabowanych urządzeń, dispatch per-profile z debounce per-`(code, profileId)`. Settings dialog ma sekcję Profiles + nowy `ProfileEditDialog`. D-Bus wystawia `Profiles` property + `VolumeUp/Down/ToggleMuteProfile(id)` metody; bare metody i MPRIS targetują profile domyślny (backwards compat). Pending volume z `PaWorker` obsługuje brak działającej apki bez zmian. 35 testów przechodzi (20 config + 15 inputhandler).
+**Status:** Zrealizowane. Wprowadzono profile audio z osobnymi hotkeyami i opcjonalnymi modyfikatorami (Ctrl/Shift, L+R znormalizowane do kanonicznej postaci). Schema config rozszerzona o `profiles` array; migracja ze starego `selected_app`/`hotkeys` (deprecated mirror profile[0] dla backwards compat). InputHandler śledzi modyfikatory z grabowanych urządzeń, dispatch per-profile z debounce per-`(code, profileId)`. Settings dialog ma sekcję Profiles + nowy `ProfileEditDialog`. D-Bus wystawia `Profiles` property + `VolumeUp/Down/ToggleMuteProfile(id)` metody; bare metody i MPRIS targetują profile domyślny (backwards compat). Pending volume z `PaWorker` obsługuje brak działającej apki bez zmian. 49 testów przechodzi (22 config + 7 i18n + 5 volumecontroller + 15 inputhandler).
 
 ### 9. Integracja DBus / MPRIS ✓
 

@@ -436,8 +436,8 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 20 tests (merge, load/save, thread-safety, profile migration / round-trip / mirror / id uniqueification)
-- `test_i18n` — 8 tests (lookup, fallback)
+- `test_config` — 22 tests (merge, load/save, thread-safety, profile migration / round-trip / mirror / id uniqueification)
+- `test_i18n` — 7 tests (lookup, fallback)
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 15 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity)
 
