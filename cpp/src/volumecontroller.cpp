@@ -678,6 +678,9 @@ private:
             qWarning() << "[PaWorker]" << what << "timed out or was cancelled after"
                        << timer.elapsed() << "ms";
         }
+        if (!ok && op) {
+            pa_operation_cancel(op);
+        }
         if (op) pa_operation_unref(op);
         return ok;
     }
@@ -694,12 +697,14 @@ private:
 
         SinkInputInfo si;
         si.index  = info->index;
+        const char *appName = pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_NAME);
+        const char *mediaName = pa_proplist_gets(info->proplist, PA_PROP_MEDIA_NAME);
+        const char *processBinary = pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_PROCESS_BINARY);
+
         si.name   = QString::fromUtf8(
-            pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_NAME)
-            ?: pa_proplist_gets(info->proplist, PA_PROP_MEDIA_NAME)
-            ?: "Unknown");
+            appName ? appName : (mediaName ? mediaName : "Unknown"));
         si.binary = QString::fromUtf8(
-            pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_PROCESS_BINARY) ?: "");
+            processBinary ? processBinary : "");
         si.volume = static_cast<double>(pa_cvolume_avg(&info->volume)) / PA_VOLUME_NORM;
         si.muted  = info->mute != 0;
         d->result->append(si);
