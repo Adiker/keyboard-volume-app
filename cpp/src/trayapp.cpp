@@ -94,7 +94,7 @@ void TrayApp::populateAppList()
         else
             m_menu->addAction(act);
 
-        if (app.name == m_config->selectedApp())
+        if (app.name == m_config->defaultProfile().app)
             act->setChecked(true);
 
         connect(act, &QAction::triggered, this, [this, name = app.name]() {
@@ -115,7 +115,7 @@ void TrayApp::onRefresh()
 
 void TrayApp::onAppSelected(const QString &name)
 {
-    m_config->setSelectedApp(name);
+    m_config->setDefaultProfileApp(name);
     auto it = m_appActions.find(name);
     if (it != m_appActions.end())
         it.value()->setChecked(true);
@@ -145,7 +145,7 @@ void TrayApp::openAppSelector()
     AppSelectorDialog dlg(m_config);
     centerDialogOnScreenAt(&dlg, anchor);
     if (dlg.exec() == QDialog::Accepted)
-        onAppSelected(m_config->selectedApp());
+        onAppSelected(m_config->defaultProfile().app);
 }
 
 void TrayApp::rebuildMenu()
@@ -155,5 +155,5 @@ void TrayApp::rebuildMenu()
 
 QString TrayApp::currentApp() const
 {
-    return m_config->selectedApp();
+    return m_config->defaultProfile().app;
 }
