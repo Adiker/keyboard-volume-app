@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QStandardPaths>
 #include <QDebug>
+#include <QStringList>
 #include <algorithm>
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -25,6 +26,18 @@ QString Config::configFile() const
 // ─── Defaults ─────────────────────────────────────────────────────────────────
 QJsonObject Config::defaultJson()
 {
+    QJsonObject defaultProfile {
+        { QStringLiteral("id"),        QStringLiteral("default") },
+        { QStringLiteral("name"),      QStringLiteral("Default") },
+        { QStringLiteral("app"),       QJsonValue::Null },
+        { QStringLiteral("modifiers"), QJsonArray{} },
+        { QStringLiteral("hotkeys"), QJsonObject {
+            { QStringLiteral("volume_up"),   115 },
+            { QStringLiteral("volume_down"), 114 },
+            { QStringLiteral("mute"),        113 },
+        }},
+    };
+
     return QJsonObject {
         { QStringLiteral("input_device"),  QJsonValue::Null },
         { QStringLiteral("selected_app"),  QJsonValue::Null },
@@ -45,6 +58,7 @@ QJsonObject Config::defaultJson()
             { QStringLiteral("volume_down"), 114 },
             { QStringLiteral("mute"),        113 },
         }},
+        { QStringLiteral("profiles"), QJsonArray { defaultProfile } },
     };
 }
 
@@ -65,6 +79,138 @@ QJsonObject Config::deepMerge(const QJsonObject &base, const QJsonObject &overri
         }
     }
     return result;
+}
+
+// ─── Modifier helpers ────────────────────────────────────────────────────────
+QString Config::modifierToString(Modifier m)
+{
+    switch (m) {
+        case Modifier::Ctrl:  return QStringLiteral("ctrl");
+        case Modifier::Shift: return QStringLiteral("shift");
+    }
+    return {};
+}
+
+std::optional<Modifier> Config::modifierFromString(const QString &s)
+{
+    const QString l = s.trimmed().toLower();
+    if (l == QStringLiteral("ctrl"))  return Modifier::Ctrl;
+    if (l == QStringLiteral("shift")) return Modifier::Shift;
+    return std::nullopt;
+}
+
+// ─── Profile <-> JSON ────────────────────────────────────────────────────────
+QJsonObject Config::profileToJson(const Profile &p)
+{
+    QJsonArray mods;
+    // Stable serialization order: ctrl before shift.
+    if (p.modifiers.contains(Modifier::Ctrl))  mods.append(modifierToString(Modifier::Ctrl));
+    if (p.modifiers.contains(Modifier::Shift)) mods.append(modifierToString(Modifier::Shift));
+
+    return QJsonObject {
+        { QStringLiteral("id"),        p.id },
+        { QStringLiteral("name"),      p.name },
+        { QStringLiteral("app"),       p.app.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(p.app) },
+        { QStringLiteral("modifiers"), mods },
+        { QStringLiteral("hotkeys"),   QJsonObject {
+            { QStringLiteral("volume_up"),   p.hotkeys.volumeUp },
+            { QStringLiteral("volume_down"), p.hotkeys.volumeDown },
+            { QStringLiteral("mute"),        p.hotkeys.mute },
+        }},
+    };
+}
+
+Profile Config::profileFromJson(const QJsonObject &o)
+{
+    Profile p;
+    p.id   = o[QStringLiteral("id")].toString();
+    p.name = o[QStringLiteral("name")].toString();
+    QJsonValue av = o[QStringLiteral("app")];
+    p.app  = av.isString() ? av.toString() : QString{};
+
+    QJsonObject hk = o[QStringLiteral("hotkeys")].toObject();
+    p.hotkeys.volumeUp   = hk[QStringLiteral("volume_up")].toInt(115);
+    p.hotkeys.volumeDown = hk[QStringLiteral("volume_down")].toInt(114);
+    p.hotkeys.mute       = hk[QStringLiteral("mute")].toInt(113);
+
+    QJsonArray mods = o[QStringLiteral("modifiers")].toArray();
+    for (const auto &v : mods) {
+        if (auto m = modifierFromString(v.toString()))
+            p.modifiers.insert(*m);
+    }
+    return p;
+}
+
+QList<Profile> Config::profilesFromJson(const QJsonArray &arr)
+{
+    QList<Profile> out;
+    out.reserve(arr.size());
+    for (const auto &v : arr) {
+        if (!v.isObject()) continue;
+        Profile p = profileFromJson(v.toObject());
+        if (p.id.isEmpty()) continue;  // skip malformed entries
+        out.push_back(std::move(p));
+    }
+    return out;
+}
+
+QJsonArray Config::profilesToJsonArray(const QList<Profile> &profiles)
+{
+    QJsonArray arr;
+    for (const auto &p : profiles)
+        arr.append(profileToJson(p));
+    return arr;
+}
+
+// ─── Migration / mirroring ──────────────────────────────────────────────────
+void Config::migrateLegacyToProfilesUnlocked()
+{
+    // Already has at least one profile? Nothing to do.
+    QJsonArray arr = m_data[QStringLiteral("profiles")].toArray();
+    if (!arr.isEmpty())
+        return;
+
+    // Synthesize one default profile from legacy selected_app + hotkeys.
+    QJsonValue av = m_data[QStringLiteral("selected_app")];
+    QString app = av.isString() ? av.toString() : QString{};
+
+    QJsonObject hk = m_data[QStringLiteral("hotkeys")].toObject();
+    int vUp   = hk[QStringLiteral("volume_up")].toInt(115);
+    int vDown = hk[QStringLiteral("volume_down")].toInt(114);
+    int mute  = hk[QStringLiteral("mute")].toInt(113);
+
+    QJsonObject defaultProfile {
+        { QStringLiteral("id"),        QStringLiteral("default") },
+        { QStringLiteral("name"),      QStringLiteral("Default") },
+        { QStringLiteral("app"),       app.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(app) },
+        { QStringLiteral("modifiers"), QJsonArray{} },
+        { QStringLiteral("hotkeys"), QJsonObject {
+            { QStringLiteral("volume_up"),   vUp },
+            { QStringLiteral("volume_down"), vDown },
+            { QStringLiteral("mute"),        mute },
+        }},
+    };
+    m_data[QStringLiteral("profiles")] = QJsonArray { defaultProfile };
+}
+
+void Config::mirrorDefaultProfileToLegacyUnlocked()
+{
+    QJsonArray arr = m_data[QStringLiteral("profiles")].toArray();
+    if (arr.isEmpty()) return;
+
+    QJsonObject p0 = arr.first().toObject();
+    QJsonValue av = p0[QStringLiteral("app")];
+    m_data[QStringLiteral("selected_app")] =
+        (av.isString() && !av.toString().isEmpty())
+            ? av
+            : QJsonValue(QJsonValue::Null);
+
+    QJsonObject hk = p0[QStringLiteral("hotkeys")].toObject();
+    m_data[QStringLiteral("hotkeys")] = QJsonObject {
+        { QStringLiteral("volume_up"),   hk[QStringLiteral("volume_up")].toInt(115) },
+        { QStringLiteral("volume_down"), hk[QStringLiteral("volume_down")].toInt(114) },
+        { QStringLiteral("mute"),        hk[QStringLiteral("mute")].toInt(113) },
+    };
 }
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -90,6 +236,22 @@ void Config::load()
         f.close();
         if (err.error == QJsonParseError::NoError && doc.isObject()) {
             m_data = deepMerge(defaultJson(), doc.object());
+            // If the loaded file had no "profiles" key, deepMerge gave us the
+            // default profile from defaultJson(). But if it had legacy
+            // selected_app + hotkeys with non-default values, those wouldn't
+            // be reflected. Detect "missing profiles in source" and synthesize.
+            // Heuristic: if doc.object() has no "profiles" key, run migration.
+            if (!doc.object().contains(QStringLiteral("profiles"))) {
+                // Replace synthetic default with one built from legacy fields.
+                m_data[QStringLiteral("profiles")] = QJsonArray{};
+                migrateLegacyToProfilesUnlocked();
+                mirrorDefaultProfileToLegacyUnlocked();
+                saveUnlocked();
+            } else {
+                // New schema present; still mirror profile[0] to legacy fields
+                // so anything reading them sees current values.
+                mirrorDefaultProfileToLegacyUnlocked();
+            }
             return;
         }
         qWarning() << "[Config] Parse error:" << err.errorString();
@@ -147,6 +309,16 @@ QString Config::selectedApp() const
 void Config::setSelectedApp(const QString &name)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
+    // Update default profile (profiles[0]) so behavior stays consistent.
+    QJsonArray arr = m_data[QStringLiteral("profiles")].toArray();
+    if (!arr.isEmpty()) {
+        QJsonObject p0 = arr.first().toObject();
+        p0[QStringLiteral("app")] = name.isEmpty()
+            ? QJsonValue(QJsonValue::Null)
+            : QJsonValue(name);
+        arr.replace(0, p0);
+        m_data[QStringLiteral("profiles")] = arr;
+    }
     m_data[QStringLiteral("selected_app")] = name.isEmpty()
         ? QJsonValue(QJsonValue::Null)
         : QJsonValue(name);
@@ -239,10 +411,84 @@ HotkeyConfig Config::hotkeys() const
 void Config::setHotkeys(int volumeUp, int volumeDown, int mute)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_data[QStringLiteral("hotkeys")] = QJsonObject {
+    QJsonObject hk {
         { QStringLiteral("volume_up"),   volumeUp },
         { QStringLiteral("volume_down"), volumeDown },
         { QStringLiteral("mute"),        mute },
     };
+    // Update default profile (profiles[0]) so behavior stays consistent.
+    QJsonArray arr = m_data[QStringLiteral("profiles")].toArray();
+    if (!arr.isEmpty()) {
+        QJsonObject p0 = arr.first().toObject();
+        p0[QStringLiteral("hotkeys")] = hk;
+        arr.replace(0, p0);
+        m_data[QStringLiteral("profiles")] = arr;
+    }
+    m_data[QStringLiteral("hotkeys")] = hk;
+    saveUnlocked();
+}
+
+// ─── Profiles API ────────────────────────────────────────────────────────────
+QList<Profile> Config::profiles() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    QJsonArray arr = m_data[QStringLiteral("profiles")].toArray();
+    return profilesFromJson(arr);
+}
+
+void Config::setProfiles(const QList<Profile> &profiles)
+{
+    if (profiles.isEmpty()) {
+        qWarning() << "[Config] setProfiles: empty list rejected (must have ≥1)";
+        return;
+    }
+
+    // Ensure unique ids — append numeric suffix on collision.
+    QList<Profile> sanitized = profiles;
+    QSet<QString> seen;
+    for (auto &p : sanitized) {
+        if (p.id.isEmpty()) p.id = QStringLiteral("profile");
+        QString base = p.id;
+        int suffix = 2;
+        while (seen.contains(p.id))
+            p.id = base + QStringLiteral("-") + QString::number(suffix++);
+        seen.insert(p.id);
+    }
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_data[QStringLiteral("profiles")] = profilesToJsonArray(sanitized);
+    mirrorDefaultProfileToLegacyUnlocked();
+    saveUnlocked();
+}
+
+Profile Config::defaultProfile() const
+{
+    QList<Profile> all = profiles();
+    if (all.isEmpty()) {
+        Profile p;
+        p.id   = QStringLiteral("default");
+        p.name = QStringLiteral("Default");
+        return p;
+    }
+    return all.first();
+}
+
+void Config::setDefaultProfileApp(const QString &app)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    QJsonArray arr = m_data[QStringLiteral("profiles")].toArray();
+    if (arr.isEmpty()) {
+        // Should not happen post-migration, but be defensive.
+        return;
+    }
+    QJsonObject p0 = arr.first().toObject();
+    p0[QStringLiteral("app")] = app.isEmpty()
+        ? QJsonValue(QJsonValue::Null)
+        : QJsonValue(app);
+    arr.replace(0, p0);
+    m_data[QStringLiteral("profiles")] = arr;
+    m_data[QStringLiteral("selected_app")] = app.isEmpty()
+        ? QJsonValue(QJsonValue::Null)
+        : QJsonValue(app);
     saveUnlocked();
 }
