@@ -24,6 +24,7 @@ ENV/
 
 # C++ / CMake
 cpp/build/
+cpp/build_tidy/
 *.o
 *.a
 compile_commands.json
