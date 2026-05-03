@@ -583,20 +583,8 @@ private:
 
         if (m_ctx) {
             pa_threaded_mainloop_lock(m_mainloop);
-            pa_context_disconnect(m_ctx);
-            
-            // Allow libpulse to process the disconnect and free pending operations
-            QElapsedTimer timer;
-            timer.start();
-            while (pa_context_get_state(m_ctx) != PA_CONTEXT_UNCONNECTED && 
-                   pa_context_get_state(m_ctx) != PA_CONTEXT_TERMINATED &&
-                   timer.elapsed() < 500) {
-                pa_threaded_mainloop_unlock(m_mainloop);
-                QThread::msleep(10);
-                pa_threaded_mainloop_lock(m_mainloop);
-            }
-            
             pa_context_set_state_callback(m_ctx, nullptr, nullptr);
+            pa_context_disconnect(m_ctx);
             pa_context_unref(m_ctx);
             m_ctx = nullptr;
             pa_threaded_mainloop_unlock(m_mainloop);
