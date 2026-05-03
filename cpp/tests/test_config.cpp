@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QJsonDocument>
@@ -306,6 +307,67 @@ TEST(ConfigProfiles, MigrationOldConfigSynthesizesDefaultProfile)
     ASSERT_TRUE(f2.open(QIODevice::ReadOnly));
     QJsonDocument doc = QJsonDocument::fromJson(f2.readAll());
     EXPECT_TRUE(doc.object().contains("profiles"));
+}
+
+TEST(ConfigProfiles, EmptyProfilesRebuildsDefaultProfile)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    QFile f(tmp.path() + "/config.json");
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject json{
+        {"selected_app", "spotify"},
+        {"hotkeys", QJsonObject{
+            {"volume_up",   210},
+            {"volume_down", 211},
+            {"mute",        212},
+        }},
+        {"profiles", QJsonArray{}},
+    };
+    f.write(QJsonDocument(json).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    auto profs = config.profiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_EQ(profs[0].id.toStdString(), "default");
+    EXPECT_EQ(profs[0].app.toStdString(), "spotify");
+    EXPECT_EQ(profs[0].hotkeys.volumeUp,   210);
+    EXPECT_EQ(profs[0].hotkeys.volumeDown, 211);
+    EXPECT_EQ(profs[0].hotkeys.mute,       212);
+}
+
+TEST(ConfigProfiles, MalformedProfilesRebuildsDefaultProfile)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    QFile f(tmp.path() + "/config.json");
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject json{
+        {"selected_app", "vlc"},
+        {"hotkeys", QJsonObject{
+            {"volume_up",   220},
+            {"volume_down", 221},
+            {"mute",        222},
+        }},
+        {"profiles", QJsonArray{
+            QJsonObject{{"name", "Missing id"}, {"app", "firefox"}},
+            QStringLiteral("not an object"),
+        }},
+    };
+    f.write(QJsonDocument(json).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    auto profs = config.profiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_EQ(profs[0].id.toStdString(), "default");
+    EXPECT_EQ(profs[0].app.toStdString(), "vlc");
+    EXPECT_EQ(profs[0].hotkeys.volumeUp,   220);
+    EXPECT_EQ(profs[0].hotkeys.volumeDown, 221);
+    EXPECT_EQ(profs[0].hotkeys.mute,       222);
 }
 
 TEST(ConfigProfiles, RoundTripTwoProfiles)

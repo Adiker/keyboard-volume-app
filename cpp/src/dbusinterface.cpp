@@ -55,6 +55,7 @@ DbusInterface::DbusInterface(Config *config,
             m_muted  = false;
             emit activeAppChanged(m_activeApp);
         }
+        reloadProfiles();
     });
 }
 
@@ -86,6 +87,7 @@ void DbusInterface::setActiveApp(const QString &name)
     m_volume = 0.0;
     m_muted  = false;
     emit activeAppChanged(m_activeApp);
+    reloadProfiles();
 }
 
 void DbusInterface::setVolumeStep(int step)

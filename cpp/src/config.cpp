@@ -235,14 +235,18 @@ void Config::load()
         QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
         f.close();
         if (err.error == QJsonParseError::NoError && doc.isObject()) {
-            m_data = deepMerge(defaultJson(), doc.object());
+            const QJsonObject loaded = doc.object();
+            m_data = deepMerge(defaultJson(), loaded);
             // If the loaded file had no "profiles" key, deepMerge gave us the
             // default profile from defaultJson(). But if it had legacy
             // selected_app + hotkeys with non-default values, those wouldn't
-            // be reflected. Detect "missing profiles in source" and synthesize.
-            // Heuristic: if doc.object() has no "profiles" key, run migration.
-            if (!doc.object().contains(QStringLiteral("profiles"))) {
-                // Replace synthetic default with one built from legacy fields.
+            // be reflected. Also recover when the new-schema profiles key is
+            // present but empty or contains no valid profile entries.
+            const bool needsProfileMigration =
+                !loaded.contains(QStringLiteral("profiles"))
+                || profilesFromJson(m_data[QStringLiteral("profiles")].toArray()).isEmpty();
+            if (needsProfileMigration) {
+                // Replace synthetic/invalid profiles with one built from legacy fields.
                 m_data[QStringLiteral("profiles")] = QJsonArray{};
                 migrateLegacyToProfilesUnlocked();
                 mirrorDefaultProfileToLegacyUnlocked();
