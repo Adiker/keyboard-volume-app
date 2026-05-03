@@ -5,6 +5,7 @@
 #include "audioapp.h"
 
 #include <QDebug>
+#include <QVariantMap>
 #include <algorithm>
 #include <cmath>
 
@@ -17,8 +18,9 @@ DbusInterface::DbusInterface(Config *config,
     , m_volumeCtrl(volumeCtrl)
     , m_tray(tray)
 {
-    m_activeApp  = m_tray->currentApp();
-    m_volumeStep = m_config->volumeStep();
+    m_activeApp    = m_tray->currentApp();
+    m_volumeStep   = m_config->volumeStep();
+    m_profilesProp = buildProfilesProp();
 
     connect(m_volumeCtrl, &VolumeController::volumeChanged,
             this, [this](const QString &app, double vol, bool muted) {
@@ -115,4 +117,68 @@ void DbusInterface::ToggleMute()
 void DbusInterface::RefreshApps()
 {
     m_volumeCtrl->listApps(true);
+}
+
+// ─── Profiles ────────────────────────────────────────────────────────────────
+QVariantList DbusInterface::buildProfilesProp() const
+{
+    QVariantList out;
+    for (const Profile &p : m_config->profiles()) {
+        QStringList mods;
+        if (p.modifiers.contains(Modifier::Ctrl))  mods << QStringLiteral("ctrl");
+        if (p.modifiers.contains(Modifier::Shift)) mods << QStringLiteral("shift");
+
+        QVariantMap hk;
+        hk[QStringLiteral("volume_up")]   = p.hotkeys.volumeUp;
+        hk[QStringLiteral("volume_down")] = p.hotkeys.volumeDown;
+        hk[QStringLiteral("mute")]        = p.hotkeys.mute;
+
+        QVariantMap m;
+        m[QStringLiteral("id")]        = p.id;
+        m[QStringLiteral("name")]      = p.name;
+        m[QStringLiteral("app")]       = p.app;
+        m[QStringLiteral("modifiers")] = mods;
+        m[QStringLiteral("hotkeys")]   = hk;
+        out.append(m);
+    }
+    return out;
+}
+
+Profile DbusInterface::findProfile(const QString &id) const
+{
+    for (const Profile &p : m_config->profiles()) {
+        if (p.id == id) return p;
+    }
+    return Profile{};
+}
+
+void DbusInterface::reloadProfiles()
+{
+    QVariantList fresh = buildProfilesProp();
+    if (fresh == m_profilesProp) return;
+    m_profilesProp = fresh;
+    emit profilesChanged(m_profilesProp);
+}
+
+void DbusInterface::VolumeUpProfile(const QString &profileId)
+{
+    Profile p = findProfile(profileId);
+    if (p.app.isEmpty()) return;
+    double step = m_volumeStep / 100.0;
+    m_volumeCtrl->changeVolume(p.app, step);
+}
+
+void DbusInterface::VolumeDownProfile(const QString &profileId)
+{
+    Profile p = findProfile(profileId);
+    if (p.app.isEmpty()) return;
+    double step = m_volumeStep / 100.0;
+    m_volumeCtrl->changeVolume(p.app, -step);
+}
+
+void DbusInterface::ToggleMuteProfile(const QString &profileId)
+{
+    Profile p = findProfile(profileId);
+    if (p.app.isEmpty()) return;
+    m_volumeCtrl->toggleMute(p.app);
 }
