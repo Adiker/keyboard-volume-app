@@ -20,9 +20,10 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 ### Features
 
 - **Per-app volume control** — changes the volume of only the selected application, not the system master
+- **Multiple audio profiles** — define several profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, and target audio app. Bare `VolUp` controls Spotify, `Ctrl+VolUp` controls Firefox, `F11` controls VLC — all from the same keyboard
 - **Global key capture** — reads directly from an evdev input device, works regardless of which window is focused
-- **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising volume keys, so the desktop never intercepts them
-- **Configurable hotkeys** — reassign Volume Up, Volume Down and Mute to any key via Settings; defaults are the dedicated media keys
+- **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising volume keys from any profile, so the desktop never intercepts them
+- **Configurable hotkeys** — every profile's Volume Up, Volume Down and Mute keys are reassignable via Settings → Profiles; defaults are the dedicated media keys
 - **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists all apps connected to PipeWire, not just those currently playing audio
@@ -31,7 +32,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Persistent config** — all settings saved to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
 - **PL / EN interface** — switch language in Settings
 - **First-run wizard** — on first launch, a QWizard guides through language selection and input device pick; the app is production-ready out of the box after two clicks
-- **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step; VolumeUp/Down/ToggleMute/RefreshApps methods
+- **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles**; bare `VolumeUp/Down/ToggleMute/RefreshApps` methods plus per-profile `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
 - **MPRIS v2** — registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client
 - **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
 - **Unit tests** — GTest + Qt Test suite covering Config, i18n, VolumeController, and InputHandler
@@ -131,13 +132,21 @@ Tests cover the Config manager, i18n translations, VolumeController (smoke test)
    - OSD screen position (X / Y)
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
-   - **Hotkeys** — click a key button and press any key to rebind Volume Up, Volume Down or Mute
+   - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers and target app; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls)
 
 7. **D-Bus remote control** — use `qdbus` or `dbus-send` to drive the app from scripts, custom keybinds, or external tools:
 
    ```bash
-   # Bump volume
+   # Bump volume on the default profile's app
    qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeUp
+
+   # Bump volume on a specific profile
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+       org.keyboardvolumeapp.VolumeControl.VolumeUpProfile firefox-ctrl
+
+   # List all profiles
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
+       org.keyboardvolumeapp.VolumeControl Profiles
 
    # Switch to Firefox
    qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
@@ -173,11 +182,19 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
     "volume_up": 115,
     "volume_down": 114,
     "mute": 113
-  }
+  },
+  "profiles": [
+    { "id": "default", "name": "Default", "app": "youtube-music",
+      "modifiers": [],
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } },
+    { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
+      "modifiers": ["ctrl"],
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } }
+  ]
 }
 ```
 
-Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113).
+Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113). The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch.
 
 ### Project structure
 
@@ -196,8 +213,9 @@ keyboard-volume-app/
 │       ├── osdwindow.h/cpp      # Qt6 OSD overlay
 │       ├── trayapp.h/cpp        # System tray icon and menu
 │       ├── deviceselector.h/cpp # Input device picker dialog
-│       ├── settingsdialog.h/cpp # OSD/volume settings dialog
-│       ├── firstrunwizard.h/cpp  # First-run wizard (language + device)
+│       ├── settingsdialog.h/cpp # OSD/volume/profiles settings dialog
+│       ├── profileeditdialog.h/cpp # Sub-dialog for editing a single audio profile
+│       ├── firstrunwizard.h/cpp  # First-run wizard (language + device + app)
 │       ├── dbusinterface.h/cpp   # D-Bus VolumeControl interface
 │       ├── mprisinterface.h/cpp  # MPRIS v2 adaptor
 │       └── audioapp.h           # AudioApp struct
@@ -248,9 +266,10 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 ### Funkcje
 
 - **Sterowanie głośnością per aplikacja** — zmienia głośność wyłącznie wybranej aplikacji, nie ruszając głośności systemowej
+- **Wiele profili audio** — definiuj kilka profili, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją. `VolUp` steruje Spotify, `Ctrl+VolUp` steruje Firefoxem, `F11` steruje VLC — wszystko z tej samej klawiatury
 - **Globalne przechwytywanie klawiszy** — odczytuje zdarzenia bezpośrednio z urządzenia evdev, działa niezależnie od tego, które okno jest aktywne
-- **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające klawisze głośności, aby system nie przechwytywał ich
-- **Konfigurowalne skróty** — przypisz Głośność w górę, Głośność w dół i Wyciszenie do dowolnego klawisza przez Ustawienia; domyślnie są to dedykowane klawisze multimedialne
+- **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające klawisze użyte w którymkolwiek profilu, aby system nie przechwytywał ich
+- **Konfigurowalne skróty** — Głośność w górę, Głośność w dół i Wyciszenie każdego profilu można przypisać do dowolnego klawisza przez Ustawienia → Profile; domyślnie są to dedykowane klawisze multimedialne
 - **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; znika automatycznie po upływie skonfigurowanego czasu
 - **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego oraz dostęp do ustawień
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera wszystkie aplikacje podłączone do PipeWire, nie tylko aktualnie odtwarzające dźwięk
@@ -259,7 +278,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Trwała konfiguracja** — wszystkie ustawienia zapisywane w `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`)
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
 - **Asystent pierwszego uruchomienia** — przy pierwszym starcie QWizard przeprowadza przez wybór języka i urządzenia wejściowego; aplikacja działa od razu po dwóch kliknięciach
-- **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności; metody VolumeUp/Down/ToggleMute/RefreshApps
+- **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile**; bare metody `VolumeUp/Down/ToggleMute/RefreshApps` plus per-profile `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
 - **MPRIS v2** — zarejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS
 - **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
 - **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, VolumeController, InputHandler
@@ -359,13 +378,21 @@ Testy obejmują Config, i18n, VolumeController (test dymny) i InputHandler (API,
    - Pozycję OSD na ekranie (X / Y)
    - Krok zmiany głośności na jedno naciśnięcie klawisza (%)
    - Kolory OSD (tło, tekst, pasek)
-   - **Skróty klawiszowe** — kliknij przycisk z nazwą klawisza i naciśnij dowolny klawisz, by go przypisać
+   - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją; pierwszy wiersz jest profilem domyślnym (używanym przez tray oraz przez bare metody D-Bus / MPRIS)
 
 7. **Zdalne sterowanie przez D-Bus** — użyj `qdbus` lub `dbus-send` do kontrolowania aplikacji ze skryptów, własnych skrótów lub zewnętrznych narzędzi:
 
    ```bash
-   # Zwiększ głośność
+   # Zwiększ głośność aplikacji profilu domyślnego
    qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeUp
+
+   # Zwiększ głośność wybranego profilu
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+       org.keyboardvolumeapp.VolumeControl.VolumeUpProfile firefox-ctrl
+
+   # Wylistuj wszystkie profile
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
+       org.keyboardvolumeapp.VolumeControl Profiles
 
    # Przełącz na Firefox
    qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
@@ -401,11 +428,19 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
     "volume_up": 115,
     "volume_down": 114,
     "mute": 113
-  }
+  },
+  "profiles": [
+    { "id": "default", "name": "Default", "app": "youtube-music",
+      "modifiers": [],
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } },
+    { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
+      "modifiers": ["ctrl"],
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } }
+  ]
 }
 ```
 
-Wartości skrótów to kody klawiszy evdev (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113).
+Wartości skrótów to kody klawiszy evdev (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113). Pola `selected_app` i top-level `hotkeys` są utrzymywane jako deprecated mirror `profiles[0]` przez jeden release backwards compat — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu.
 
 ### Struktura projektu
 
@@ -424,7 +459,8 @@ keyboard-volume-app/
 │       ├── osdwindow.h/cpp      # Nakładka OSD (Qt6)
 │       ├── trayapp.h/cpp        # Ikona tray i menu
 │       ├── deviceselector.h/cpp # Dialog wyboru urządzenia wejściowego
-│       ├── settingsdialog.h/cpp # Dialog ustawień OSD i głośności
+│       ├── settingsdialog.h/cpp # Dialog ustawień OSD, głośności i profili
+│       ├── profileeditdialog.h/cpp # Sub-dialog edycji pojedynczego profilu audio
 │       ├── firstrunwizard.h/cpp  # Asystent pierwszego uruchomienia
 │       ├── dbusinterface.h/cpp   # Interfejs D-Bus VolumeControl
 │       ├── mprisinterface.h/cpp  # Adaptor MPRIS v2

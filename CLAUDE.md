@@ -41,7 +41,8 @@ keyboard-volume-app/
 │       ├── osdwindow.h/cpp      # Frameless always-on-top Qt6 OSD overlay
 │       ├── trayapp.h/cpp        # System tray icon and context menu
 │       ├── deviceselector.h/cpp # Dialog for picking an evdev input device
-│       ├── settingsdialog.h/cpp # Settings dialog (OSD, volume step, hotkeys, colors)
+│       ├── settingsdialog.h/cpp # Settings dialog (OSD, volume step, profiles, colors)
+│       ├── profileeditdialog.h/cpp # Sub-dialog for editing a single audio profile
 │       ├── firstrunwizard.h/cpp # QWizard — first-run language + device + app setup
 │       ├── dbusinterface.h/cpp  # Custom D-Bus interface (org.keyboardvolumeapp.VolumeControl)
 │       ├── mprisinterface.h/cpp # MPRIS adaptors (org.mpris.MediaPlayer2 + Player)
@@ -106,11 +107,27 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
     "color_bg": "#1A1A1A", "color_text": "#FFFFFF", "color_bar": "#0078D7"
   },
   "volume_step": 5,
-  "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 }
+  "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+  "profiles": [
+    { "id": "default", "name": "Default", "app": "youtube-music",
+      "modifiers": [],
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } },
+    { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
+      "modifiers": ["ctrl"],
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } }
+  ]
 }
 ```
 
 Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113).
+
+**Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
+- `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; }`
+- `enum class Modifier { Ctrl, Shift }` — left/right collapsed to canonical (Ctrl/Shift only in v1; Alt/Meta out of scope)
+- API: `profiles()`, `setProfiles(QList<Profile>)` (validates non-empty + uniqueifies ids with numeric suffix on collision), `defaultProfile()` (= `profiles().first()`), `setDefaultProfileApp(QString)`
+- `Modifier` ↔ string helpers: `modifierToString(Modifier)`, `modifierFromString(QString)`
+
+**Migration & legacy mirror.** `Config::load()` synthesizes a single `default` profile from legacy `selected_app` + top-level `hotkeys` when `profiles` is missing/empty, then `saveUnlocked()` writes the new schema. Top-level `selected_app` and `hotkeys` are kept in sync as a deprecated mirror of `profiles[0]` (one release of compat) — `setSelectedApp()`/`setHotkeys()` mirror into the default profile and vice versa, so existing D-Bus/MPRIS clients keep working.
 
 ### `cpp/src/pwutils.h/cpp` — PipeWire client listing utility
 
@@ -176,7 +193,25 @@ App/binary filter constants (`SYSTEM_BINARIES`, `SKIP_APP_NAMES`) live in `pwuti
 
 ### `cpp/src/inputhandler.h/cpp` — `InputHandler`, `KeyCaptureThread`
 
-**`InputHandler`** (extends `QThread`): reads evdev events from the selected device and all other devices advertising the configured hotkey codes. All such devices are grabbed exclusively and mirrored via uinput so non-hotkey events pass through transparently. Hotkey events are swallowed (never re-injected). Uses 100ms debounce per key code.
+**`InputHandler`** (extends `QThread`): reads evdev events from the selected device and all other devices advertising any hotkey code from any configured profile. All such devices are grabbed exclusively and mirrored via uinput so non-hotkey events pass through transparently. Hotkey events that resolve to a profile are swallowed (never re-injected); hotkey events with no matching profile are forwarded so typing isn't blocked.
+
+API: `setProfiles(QList<Profile>)` / `currentProfiles()`. Signals carry the resolved `profileId` so `App` can route to the right audio app:
+```cpp
+void volume_up(const QString &profileId);
+void volume_down(const QString &profileId);
+void volume_mute(const QString &profileId);
+```
+
+**Modifier tracking.** `m_heldModifiers` holds raw evdev modifier codes (`KEY_LEFTCTRL`, `KEY_RIGHTCTRL`, `KEY_LEFTSHIFT`, `KEY_RIGHTSHIFT`) updated on press/release events from grabbed devices. Modifier press/release events are **forwarded to uinput** so the rest of the desktop sees them. Free helpers (testable, no Qt event loop required):
+- `bool isTrackedModifierCode(int code)`
+- `QSet<Modifier> normalizeHeldModifiers(const QSet<int> &raw)` — collapses L/R variants
+- `QString resolveProfile(int code, const QSet<Modifier> &held, const QList<Profile> &profiles)` — picks the profile whose `modifiers` set is a subset of `held` and whose code matches; tie-broken by **specificity** (most required modifiers wins), then first-in-list. Returns empty string when no profile matches.
+
+**Debounce** is keyed per `(code, profileId)` so `Ctrl+VolUp` and bare `VolUp` don't block each other (100ms window).
+
+**v1 limitations** (TODO comments in source):
+- A modifier key on a separate keyboard with no hotkey codes won't be observed (`findHotkeyDevices` only opens devices with at least one hotkey code).
+- `m_heldModifiers` can go stale on focus loss (rare with grabbed devices) — accepted in v1.
 
 Key repeat events (`ev.value == 2`) are handled alongside regular press events (`ev.value == 1`).
 
@@ -199,7 +234,9 @@ After `show()`, position is also set via `QWindow::setPosition()` for XWayland c
 
 ### `cpp/src/trayapp.h/cpp` — `TrayApp`
 
-System tray icon with context menu. Rebuilds the app list when `VolumeController::appsReady` fires. If a transient refresh/reconnect list does not contain the configured app, `TrayApp` keeps `Config::selectedApp()` unchanged instead of auto-selecting the first available app.
+System tray icon with context menu. `currentApp()` returns `Config::defaultProfile().app` (the default profile's app, NOT the legacy `selectedApp()` directly). Selecting an app from the tray's radio list calls `Config::setDefaultProfileApp(name)`, which updates the default profile and mirrors to legacy `selected_app` for D-Bus/MPRIS continuity.
+
+Rebuilds the app list when `VolumeController::appsReady` fires. If a transient refresh/reconnect list does not contain the configured app, `TrayApp` keeps the default profile's app unchanged instead of auto-selecting the first available app.
 The tray icon is loaded from Qt resources (`:/icon.png` via `resources.qrc`) — no external icon file required at runtime.
 
 Menu actions: current app list (checkable radio items), Refresh, **Change default application...** (opens `AppSelectorDialog`), Change input device..., Settings..., Quit.
@@ -221,9 +258,13 @@ Filters `/dev/input/event*` to show only devices exposing `KEY_VOLUMEUP`/`KEY_VO
 
 Exposes `org.keyboardvolumeapp.VolumeControl` on the D-Bus session bus (bus name `org.keyboardvolumeapp`, object path `/org/keyboardvolumeapp`).
 
-Caches volume/mute/app state by listening to `VolumeController::volumeChanged`, `VolumeController::appsReady`, and `TrayApp::appChanged`. D-Bus properties (`Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`) are served from the cache; setters delegate to `VolumeController`/`Config` async.
+Caches volume/mute/app state by listening to `VolumeController::volumeChanged`, `VolumeController::appsReady`, and `TrayApp::appChanged`. D-Bus properties (`Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`, `Profiles`) are served from the cache; setters delegate to `VolumeController`/`Config` async.
 
-D-Bus methods: `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `RefreshApps()`.
+D-Bus methods:
+- `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `RefreshApps()` — bare methods target `m_activeApp` (= default profile's app), kept for backwards compat.
+- `VolumeUpProfile(QString id)`, `VolumeDownProfile(QString id)`, `ToggleMuteProfile(QString id)` — per-profile methods, route directly to the profile's app via `m_volumeCtrl`.
+
+`Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute})}`. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
 
 ### `cpp/src/mprisinterface.h/cpp` — `MprisRootAdaptor`, `MprisPlayerAdaptor`
 
@@ -234,11 +275,23 @@ D-Bus methods: `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `RefreshApps()`.
 
 Enables integration with KDE Connect, Plasma widgets, and other MPRIS-aware tools.
 
-Settings dialog with live OSD position and color preview. `HotkeyCapture` stops `InputHandler` during capture (releases the grabbed device) and restarts it after.
+Settings dialog with live OSD position and color preview, plus a **Profiles** section: `QTableWidget` (`Name | App | Modifiers | VolUp | VolDown | Mute`) with Add / Edit / Remove / Set as default buttons. The default profile is row 0 and rendered with a `(default)` suffix; Remove is disabled when only one profile remains. `saveAndAccept()` calls `Config::setProfiles(...)`; the existing `settingsChanged` signal triggers `App::onHotkeysMaybeChanged` which restarts `InputHandler` with the new profile set.
+
+`HotkeyCapture` stops `InputHandler` during capture (releases the grabbed device) and restarts it after.
 
 **`KeyCaptureDialog`** has two parallel capture paths:
 - evdev thread (`KeyCaptureThread`) — catches media/Consumer-Control keys
 - Qt `keyPressEvent` + `nativeScanCode()` — catches regular keyboard keys (evdev code = X11 keycode − 8)
+
+### `cpp/src/profileeditdialog.h/cpp` — `ProfileEditDialog`
+
+Sub-dialog launched from the Settings → Profiles section to add or edit a single audio profile. Fields:
+- `QLineEdit` — profile name
+- `AppListWidget` — picker for the audio app (reused from tray/first-run wizard)
+- 2× `QCheckBox` — Ctrl, Shift required modifiers
+- 3× `HotkeyCapture` — VolUp / VolDown / Mute evdev codes
+
+`result()` builds a `Profile` from the widgets and preserves the original `id` when editing (a fresh Add gets the empty id and `Config::setProfiles()` slugifies/uniqueifies it).
 
 ### `cpp/src/i18n.h/cpp`
 
@@ -251,18 +304,23 @@ Static string tables for `en` and `pl`. `tr(key)` falls back to English if a key
 ```
 Keyboard keypress (evdev)
     └─► InputHandler::run() [QThread]
-            ├─ hotkey → emit volume_up/volume_down/volume_mute
+            ├─ modifier key (Ctrl/Shift L/R) → update m_heldModifiers; forward to uinput
+            ├─ hotkey → resolveProfile(code, normalizeHeldModifiers(held), profiles)
+            │           ├─ matched → emit volume_up/down/mute(profileId); swallow
+            │           └─ no match → forward to uinput (don't block typing)
             └─ other keys → UInput re-injection
 
-volume_up/volume_down
-    └─► App::changeVolume(direction)
+volume_up/volume_down(profileId)
+    └─► App::changeVolume(profileId, direction)
+            └─► findProfile(profileId) → Profile.app
             └─► VolumeController::changeVolume(app, delta) [async → PaWorker]
                     └─► emit volumeChanged(app, newVol, muted)
                             ├─► OSDWindow::showVolume(app, vol, muted)
                             └─► DbusInterface (cache update → D-Bus signals)
 
-volume_mute
-    └─► App::onMute()
+volume_mute(profileId)
+    └─► App::onMute(profileId)
+            └─► findProfile(profileId) → Profile.app
             └─► VolumeController::toggleMute(app) [async → PaWorker]
                     └─► emit volumeChanged(app, vol, muted=true/false)
 
@@ -353,6 +411,8 @@ sudo usermod -aG input $USER
 1. Add the field with its default to the merge logic in `Config::load()` in `cpp/src/config.cpp`
 2. Add a typed getter/setter pair in `cpp/src/config.h`; setter calls `save()`
 
+For breaking schema changes (new structured field replacing legacy keys), follow the **profiles** pattern: synthesize the new shape from legacy keys in `Config::load()`, write it back via `saveUnlocked()`, and keep legacy keys mirrored on every write for one release cycle so existing D-Bus/MPRIS callers don't break.
+
 ### OSD Styling
 
 OSD background is not set via stylesheet (Qt skips it for translucent top-level windows). Background is drawn in `OSDWindow::paintEvent()` using `QPainter::drawRoundedRect()`.
@@ -373,10 +433,10 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 14 tests (merge, load/save, thread-safety)
+- `test_config` — 20 tests (merge, load/save, thread-safety, profile migration / round-trip / mirror / id uniqueification)
 - `test_i18n` — 8 tests (lookup, fallback)
 - `test_volumecontroller` — 5 smoke tests
-- `test_inputhandler` — 8 tests (API, evdev device listing)
+- `test_inputhandler` — 15 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity)
 
 Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.
 
@@ -397,3 +457,5 @@ Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.
 - **Two-phase App init** — constructor creates only `Config`; `init()` creates the rest after optional first-run wizard
 - **`QDBusConnection::sessionBus()` returns by value** in Qt6 (not by reference as in Qt5) — use `auto bus = ...` not `auto &bus`
 - **`ExportAdaptors` flag required** when registering objects that have `QDBusAbstractAdaptor` children (like the MPRIS endpoint). Without it, adaptor interfaces are not exported
+- **Profiles are the source of truth** for hotkey → app mapping. Legacy `selected_app` and top-level `hotkeys` are deprecated mirrors of `profiles[0]`, kept in sync on every write for one release cycle of backwards compat (D-Bus/MPRIS callers reading the old fields keep working).
+- **Modifiers tracked only from grabbed devices** — a modifier key on a separate keyboard with no hotkey codes won't be observed in v1. Documented limitation; v2 may add passive read-only opens for modifier-only devices.
