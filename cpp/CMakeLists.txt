@@ -33,6 +33,7 @@ set(SOURCES
     src/pwutils.cpp
     src/applistwidget.cpp
     src/appselectordialog.cpp
+    src/profileeditdialog.cpp
     resources.qrc
 )
 

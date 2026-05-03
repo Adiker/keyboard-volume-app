@@ -2,6 +2,8 @@
 #include "config.h"
 #include "i18n.h"
 #include "inputhandler.h"
+#include "profileeditdialog.h"
+#include "screenutils.h"
 
 #include <QApplication>
 #include <QVBoxLayout>
@@ -16,7 +18,11 @@
 #include <QScreen>
 #include <QKeyEvent>
 #include <QCloseEvent>
+#include <QCursor>
 #include <QDebug>
+#include <QTableWidget>
+#include <QHeaderView>
+#include <QStringList>
 
 #include <linux/input.h>    // KEY_* constants
 
@@ -205,8 +211,8 @@ void SettingsDialog::buildUi()
     form->setLabelAlignment(Qt::AlignRight);
     form->setSpacing(10);
 
-    OsdConfig    osd  = m_config->osd();
-    HotkeyConfig hks  = m_config->hotkeys();
+    OsdConfig osd = m_config->osd();
+    m_profiles    = m_config->profiles();
 
     // Language
     m_lang = new QComboBox(this);
@@ -284,21 +290,54 @@ void SettingsDialog::buildUi()
     m_opacity->setValue(osd.opacity);
     form->addRow(::tr(QStringLiteral("settings.opacity")), m_opacity);
 
-    // Hotkeys section header
-    QLabel *hkSection = new QLabel(::tr(QStringLiteral("settings.hotkeys_section")), this);
-    hkSection->setStyleSheet(QStringLiteral("font-weight: bold; margin-top: 8px;"));
-    form->addRow(hkSection);
-
-    m_hkUp = new HotkeyCapture(hks.volumeUp, m_inputHandler, this);
-    form->addRow(::tr(QStringLiteral("settings.hotkey.volume_up")), m_hkUp);
-
-    m_hkDown = new HotkeyCapture(hks.volumeDown, m_inputHandler, this);
-    form->addRow(::tr(QStringLiteral("settings.hotkey.volume_down")), m_hkDown);
-
-    m_hkMute = new HotkeyCapture(hks.mute, m_inputHandler, this);
-    form->addRow(::tr(QStringLiteral("settings.hotkey.mute")), m_hkMute);
-
     layout->addLayout(form);
+
+    // ── Profiles section ────────────────────────────────────────────────
+    QLabel *profilesHeader = new QLabel(
+        ::tr(QStringLiteral("settings.profiles.section")), this);
+    profilesHeader->setStyleSheet(QStringLiteral("font-weight: bold; margin-top: 8px;"));
+    layout->addWidget(profilesHeader);
+
+    m_profilesTable = new QTableWidget(this);
+    m_profilesTable->setColumnCount(6);
+    m_profilesTable->setHorizontalHeaderLabels(QStringList{
+        ::tr(QStringLiteral("settings.profiles.col_name")),
+        ::tr(QStringLiteral("settings.profiles.col_app")),
+        ::tr(QStringLiteral("settings.profiles.col_modifiers")),
+        ::tr(QStringLiteral("settings.profiles.col_volume_up")),
+        ::tr(QStringLiteral("settings.profiles.col_volume_down")),
+        ::tr(QStringLiteral("settings.profiles.col_mute")),
+    });
+    m_profilesTable->verticalHeader()->setVisible(false);
+    m_profilesTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_profilesTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_profilesTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_profilesTable->horizontalHeader()->setStretchLastSection(false);
+    m_profilesTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_profilesTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    m_profilesTable->setMinimumHeight(120);
+    layout->addWidget(m_profilesTable);
+
+    auto *profileBtns = new QHBoxLayout;
+    m_btnAdd        = new QPushButton(::tr(QStringLiteral("settings.profiles.add")), this);
+    m_btnEdit       = new QPushButton(::tr(QStringLiteral("settings.profiles.edit")), this);
+    m_btnRemove     = new QPushButton(::tr(QStringLiteral("settings.profiles.remove")), this);
+    m_btnSetDefault = new QPushButton(::tr(QStringLiteral("settings.profiles.set_default")), this);
+    profileBtns->addWidget(m_btnAdd);
+    profileBtns->addWidget(m_btnEdit);
+    profileBtns->addWidget(m_btnRemove);
+    profileBtns->addWidget(m_btnSetDefault);
+    profileBtns->addStretch();
+    layout->addLayout(profileBtns);
+
+    connect(m_btnAdd,        &QPushButton::clicked, this, &SettingsDialog::onAddProfile);
+    connect(m_btnEdit,       &QPushButton::clicked, this, &SettingsDialog::onEditProfile);
+    connect(m_btnRemove,     &QPushButton::clicked, this, &SettingsDialog::onRemoveProfile);
+    connect(m_btnSetDefault, &QPushButton::clicked, this, &SettingsDialog::onSetDefaultProfile);
+    connect(m_profilesTable, &QTableWidget::doubleClicked,
+            this, [this](const QModelIndex &){ onEditProfile(); });
+
+    refreshProfilesTable();
 
     // Preview button
     QPushButton *previewBtn = new QPushButton(::tr(QStringLiteral("settings.preview_btn")), this);
@@ -371,8 +410,103 @@ void SettingsDialog::saveAndAccept()
         m_colorBar->color()
     );
     m_config->setVolumeStep(m_step->value());
-    m_config->setHotkeys(m_hkUp->evdevCode(),
-                         m_hkDown->evdevCode(),
-                         m_hkMute->evdevCode());
+    if (!m_profiles.isEmpty())
+        m_config->setProfiles(m_profiles);
     accept();
+}
+
+// ─── Profiles section ─────────────────────────────────────────────────────────
+int SettingsDialog::selectedProfileRow() const
+{
+    auto sel = m_profilesTable->selectionModel()->selectedRows();
+    if (sel.isEmpty()) return -1;
+    return sel.first().row();
+}
+
+void SettingsDialog::refreshProfilesTable()
+{
+    m_profilesTable->setRowCount(m_profiles.size());
+    for (int row = 0; row < m_profiles.size(); ++row) {
+        const Profile &p = m_profiles[row];
+
+        QString nameDisplay = p.name;
+        if (row == 0)
+            nameDisplay += QStringLiteral(" (default)");
+
+        QStringList mods;
+        if (p.modifiers.contains(Modifier::Ctrl))  mods << QStringLiteral("Ctrl");
+        if (p.modifiers.contains(Modifier::Shift)) mods << QStringLiteral("Shift");
+        QString modsDisplay = mods.isEmpty()
+            ? ::tr(QStringLiteral("settings.profiles.modifier_none"))
+            : mods.join(QStringLiteral("+"));
+
+        auto setCell = [&](int col, const QString &text) {
+            auto *item = new QTableWidgetItem(text);
+            item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+            m_profilesTable->setItem(row, col, item);
+        };
+        setCell(0, nameDisplay);
+        setCell(1, p.app);
+        setCell(2, modsDisplay);
+        setCell(3, QString::number(p.hotkeys.volumeUp));
+        setCell(4, QString::number(p.hotkeys.volumeDown));
+        setCell(5, QString::number(p.hotkeys.mute));
+    }
+
+    m_btnRemove->setEnabled(m_profiles.size() > 1);
+}
+
+void SettingsDialog::onAddProfile()
+{
+    Profile blank;
+    blank.id   = QStringLiteral("profile-") + QString::number(m_profiles.size() + 1);
+    blank.name = QStringLiteral("Profile ") + QString::number(m_profiles.size() + 1);
+    blank.hotkeys.volumeUp   = 115;
+    blank.hotkeys.volumeDown = 114;
+    blank.hotkeys.mute       = 113;
+
+    const QPoint anchor = QCursor::pos();
+    ProfileEditDialog dlg(blank, m_config, m_inputHandler, this);
+    centerDialogOnScreenAt(&dlg, anchor);
+    if (dlg.exec() == QDialog::Accepted) {
+        m_profiles.append(dlg.result());
+        refreshProfilesTable();
+        m_profilesTable->selectRow(m_profiles.size() - 1);
+    }
+}
+
+void SettingsDialog::onEditProfile()
+{
+    int row = selectedProfileRow();
+    if (row < 0 || row >= m_profiles.size()) return;
+
+    const QPoint anchor = QCursor::pos();
+    ProfileEditDialog dlg(m_profiles[row], m_config, m_inputHandler, this);
+    centerDialogOnScreenAt(&dlg, anchor);
+    if (dlg.exec() == QDialog::Accepted) {
+        m_profiles[row] = dlg.result();
+        refreshProfilesTable();
+        m_profilesTable->selectRow(row);
+    }
+}
+
+void SettingsDialog::onRemoveProfile()
+{
+    int row = selectedProfileRow();
+    if (row < 0 || row >= m_profiles.size()) return;
+    if (m_profiles.size() <= 1) return;  // safeguard — UI also disables button
+
+    m_profiles.removeAt(row);
+    refreshProfilesTable();
+    if (!m_profiles.isEmpty())
+        m_profilesTable->selectRow(qMin(row, m_profiles.size() - 1));
+}
+
+void SettingsDialog::onSetDefaultProfile()
+{
+    int row = selectedProfileRow();
+    if (row <= 0 || row >= m_profiles.size()) return;  // already default or invalid
+    m_profiles.move(row, 0);
+    refreshProfilesTable();
+    m_profilesTable->selectRow(0);
 }

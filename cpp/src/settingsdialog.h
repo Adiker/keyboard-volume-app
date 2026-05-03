@@ -1,9 +1,12 @@
 #pragma once
+#include "config.h"   // Profile
 #include <QDialog>
+#include <QList>
 #include <QPushButton>
 
 class QSpinBox;
 class QComboBox;
+class QTableWidget;
 class Config;
 class InputHandler;
 
@@ -112,8 +115,16 @@ private slots:
     void emitStylePreview();
     void saveAndAccept();
 
+    // Profiles section
+    void onAddProfile();
+    void onEditProfile();
+    void onRemoveProfile();
+    void onSetDefaultProfile();
+
 private:
     void buildUi();
+    void refreshProfilesTable();
+    int  selectedProfileRow() const;
 
     Config        *m_config;
     InputHandler  *m_inputHandler;
@@ -128,7 +139,12 @@ private:
     ColorButton   *m_colorText  = nullptr;
     ColorButton   *m_colorBar   = nullptr;
     QSpinBox      *m_opacity    = nullptr;
-    HotkeyCapture *m_hkUp       = nullptr;
-    HotkeyCapture *m_hkDown     = nullptr;
-    HotkeyCapture *m_hkMute     = nullptr;
+
+    // Profiles section
+    QTableWidget  *m_profilesTable = nullptr;
+    QPushButton   *m_btnAdd        = nullptr;
+    QPushButton   *m_btnEdit       = nullptr;
+    QPushButton   *m_btnRemove     = nullptr;
+    QPushButton   *m_btnSetDefault = nullptr;
+    QList<Profile> m_profiles;     // working copy until saveAndAccept()
 };
