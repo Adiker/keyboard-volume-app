@@ -1,0 +1,11 @@
+[Unit]
+Description=Keyboard Volume App
+Documentation=https://github.com/Adiker/keyboard-volume-app
+
+[Service]
+ExecStart=/usr/bin/keyboard-volume-app
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=default.target

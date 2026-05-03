@@ -58,7 +58,7 @@ cd keyboard-volume-app/pkg/arch
 makepkg -si
 ```
 
-This clones `main`, builds a Release binary, and installs everything to `/usr` including the `.desktop` entry and icon.
+This clones `main`, builds a Release binary, and installs everything to `/usr` including the `.desktop` entry, icon, and systemd user service.
 
 #### Build from source
 
@@ -92,6 +92,21 @@ sudo usermod -aG input $USER
 ```
 
 Log out and back in for the change to take effect.
+
+**Autostart with systemd user service** — packaged/system installs place the unit in `/usr/lib/systemd/user`. Enable it per user:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now keyboard-volume-app.service
+```
+
+Disable it with:
+
+```bash
+systemctl --user disable --now keyboard-volume-app.service
+```
+
+For a manual per-user install without a package, copy `deploy/keyboard-volume-app.service` to `$HOME/.config/systemd/user/` and adjust `ExecStart` if the binary is not installed as `/usr/bin/keyboard-volume-app`. The app still needs evdev access, so keep the `input` group setup above.
 
 ### Running
 
@@ -286,7 +301,7 @@ cd keyboard-volume-app/pkg/arch
 makepkg -si
 ```
 
-Pobiera branch `main`, buduje binarę Release i instaluje wszystko do `/usr` wraz z wpisem `.desktop` i ikoną.
+Pobiera branch `main`, buduje binarę Release i instaluje wszystko do `/usr` wraz z wpisem `.desktop`, ikoną i usługą systemd user.
 
 #### Budowanie ze źródeł
 
@@ -320,6 +335,21 @@ sudo usermod -aG input $USER
 ```
 
 Wyloguj się i zaloguj ponownie, by zmiana weszła w życie.
+
+**Autostart przez systemd user service** — instalacja pakietowa/systemowa umieszcza unit w `/usr/lib/systemd/user`. Włącz go dla swojego użytkownika:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now keyboard-volume-app.service
+```
+
+Wyłącz go poleceniem:
+
+```bash
+systemctl --user disable --now keyboard-volume-app.service
+```
+
+Przy ręcznej instalacji per-user bez paczki skopiuj `deploy/keyboard-volume-app.service` do `$HOME/.config/systemd/user/` i dostosuj `ExecStart`, jeśli binarka nie jest zainstalowana jako `/usr/bin/keyboard-volume-app`. Aplikacja nadal wymaga dostępu evdev, więc konfiguracja grupy `input` powyżej pozostaje wymagana.
 
 ### Uruchamianie
 
