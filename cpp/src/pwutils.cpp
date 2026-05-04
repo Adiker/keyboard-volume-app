@@ -373,8 +373,6 @@ bool readNodeProps(PipeWireSession &session, uint32_t nodeId, double *volume, bo
     };
 
     pw_node_add_listener(node, &nodeListener, &nodeEvents, &reader);
-    uint32_t ids[] = { SPA_PARAM_Props };
-    pw_node_subscribe_params(node, ids, 1);
     pw_node_enum_params(node, 0, SPA_PARAM_Props, 0, 1, nullptr);
     const bool ok = session.sync(PW_SYNC_TIMEOUT_MS) && reader.hasProps;
 
@@ -390,6 +388,9 @@ bool readNodeProps(PipeWireSession &session, uint32_t nodeId, double *volume, bo
 
 bool setNodeProp(uint32_t nodeId, std::optional<double> volume, std::optional<bool> muted)
 {
+    // This fallback is for paused/idle apps, so a short-lived session keeps the
+    // implementation simple. Promote this to a persistent worker-owned session
+    // before using it in any hot path.
     PipeWireSession session;
     if (!session.connect())
         return false;
@@ -518,10 +519,14 @@ std::optional<PipeWireNode> findPipeWireNodeForApp(const QString &appName)
 
 bool setPipeWireNodeVolume(uint32_t nodeId, double volume)
 {
+    // The node id came from an earlier snapshot. If it disappeared before this
+    // write, bind fails and VolumeController falls through to pending state.
     return setNodeProp(nodeId, volume, std::nullopt);
 }
 
 bool setPipeWireNodeMute(uint32_t nodeId, bool muted)
 {
+    // The node id came from an earlier snapshot. If it disappeared before this
+    // write, bind fails and VolumeController falls through to pending state.
     return setNodeProp(nodeId, std::nullopt, muted);
 }

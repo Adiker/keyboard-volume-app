@@ -1,6 +1,18 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+
 #include "pwutils.h"
+
+namespace {
+bool containsClient(const QList<PipeWireClient> &clients, const QString &name,
+                    const QString &binary)
+{
+    return std::any_of(clients.begin(), clients.end(), [&](const PipeWireClient &client) {
+        return client.name == name && client.binary == binary;
+    });
+}
+}
 
 TEST(PwUtils, FiltersSystemClients)
 {
@@ -29,9 +41,9 @@ TEST(PwUtils, UsesBinaryWhenNameMissingOrSkipped)
     const auto clients = clientsFromPipeWireGlobals(globals);
 
     ASSERT_EQ(clients.size(), 3);
-    EXPECT_EQ(clients[0].name, QStringLiteral("chromium"));
-    EXPECT_EQ(clients[1].name, QStringLiteral("discord"));
-    EXPECT_EQ(clients[2].name, QStringLiteral("vlc"));
+    EXPECT_TRUE(containsClient(clients, QStringLiteral("chromium"), QStringLiteral("chromium")));
+    EXPECT_TRUE(containsClient(clients, QStringLiteral("discord"), QStringLiteral("discord")));
+    EXPECT_TRUE(containsClient(clients, QStringLiteral("vlc"), QStringLiteral("vlc")));
 }
 
 TEST(PwUtils, DeduplicatesByDisplayName)
