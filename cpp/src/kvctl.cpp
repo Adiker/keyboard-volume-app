@@ -120,8 +120,22 @@ QString mapToText(const QVariantMap &map)
     const QString id = map.value(QStringLiteral("id")).toString();
     const QString name = map.value(QStringLiteral("name")).toString();
     const QString app = map.value(QStringLiteral("app")).toString();
-    if (!id.isEmpty() || !name.isEmpty() || !app.isEmpty())
-        return QStringLiteral("%1\t%2\t%3").arg(id, name, app);
+    if (!id.isEmpty() || !name.isEmpty() || !app.isEmpty()) {
+        QString modifiers = map.value(QStringLiteral("modifiers")).toStringList().join(QLatin1Char(','));
+        if (modifiers.isEmpty())
+            modifiers = QStringLiteral("-");
+
+        QString hotkeys = QStringLiteral("-");
+        const QVariantMap hotkeyMap = map.value(QStringLiteral("hotkeys")).toMap();
+        if (!hotkeyMap.isEmpty()) {
+            hotkeys = QStringLiteral("up=%1,down=%2,mute=%3")
+                .arg(hotkeyMap.value(QStringLiteral("volume_up")).toString(),
+                     hotkeyMap.value(QStringLiteral("volume_down")).toString(),
+                     hotkeyMap.value(QStringLiteral("mute")).toString());
+        }
+
+        return QStringLiteral("%1\t%2\t%3\t%4\t%5").arg(id, name, app, modifiers, hotkeys);
+    }
 
     QStringList parts;
     for (auto it = map.cbegin(); it != map.cend(); ++it)
@@ -174,7 +188,7 @@ QVariant setValueForCommand(const KvCtlCommand &cmd, bool *ok)
             *ok = false;
             return {};
         }
-        return cmd.value;
+        return cmd.value.trimmed();
     case KvCtlCommand::Field::Step: {
         int step = 0;
         if (!parseStep(cmd.value, &step)) {
