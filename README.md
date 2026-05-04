@@ -8,7 +8,7 @@
 
 # keyboard-volume-app
 
-A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls the volume of a single chosen application via keyboard — without touching the system master volume. Pick an audio app from the tray icon, use the media volume wheel, and get an OSD overlay with the current level.
+A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls the volume of a single chosen application via keyboard — without touching the system master volume. Pick an audio app from the tray icon, use the keyboard volume keys or wheel, and get an OSD overlay with the current level.
 
 ![C++](https://img.shields.io/badge/C%2B%2B-20-blue)
 ![Qt](https://img.shields.io/badge/Qt-6-green)
@@ -26,7 +26,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Configurable hotkeys** — every profile's Volume Up, Volume Down and Mute keys are reassignable via Settings → Profiles; defaults are the dedicated media keys
 - **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
-- **Idle app detection** — lists all apps connected to PipeWire, not just those currently playing audio
+- **Idle app detection** — lists non-system PipeWire audio clients, including apps that are connected but not currently playing
 - **Audio backend recovery** — reconnects to PulseAudio/pipewire-pulse after daemon restarts while keeping the configured selected app
 - **Mute toggle** — press the mute key to toggle mute on the selected app only; OSD shows current level with a 🔇 indicator
 - **Persistent config** — all settings saved atomically to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
@@ -43,7 +43,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 | Dependency | Purpose |
 |---|---|
 | Qt6 (Widgets, DBus) | System tray, OSD window, settings dialogs |
-| libevdev + libuinput | Global keyboard input capture and re-injection |
+| libevdev + uinput access | Global keyboard input capture and re-injection |
 | libpulse | Per-app volume control via PipeWire/PulseAudio socket |
 | libpipewire | Listing and controlling idle PipeWire audio apps without subprocesses |
 | GTest | Unit tests (optional, `BUILD_TESTING=ON`) |
@@ -141,7 +141,7 @@ Tests cover the Config manager, i18n translations, `kv-ctl` command parsing, Pip
 ### Usage
 
 1. **Select audio app** — click the tray icon → pick an app from the list. Apps currently playing audio are listed first; idle apps (connected to PipeWire but paused) appear below.
-2. **Volume wheel** — scroll up/down to change the selected app's volume by the configured step.
+2. **Volume keys / wheel** — press the volume keys or scroll the wheel up/down to change the selected app's volume by the configured step.
 3. **Mute** — press the mute key to toggle mute on the selected app only. The OSD appears with a 🔇 indicator when muted.
 4. **Refresh app list** — tray menu → *Refresh app list* to re-scan running audio apps.
 5. **Change input device** — tray menu → *Change input device...* to pick a different keyboard without restarting.
@@ -284,7 +284,7 @@ GPL-2.0-or-later — see [LICENSE](LICENSE)
 
 # keyboard-volume-app
 
-Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Windowsie. Zmienia głośność wybranej aplikacji za pomocą klawiatury — bez ingerowania w głośność systemową. Wybierz aplikację audio z ikony w zasobniku systemowym, użyj kółka multimedialnego i obserwuj nakładkę OSD z aktualnym poziomem głośności.
+Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Windowsie. Zmienia głośność wybranej aplikacji za pomocą klawiatury — bez ingerowania w głośność systemową. Wybierz aplikację audio z ikony w zasobniku systemowym, użyj klawiszy lub pokrętła głośności na klawiaturze i obserwuj nakładkę OSD z aktualnym poziomem głośności.
 
 ![C++](https://img.shields.io/badge/C%2B%2B-20-blue)
 ![Qt](https://img.shields.io/badge/Qt-6-green)
@@ -302,13 +302,13 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Konfigurowalne skróty** — Głośność w górę, Głośność w dół i Wyciszenie każdego profilu można przypisać do dowolnego klawisza przez Ustawienia → Profile; domyślnie są to dedykowane klawisze multimedialne
 - **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; znika automatycznie po upływie skonfigurowanego czasu
 - **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego oraz dostęp do ustawień
-- **Wykrywanie nieaktywnych aplikacji** — lista zawiera wszystkie aplikacje podłączone do PipeWire, nie tylko aktualnie odtwarzające dźwięk
+- **Wykrywanie nieaktywnych aplikacji** — lista zawiera niesystemowe klienty audio PipeWire, także aplikacje podłączone, ale aktualnie nieodtwarzające dźwięku
 - **Odzyskiwanie backendu audio** — ponownie łączy się z PulseAudio/pipewire-pulse po restarcie daemona i zachowuje skonfigurowaną wybraną aplikację
 - **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇
 - **Trwała konfiguracja** — wszystkie ustawienia zapisywane atomowo w `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`)
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
 - **Asystent pierwszego uruchomienia** — przy pierwszym starcie QWizard przeprowadza przez wybór języka, urządzenia wejściowego i domyślnej aplikacji audio; aplikacja działa od razu po kilku kliknięciach
-- **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile**; bare metody `VolumeUp/Down/ToggleMute/RefreshApps` plus per-profile `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
+- **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile**; metody bez wskazania profilu `VolumeUp/Down/ToggleMute/RefreshApps` oraz metody profilowe `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
 - **CLI `kv-ctl`** — wygodny klient wiersza poleceń do sterowania przez D-Bus bez wywoływania zewnętrznego programu `qdbus`
 - **MPRIS v2** — zarejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS
 - **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
@@ -319,9 +319,9 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 | Zależność | Przeznaczenie |
 |---|---|
 | Qt6 (Widgets, DBus) | Zasobnik systemowy, okno OSD, dialogi ustawień |
-| libevdev + libuinput | Globalne przechwytywanie klawiszy i reinjekcja zdarzeń |
+| libevdev + dostęp do uinput | Globalne przechwytywanie klawiszy i reinjekcja zdarzeń |
 | libpulse | Sterowanie głośnością per aplikacja przez gniazdo PipeWire/PulseAudio |
-| libpipewire | Listowanie i sterowanie nieaktywnymi aplikacjami PipeWire bez subprocessów |
+| libpipewire | Listowanie i sterowanie nieaktywnymi aplikacjami PipeWire bez procesów pomocniczych |
 | GTest | Testy jednostkowe (opcjonalne, `BUILD_TESTING=ON`) |
 | CMake 3.20+ | System budowania |
 | Kompilator C++20 | GCC 11+ lub Clang 13+ |
@@ -417,18 +417,18 @@ Testy obejmują Config, i18n, parser `kv-ctl`, narzędzia PipeWire, VolumeContro
 ### Użytkowanie
 
 1. **Wybór aplikacji audio** — kliknij ikonę w zasobniku systemowym → wybierz aplikację z listy. Aplikacje aktualnie odtwarzające dźwięk są na górze; nieaktywne (podłączone do PipeWire, ale zapauzowane) pojawiają się poniżej.
-2. **Kółko głośności** — przekręć w górę lub w dół, by zmienić głośność wybranej aplikacji o skonfigurowany krok.
+2. **Klawisze / pokrętło głośności** — naciśnij lub przekręć w górę albo w dół, aby zmienić głośność wybranej aplikacji o skonfigurowany krok.
 3. **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇.
-4. **Odświeżenie listy** — menu tray → *Odśwież listę aplikacji*, by ponownie wczytać aktywne aplikacje audio.
-5. **Zmiana urządzenia wejściowego** — menu tray → *Zmień urządzenie wejściowe...*, by wybrać inną klawiaturę bez restartu aplikacji.
-6. **Ustawienia** — menu tray → *Ustawienia...*, by skonfigurować:
+4. **Odświeżenie listy** — menu zasobnika → *Odśwież listę aplikacji*, aby ponownie wczytać aktywne aplikacje audio.
+5. **Zmiana urządzenia wejściowego** — menu zasobnika → *Zmień urządzenie wejściowe...*, aby wybrać inną klawiaturę bez restartu aplikacji.
+6. **Ustawienia** — menu zasobnika → *Ustawienia...*, aby skonfigurować:
    - Język interfejsu (English / Polski)
    - Czas wyświetlania OSD (ms)
    - Pozycję OSD na ekranie (X / Y)
    - Krycie OSD (0–100%)
    - Krok zmiany głośności na jedno naciśnięcie klawisza (%)
    - Kolory OSD (tło, tekst, pasek)
-   - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją; pierwszy wiersz jest profilem domyślnym (używanym przez tray oraz przez bare metody D-Bus / MPRIS)
+   - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją; pierwszy wiersz jest profilem domyślnym (używanym przez zasobnik oraz przez metody D-Bus / MPRIS bez wskazania profilu)
 
 7. **Zdalne sterowanie CLI / D-Bus** — użyj `kv-ctl` do kontrolowania działającej aplikacji ze skryptów, własnych skrótów lub zewnętrznych narzędzi bez uruchamiania zewnętrznego programu `qdbus`:
 
@@ -490,7 +490,7 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
 }
 ```
 
-Wartości skrótów to kody klawiszy evdev (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113). Pola `selected_app` i top-level `hotkeys` są utrzymywane jako deprecated mirror `profiles[0]` przez jeden release backwards compat — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu.
+Wartości skrótów to kody klawiszy evdev (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113). Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu.
 
 ### Struktura projektu
 
@@ -546,7 +546,7 @@ keyboard-volume-app/
 
 ### Wydajność
 
-Hot path zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykonuje jedno wywołanie IPC przez libpulse (~1ms). Listowanie nieaktywnych aplikacji PipeWire i fallback dla wstrzymanych node'ów używają bezpośrednio libpipewire, więc aplikacja nie uruchamia subprocessów `pw-dump` ani `pw-cli`. Wszystkie operacje PulseAudio/PipeWire działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Jeśli kontekst PulseAudio zakończy się błędem lub zostanie zerwany, worker reconnectuje z backoffem i zachowuje pending volume/mute do czasu ponownego pojawienia się aplikacji. Przejściowe odświeżenia listy podczas restartu daemona audio nie zmieniają skonfigurowanej wybranej aplikacji. Odczyty właściwości D-Bus są serwowane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku PulseAudio.
+Ścieżka krytyczna zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykonuje jedno wywołanie IPC przez libpulse (~1ms). Listowanie nieaktywnych aplikacji PipeWire i mechanizm zapasowy dla wstrzymanych węzłów używają bezpośrednio libpipewire, więc aplikacja nie uruchamia procesów pomocniczych `pw-dump` ani `pw-cli`. Wszystkie operacje PulseAudio/PipeWire działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Jeśli kontekst PulseAudio zakończy się błędem lub zostanie zerwany, wątek roboczy ponawia połączenie z narastającym opóźnieniem i zachowuje oczekujące zmiany głośności/wyciszenia do czasu ponownego pojawienia się aplikacji. Przejściowe odświeżenia listy podczas restartu daemona audio nie zmieniają skonfigurowanej wybranej aplikacji. Odczyty właściwości D-Bus są obsługiwane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku PulseAudio.
 
 ### Licencja
 
