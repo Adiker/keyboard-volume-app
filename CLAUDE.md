@@ -356,7 +356,7 @@ D-Bus calls arrive on the main thread and are forwarded to `VolumeController` (w
 `keyboard-volume-app-git` package for Arch Linux / AUR. Builds from the `main` branch via `git clone`.
 
 - `pkgver()` uses `git describe --tags --long` to generate a version like `r0.1.0.24.gc2cd813`
-- `depends`: `qt6-base libevdev libpulse pipewire`
+- `depends`: `qt6-base libevdev libpulse libpipewire pipewire`
 - `makedepends`: `cmake gcc pkg-config git`
 - CMake Release build with `BUILD_TESTING=OFF` and `DESTDIR` install
 - Installs: binary → `/usr/bin/`, `.desktop` → `/usr/share/applications/`, icon → `/usr/share/pixmaps/`, systemd user service → `/usr/lib/systemd/user/`
