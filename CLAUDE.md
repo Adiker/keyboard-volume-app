@@ -464,6 +464,9 @@ Run locally: `cd cpp/build && ctest --output-on-failure`.
 GitHub Actions CI is enabled in `.github/workflows/ci.yml` for PRs and pushes to
 `main`. It builds and runs CTest in both Debug and Release, and checks
 `clang-format` only for changed C++ files under `cpp/src` and `cpp/tests`.
+The CI workflow is path-filtered: docs-only changes such as Markdown updates do
+not run CI, while changes under `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake
+files, or `.github/workflows/ci.yml` do.
 `clang-tidy` is not part of CI yet. `Claude Code Review` is currently
 temporarily disabled via `if: false` in `.github/workflows/claude-code-review.yml`.
 
