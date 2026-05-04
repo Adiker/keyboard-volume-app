@@ -115,7 +115,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Problem:** Brak automatycznej walidacji przy PR/commit.
 **Rekomendacja:** Workflow: build (Release + Debug), testy, lint (clang-format, clang-tidy).
 **Pliki:** Nowy `.github/workflows/ci.yml`
-**Status:** Zrealizowane. `.github/workflows/ci.yml` uruchamia się dla PR-ów i pushy do `main`, buduje projekt w konfiguracjach Debug oraz Release, uruchamia CTest i sprawdza `clang-format` tylko dla zmienionych plików C++ w `cpp/src` oraz `cpp/tests`. `.clang-format` dodano w repo. `clang-tidy` pozostaje osobnym follow-upem. `Claude Code Review` jest tymczasowo wyłączony przez `if: false` w `.github/workflows/claude-code-review.yml`.
+**Status:** Zrealizowane. `.github/workflows/ci.yml` uruchamia się dla PR-ów i pushy do `main`, buduje projekt w konfiguracjach Debug oraz Release, uruchamia CTest i sprawdza `clang-format` tylko dla zmienionych plików C++ w `cpp/src` oraz `cpp/tests`. Workflow ma filtry ścieżek: zmiany wyłącznie dokumentacyjne nie uruchamiają CI, ale zmiany w `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake oraz samym `ci.yml` już tak. `.clang-format` dodano w repo. `clang-tidy` pozostaje osobnym follow-upem. `Claude Code Review` jest tymczasowo wyłączony przez `if: false` w `.github/workflows/claude-code-review.yml`.
 
 ### 11. Systemd user service ✓
 
