@@ -41,6 +41,20 @@ target_link_libraries(test_i18n PRIVATE
 )
 add_test(NAME test_i18n COMMAND test_i18n)
 
+# ─── test_kvctlcommand ────────────────────────────────────────────────────────
+add_executable(test_kvctlcommand
+    test_kvctlcommand.cpp
+    ../src/kvctlcommand.cpp
+)
+target_include_directories(test_kvctlcommand PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(test_kvctlcommand PRIVATE
+    GTest::gtest_main
+    Qt6::Core
+)
+add_test(NAME test_kvctlcommand COMMAND test_kvctlcommand)
+
 # ─── test_volumecontroller (smoke) ──────────────────────────────────────────────
 add_executable(test_volumecontroller
     test_volumecontroller.cpp
