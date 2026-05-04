@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <mutex>
 
+#include <pipewire/client.h>
 #include <pipewire/pipewire.h>
 #include <spa/param/param.h>
 #include <spa/param/props.h>
@@ -21,6 +22,7 @@ const QSet<QString> SYSTEM_BINARIES {
     QStringLiteral("xdg-desktop-portal"), QStringLiteral("xdg-desktop-portal-kde"),
     QStringLiteral("polkit-kde-authentication-agent-1"),
     QStringLiteral("pactl"), QStringLiteral("pw-cli"), QStringLiteral("pw-dump"),
+    QStringLiteral("keyboard-volume-app"),
     QStringLiteral("python3"), QStringLiteral("python3.14"), QStringLiteral("python"),
     QStringLiteral("QtWebEngineProcess"), QString{},
 };
@@ -258,6 +260,93 @@ struct NodeParamReader {
     }
 };
 
+struct ClientInfoReader {
+    RegistryGlobal *global = nullptr;
+
+    static void onClientInfo(void *data, const pw_client_info *info)
+    {
+        if (!info || !info->props)
+            return;
+
+        auto *self = static_cast<ClientInfoReader *>(data);
+        self->global->name = dictValue(info->props, "application.name");
+        self->global->binary = dictValue(info->props, "application.process.binary");
+    }
+
+    static void onClientPermissions(void *, uint32_t, uint32_t, const pw_permission *) {}
+};
+
+struct NodeInfoReader {
+    RegistryGlobal *global = nullptr;
+
+    static void onNodeInfo(void *data, const pw_node_info *info)
+    {
+        if (!info || !info->props)
+            return;
+
+        auto *self = static_cast<NodeInfoReader *>(data);
+        self->global->name = dictValue(info->props, "application.name");
+        self->global->binary = dictValue(info->props, "application.process.binary");
+        self->global->mediaClass = dictValue(info->props, "media.class");
+    }
+
+    static void onNodeParam(void *, int, uint32_t, uint32_t, uint32_t, const spa_pod *) {}
+};
+
+void refreshClientInfo(PipeWireSession &session, RegistryGlobal &global)
+{
+    auto *client = static_cast<pw_client *>(pw_registry_bind(
+        session.registry, global.id, PW_TYPE_INTERFACE_Client, PW_VERSION_CLIENT, 0));
+    if (!client)
+        return;
+
+    spa_hook clientListener {};
+    ClientInfoReader reader { &global };
+    static const pw_client_events clientEvents {
+        PW_VERSION_CLIENT_EVENTS,
+        &ClientInfoReader::onClientInfo,
+        &ClientInfoReader::onClientPermissions,
+    };
+
+    pw_client_add_listener(client, &clientListener, &clientEvents, &reader);
+    session.sync(PW_SYNC_TIMEOUT_MS);
+    spa_hook_remove(&clientListener);
+    pw_proxy_destroy(reinterpret_cast<pw_proxy *>(client));
+}
+
+void refreshNodeInfo(PipeWireSession &session, RegistryGlobal &global)
+{
+    auto *node = static_cast<pw_node *>(pw_registry_bind(
+        session.registry, global.id, PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, 0));
+    if (!node)
+        return;
+
+    spa_hook nodeListener {};
+    NodeInfoReader reader { &global };
+    static const pw_node_events nodeEvents {
+        PW_VERSION_NODE_EVENTS,
+        &NodeInfoReader::onNodeInfo,
+        &NodeInfoReader::onNodeParam,
+    };
+
+    pw_node_add_listener(node, &nodeListener, &nodeEvents, &reader);
+    session.sync(PW_SYNC_TIMEOUT_MS);
+    spa_hook_remove(&nodeListener);
+    pw_proxy_destroy(reinterpret_cast<pw_proxy *>(node));
+}
+
+void refreshObjectInfo(PipeWireSession &session)
+{
+    pw_thread_loop_lock(session.loop);
+    for (RegistryGlobal &global : session.globals) {
+        if (global.type == QString::fromUtf8(PW_TYPE_INTERFACE_Client))
+            refreshClientInfo(session, global);
+        else if (global.type == QString::fromUtf8(PW_TYPE_INTERFACE_Node))
+            refreshNodeInfo(session, global);
+    }
+    pw_thread_loop_unlock(session.loop);
+}
+
 bool nodeMatchesApp(const RegistryGlobal &global, const QString &appName)
 {
     if (global.type != QString::fromUtf8(PW_TYPE_INTERFACE_Node))
@@ -381,6 +470,7 @@ QList<PipeWireClient> listPipeWireClients()
     PipeWireSession session;
     if (!session.connect())
         return {};
+    refreshObjectInfo(session);
 
     QList<PipeWireGlobalProps> globals;
     for (const RegistryGlobal &global : session.globals) {
@@ -398,6 +488,7 @@ std::optional<PipeWireNode> findPipeWireNodeForApp(const QString &appName)
     PipeWireSession session;
     if (!session.connect())
         return std::nullopt;
+    refreshObjectInfo(session);
 
     std::optional<RegistryGlobal> best;
     for (const RegistryGlobal &global : session.globals) {

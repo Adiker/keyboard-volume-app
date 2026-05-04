@@ -7,6 +7,7 @@ TEST(PwUtils, FiltersSystemClients)
     QList<PipeWireGlobalProps> globals {
         { QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("Firefox"), QStringLiteral("firefox") },
         { QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("PipeWire"), QStringLiteral("pipewire") },
+        { QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("keyboard-volume-app"), QStringLiteral("keyboard-volume-app") },
         { QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("Portal"), QStringLiteral("xdg-desktop-portal") },
     };
 
