@@ -110,12 +110,12 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** Nowy `cpp/src/dbusinterface.h/cpp`, `cpp/src/mprisinterface.h/cpp`, zmiana CMakeLists.txt
 **Status:** Zrealizowane. Własny interfejs `org.keyboardvolumeapp.VolumeControl` + MPRIS `org.mpris.MediaPlayer2`/`.Player`. Cache stanu, delegacja async do VolumeController. ExportAdaptors dla adaptorów MPRIS. Cleanup w App::cleanup().
 
-### 10. CI/CD (GitHub Actions)
+### 10. CI/CD (GitHub Actions) ✓
 
 **Problem:** Brak automatycznej walidacji przy PR/commit.
 **Rekomendacja:** Workflow: build (Release + Debug), testy, lint (clang-format, clang-tidy).
 **Pliki:** Nowy `.github/workflows/ci.yml`
-**Status:** Planowane.
+**Status:** Zrealizowane. `.github/workflows/ci.yml` uruchamia się dla PR-ów i pushy do `main`, buduje projekt w konfiguracjach Debug oraz Release, uruchamia CTest i sprawdza `clang-format` tylko dla zmienionych plików C++ w `cpp/src` oraz `cpp/tests`. Workflow ma filtry ścieżek: zmiany wyłącznie dokumentacyjne nie uruchamiają CI, ale zmiany w `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake oraz samym `ci.yml` już tak. `.clang-format` dodano w repo. `clang-tidy` pozostaje osobnym follow-upem. `Claude Code Review` jest tymczasowo wyłączony przez `if: false` w `.github/workflows/claude-code-review.yml`.
 
 ### 11. Systemd user service ✓
 
@@ -180,9 +180,9 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 ### 19. Wbudowane CLI (Sub-komendy dla skryptów / Tiling WM)
 
 **Problem:** Używanie `qdbus` w konfiguracjach takich środowisk jak Sway, Hyprland czy i3 jest uciążliwe ze względu na bardzo długie komendy.
-**Rekomendacja:** Rozbudowa `QCommandLineParser`, by główna binarka mogła zadziałać w trybie lekkiego klienta CLI (np. `keyboard-volume-app cli --vol-up --profile firefox`), wysyłającego po prostu komendę DBus do głównego demona i kończącego od razu proces.
-**Pliki:** `cpp/src/main.cpp`.
-**Status:** Planowane.
+**Rekomendacja:** Osobna binarka `kv-ctl` jako lekki klient QtDBus bez zależności od zewnętrznego programu `qdbus`, np. `kv-ctl up`, `kv-ctl down --profile firefox`, `kv-ctl set volume 35`.
+**Pliki:** `cpp/src/kvctl.cpp`, `cpp/src/kvctlcommand.h/cpp`, `cpp/CMakeLists.txt`, `cpp/tests/test_kvctlcommand.cpp`.
+**Status:** Zrealizowane. `kv-ctl` używa istniejącego endpointu `org.keyboardvolumeapp.VolumeControl`, obsługuje komendy `up/down/mute/refresh/get/set`, mapuje profile na metody per-profile i ma testowany parser argumentów bez potrzeby uruchamiania D-Bus.
 
 ### 20. Relatywne pozycjonowanie OSD (Anchor) oraz Custom CSS
 

@@ -46,6 +46,8 @@ keyboard-volume-app/
 │       ├── firstrunwizard.h/cpp # QWizard — first-run language + device + app setup
 │       ├── dbusinterface.h/cpp  # Custom D-Bus interface (org.keyboardvolumeapp.VolumeControl)
 │       ├── mprisinterface.h/cpp # MPRIS adaptors (org.mpris.MediaPlayer2 + Player)
+│       ├── kvctl.cpp            # kv-ctl command-line D-Bus client
+│       ├── kvctlcommand.h/cpp   # kv-ctl parser shared with tests
 │       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (fd, libevdev*, uinput)
 │       ├── screenutils.h        # Header-only: centerDialogOnScreenAt() for multi-monitor XWayland
 │       └── audioapp.h           # AudioApp struct (display name, PA index, muted, volume)
@@ -74,7 +76,9 @@ On first run (`Config::isFirstRun()`), a `FirstRunWizard` is shown before `App::
 
 **Singleton:** Only one instance allowed. On startup, the app checks if `org.keyboardvolumeapp` is already registered on the D-Bus session bus — if so, prints a warning and exits with code 1.
 
-**CLI flags:** `--version` and `--help` via `QCommandLineParser`. `APP_VERSION` is injected from `CMakeLists.txt` at build time.
+**CLI flags:** `keyboard-volume-app` supports `--version` and `--help` via `QCommandLineParser`. `APP_VERSION` is injected from `CMakeLists.txt` at build time.
+
+**`kv-ctl`:** separate lightweight `QCoreApplication` binary linked only with `Qt6::Core` and `Qt6::DBus`. It does not start the tray app and does not shell out to `qdbus`; it sends synchronous calls to the running daemon on the session bus.
 
 `Config` is held as `std::unique_ptr<Config>`; `m_osd` is explicitly `delete`d in `~App()`.
 
@@ -270,6 +274,16 @@ D-Bus methods:
 
 `Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute})}`. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
 
+### `cpp/src/kvctl.cpp`, `cpp/src/kvctlcommand.h/cpp` — `kv-ctl`
+
+`kv-ctl` is a small CLI client for scripts and tiling WM keybinds. Commands:
+- `kv-ctl up|down|mute [--profile id]` maps to bare D-Bus methods or `VolumeUpProfile` / `VolumeDownProfile` / `ToggleMuteProfile`.
+- `kv-ctl refresh` maps to `RefreshApps`.
+- `kv-ctl get volume|muted|active-app|apps|step|profiles` reads D-Bus properties through `org.freedesktop.DBus.Properties.Get`.
+- `kv-ctl set volume|muted|active-app|step VALUE` writes properties through `org.freedesktop.DBus.Properties.Set`; volume is given as `0..100` percent and mapped to `0.0..1.0`.
+
+Exit codes: `0` success, `1` usage, `2` daemon unavailable, `3` D-Bus error, `4` invalid value. Parser logic lives in `kvctlcommand` so it can be unit-tested without a session bus.
+
 ### `cpp/src/mprisinterface.h/cpp` — `MprisRootAdaptor`, `MprisPlayerAdaptor`
 
 `QDBusAbstractAdaptor` subclasses providing MPRIS v2 compliance (bus name `org.mpris.MediaPlayer2.keyboardvolumeapp`, object path `/org/mpris/MediaPlayer2`).
@@ -328,7 +342,7 @@ volume_mute(profileId)
             └─► VolumeController::toggleMute(app) [async → PaWorker]
                     └─► emit volumeChanged(app, vol, muted=true/false)
 
-D-Bus external call (e.g. qdbus)
+D-Bus external call (e.g. qdbus or kv-ctl)
     └─► DbusInterface::VolumeUp/Down/ToggleMute
             └─► VolumeController::changeVolume/toggleMute [async → PaWorker]
                     └─► (same cache update + D-Bus property notification)
@@ -440,11 +454,21 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_config` — 23 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / id uniqueification)
 - `test_i18n` — 7 tests (lookup, fallback)
+- `test_kvctlcommand` — 6 tests (subcommand parser, profile option, get/set fields, invalid input)
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 15 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity)
 
-Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.
+Run locally: `cd cpp/build && ctest --output-on-failure`.
+
+GitHub Actions CI is enabled in `.github/workflows/ci.yml` for PRs and pushes to
+`main`. It builds and runs CTest in both Debug and Release, and checks
+`clang-format` only for changed C++ files under `cpp/src` and `cpp/tests`.
+The CI workflow is path-filtered: docs-only changes such as Markdown updates do
+not run CI, while changes under `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake
+files, or `.github/workflows/ci.yml` do.
+`clang-tidy` is not part of CI yet. `Claude Code Review` is currently
+temporarily disabled via `if: false` in `.github/workflows/claude-code-review.yml`.
 
 ---
 

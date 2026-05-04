@@ -58,7 +58,25 @@ target_link_libraries(keyboard-volume-app PRIVATE
     PkgConfig::LIBPIPEWIRE
 )
 
-install(TARGETS keyboard-volume-app DESTINATION bin)
+add_executable(kv-ctl
+    src/kvctl.cpp
+    src/kvctlcommand.cpp
+)
+
+target_compile_definitions(kv-ctl PRIVATE
+    APP_VERSION="${PROJECT_VERSION}"
+)
+
+target_include_directories(kv-ctl PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(kv-ctl PRIVATE
+    Qt6::Core
+    Qt6::DBus
+)
+
+install(TARGETS keyboard-volume-app kv-ctl DESTINATION bin)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../resources/keyboard-volume-app.desktop"
         DESTINATION share/applications)
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../resources/icon.png"
