@@ -95,7 +95,7 @@ Run: `cpp/build/keyboard-volume-app`
 
 ### `cpp/src/config.h/cpp` — `Config`
 
-Reads/writes `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (via `QStandardPaths`). Uses deep-merge so new default keys are always present when loading old config files. All setters call `save()` immediately.
+Reads/writes `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (via `QStandardPaths`). Saves are atomic via `QSaveFile` + `commit()`, so failed writes do not truncate the previous config. Uses deep-merge so new default keys are always present when loading old config files. All setters call `save()` immediately.
 
 Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`. All public methods lock.
 
@@ -452,7 +452,7 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 22 tests (merge, load/save, thread-safety, profile migration / round-trip / mirror / id uniqueification)
+- `test_config` — 23 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / id uniqueification)
 - `test_i18n` — 7 tests (lookup, fallback)
 - `test_kvctlcommand` — 6 tests (subcommand parser, profile option, get/set fields, invalid input)
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
