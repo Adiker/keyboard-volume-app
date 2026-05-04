@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  format:
+    name: Format changed C++ files
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-format
+
+      - name: Check changed C++ files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+          fi
+
+          if git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            range="${base_sha}...HEAD"
+          else
+            range="HEAD~1...HEAD"
+          fi
+
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "${range}" \
+              | grep -E '^cpp/(src|tests)/.*\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$' \
+              || true
+          )
+
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "No changed C++ files under cpp/src or cpp/tests."
+            exit 0
+          fi
+
+          printf 'Checking format for:\n'
+          printf '  %s\n' "${files[@]}"
+          clang-format --dry-run --Werror "${files[@]}"
+
+  build:
+    name: Build and test (${{ matrix.build_type }})
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type:
+          - Debug
+          - Release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            qt6-base-dev \
+            libgtest-dev \
+            libevdev-dev \
+            libpulse-dev \
+            libpipewire-0.3-dev
+
+      - name: Configure
+        run: >
+          cmake
+          -S cpp
+          -B cpp/build-${{ matrix.build_type }}
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build cpp/build-${{ matrix.build_type }}
+
+      - name: Test
+        run: ctest --test-dir cpp/build-${{ matrix.build_type }} --output-on-failure
