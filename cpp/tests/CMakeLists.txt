@@ -7,6 +7,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Test)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBPULSE  REQUIRED IMPORTED_TARGET libpulse)
 pkg_check_modules(LIBEVDEV  REQUIRED IMPORTED_TARGET libevdev)
+pkg_check_modules(LIBPIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -54,8 +55,24 @@ target_link_libraries(test_volumecontroller PRIVATE
     Qt6::Core
     Qt6::Test
     PkgConfig::LIBPULSE
+    PkgConfig::LIBPIPEWIRE
 )
 add_test(NAME test_volumecontroller COMMAND test_volumecontroller)
+
+# ─── test_pwutils ──────────────────────────────────────────────────────────────
+add_executable(test_pwutils
+    test_pwutils.cpp
+    ../src/pwutils.cpp
+)
+target_include_directories(test_pwutils PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(test_pwutils PRIVATE
+    GTest::gtest_main
+    Qt6::Core
+    PkgConfig::LIBPIPEWIRE
+)
+add_test(NAME test_pwutils COMMAND test_pwutils)
 
 # ─── test_inputhandler (API-only, no device needed) ─────────────────────────────
 add_executable(test_inputhandler

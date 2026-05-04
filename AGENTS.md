@@ -55,10 +55,10 @@ Key repeat events (`ev.value == 2`) are handled alongside regular press events (
 4 levels, in hot-path order:
 1. Active sink input (libpulse, ~0.5ms)
 2. Stream restore DB (libpulse)
-3. PipeWire node via `pw-dump` + `pw-cli` subprocess (~30ms) — slow, **never in the hot keypress path**
+3. PipeWire node via libpipewire — used only after libpulse active-input and stream-restore paths
 4. Pending watcher — queues volume/mute in `PaWorker` for when app reconnects
 
-`pw-dump` is only invoked for idle-app listing and PW-node fallback. The fast path touches only libpulse.
+Idle-app listing and PW-node fallback use libpipewire directly, not `pw-dump`/`pw-cli` subprocesses. The fast path touches only libpulse.
 
 If the PulseAudio context fails or terminates, `PaWorker` reconnects with backoff and `PaWatcherThread` rebuilds its sink-input subscription. Do not move reconnect, cleanup, or libpulse calls to the main thread. Transient app-list refreshes during reconnect must not overwrite `Config::selectedApp()`; keep the user's configured app even if it temporarily disappears from the list.
 

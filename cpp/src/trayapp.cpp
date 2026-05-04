@@ -108,7 +108,7 @@ void TrayApp::populateAppList()
 
 void TrayApp::onRefresh()
 {
-    // Triggers an async pw-dump refresh in the PA worker thread.
+    // Triggers an async PipeWire refresh in the PA worker thread.
     // Menu will be rebuilt automatically when appsReady fires.
     m_volumeCtrl->listApps(/*forceRefresh=*/true);
 }

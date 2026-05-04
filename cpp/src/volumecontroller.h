@@ -7,7 +7,7 @@
 #include <QList>
 
 // VolumeController — public API, always called from the main thread.
-// All blocking PA operations and pw-dump subprocesses run inside a
+// All blocking PA/libpipewire operations run inside a
 // dedicated PA worker thread so the Qt event loop is never stalled.
 class VolumeController : public QObject
 {
