@@ -459,7 +459,13 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 15 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity)
 
-Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.
+Run locally: `cd cpp/build && ctest --output-on-failure`.
+
+GitHub Actions CI is enabled in `.github/workflows/ci.yml` for PRs and pushes to
+`main`. It builds and runs CTest in both Debug and Release, and checks
+`clang-format` only for changed C++ files under `cpp/src` and `cpp/tests`.
+`clang-tidy` is not part of CI yet. `Claude Code Review` is currently
+temporarily disabled via `if: false` in `.github/workflows/claude-code-review.yml`.
 
 ---
 

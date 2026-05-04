@@ -91,9 +91,17 @@ The tray icon is embedded as a Qt resource: `cpp/resources.qrc` maps `../resourc
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 14 tests (merge, load/save, thread-safety)
-- `test_i18n` — 8 tests (lookup, fallback)
+- `test_config` — 23 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / id uniqueification)
+- `test_i18n` — 7 tests (lookup, fallback)
+- `test_kvctlcommand` — 6 tests (subcommand parser, profile option, get/set fields, invalid input)
+- `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
-- `test_inputhandler` — 8 tests (API, evdev device listing)
+- `test_inputhandler` — 15 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity)
 
-Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.
+Run locally: `cd cpp/build && ctest --output-on-failure`.
+
+GitHub Actions CI is enabled in `.github/workflows/ci.yml` for PRs and pushes to
+`main`. It builds and runs CTest in both Debug and Release, and checks
+`clang-format` only for changed C++ files under `cpp/src` and `cpp/tests`.
+`clang-tidy` is not part of CI yet. `Claude Code Review` is currently
+temporarily disabled via `if: false` in `.github/workflows/claude-code-review.yml`.
