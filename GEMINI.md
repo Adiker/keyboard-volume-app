@@ -31,7 +31,7 @@ This is the concise working guide for Gemini / Antigravity agents in this reposi
 ## Architecture Map
 
 - `cpp/src/main.cpp`: entry point and `App` coordinator. Uses two-phase init: constructor creates only `Config`, then `init()` creates UI, input, audio, and D-Bus/MPRIS integration after the optional first-run wizard.
-- `cpp/src/config.h/cpp`: thread-safe JSON config via `QStandardPaths::ConfigLocation`. Loads with deep-merge defaults. Setters save automatically.
+- `cpp/src/config.h/cpp`: thread-safe JSON config via `QStandardPaths::ConfigLocation`. Loads with deep-merge defaults. Setters save automatically via atomic `QSaveFile` commits.
 - `cpp/src/i18n.h/cpp`: PL/EN translation tables; `tr(key)` lookup with English fallback.
 - `cpp/src/inputhandler.h/cpp`: evdev hotkey capture, device grabbing, uinput mirroring, and `KeyCaptureThread` for hotkey rebinding. Also exposes `getVolumeDevices()` for device enumeration.
 - `cpp/src/volumecontroller.h/cpp`: async per-app volume/mute controller. Fast path is libpulse active sink input, then stream restore, then PipeWire node fallback, then pending state in `PaWorker`. Reconnects PA context with backoff after daemon/context loss.

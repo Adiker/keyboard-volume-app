@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonArray>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QDebug>
 #include <QStringList>
@@ -280,12 +281,21 @@ void Config::save() const
 void Config::saveUnlocked() const
 {
     QDir().mkpath(configDir());
-    QFile f(configFile());
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    QSaveFile f(configFile());
+    f.setDirectWriteFallback(false);
+    if (!f.open(QIODevice::WriteOnly)) {
         qWarning() << "[Config] Cannot write" << configFile();
         return;
     }
-    f.write(QJsonDocument(m_data).toJson(QJsonDocument::Indented));
+
+    const QByteArray data = QJsonDocument(m_data).toJson(QJsonDocument::Indented);
+    if (f.write(data) != data.size()) {
+        qWarning() << "[Config] Incomplete write" << configFile() << f.errorString();
+        return;
+    }
+
+    if (!f.commit())
+        qWarning() << "[Config] Cannot commit" << configFile() << f.errorString();
 }
 
 // ─── Getters / setters ────────────────────────────────────────────────────────

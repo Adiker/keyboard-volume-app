@@ -6,6 +6,9 @@
 #include <QTemporaryDir>
 #include <QFile>
 
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include "config.h"
 
 // ─── deepMerge tests ───────────────────────────────────────────────────────────
@@ -164,6 +167,41 @@ TEST(Config, SettersRoundtrip)
     EXPECT_EQ(config2.volumeStep(), 15);
     EXPECT_TRUE(config2.inputDevice().isEmpty());
     EXPECT_TRUE(config2.selectedApp().isEmpty());
+}
+
+TEST(Config, SaveFailureKeepsExistingFile)
+{
+    if (geteuid() == 0)
+        GTEST_SKIP() << "Directory permissions do not block root writes";
+
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Config config(tmp.path());
+    config.setLanguage("pl");
+
+    const QString configPath = tmp.path() + "/config.json";
+    QFile beforeFile(configPath);
+    ASSERT_TRUE(beforeFile.open(QIODevice::ReadOnly));
+    const QByteArray before = beforeFile.readAll();
+    beforeFile.close();
+
+    const QByteArray dirPath = QFile::encodeName(tmp.path());
+    ASSERT_EQ(chmod(dirPath.constData(), 0555), 0);
+
+    config.setLanguage("en");
+
+    ASSERT_EQ(chmod(dirPath.constData(), 0755), 0);
+
+    QFile afterFile(configPath);
+    ASSERT_TRUE(afterFile.open(QIODevice::ReadOnly));
+    const QByteArray after = afterFile.readAll();
+    afterFile.close();
+
+    EXPECT_EQ(after, before);
+
+    Config reloaded(tmp.path());
+    EXPECT_EQ(reloaded.language().toStdString(), "pl");
 }
 
 TEST(Config, VolumeStepClamp)

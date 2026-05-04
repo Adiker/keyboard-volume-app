@@ -91,9 +91,10 @@ The tray icon is embedded as a Qt resource: `cpp/resources.qrc` maps `../resourc
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 14 tests (merge, load/save, thread-safety)
-- `test_i18n` — 8 tests (lookup, fallback)
+- `test_config` — 23 tests (merge, load/save, atomic save failure, thread-safety, profile migration)
+- `test_i18n` — 7 tests (lookup, fallback)
+- `test_pwutils` — 3 tests (filtering, name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
-- `test_inputhandler` — 8 tests (API, evdev device listing)
+- `test_inputhandler` — 15 tests (API, evdev device listing, modifier/profile resolution)
 
 Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.
