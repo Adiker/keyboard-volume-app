@@ -33,9 +33,10 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **PL / EN interface** — switch language in Settings
 - **First-run wizard** — on first launch, a QWizard guides through language, input device, and default audio app selection; the app is production-ready out of the box after a few clicks
 - **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles**; bare `VolumeUp/Down/ToggleMute/RefreshApps` methods plus per-profile `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
+- **`kv-ctl` CLI** — script-friendly command-line client for D-Bus control without calling the external `qdbus` program
 - **MPRIS v2** — registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client
 - **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
-- **Unit tests** — GTest + Qt Test suite covering Config, i18n, PipeWire utilities, VolumeController, and InputHandler
+- **Unit tests** — GTest + Qt Test suite covering Config, i18n, `kv-ctl` parsing, PipeWire utilities, VolumeController, and InputHandler
 
 ### Requirements
 
@@ -59,7 +60,7 @@ cd keyboard-volume-app/pkg/arch
 makepkg -si
 ```
 
-This clones `main`, builds a Release binary, and installs everything to `/usr` including the `.desktop` entry, icon, and systemd user service.
+This clones `main`, builds Release binaries, and installs everything to `/usr` including `keyboard-volume-app`, `kv-ctl`, the `.desktop` entry, icon, and systemd user service.
 
 #### Build from source
 
@@ -85,6 +86,8 @@ sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev cmak
 cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
 cmake --build cpp/build -j$(nproc)
 ```
+
+This produces `cpp/build/keyboard-volume-app` and `cpp/build/kv-ctl`.
 
 **Input device permissions** — evdev requires read access to `/dev/input/event*`. Add your user to the `input` group:
 
@@ -122,6 +125,7 @@ On first launch the **first-run wizard** guides you through language selection, 
 ```bash
 cpp/build/keyboard-volume-app --help     # Show help
 cpp/build/keyboard-volume-app --version  # Show version
+cpp/build/kv-ctl --help                  # Show CLI control commands
 ```
 
 ### Testing
@@ -132,7 +136,7 @@ cmake --build cpp/build
 cd cpp/build && ctest
 ```
 
-Tests cover the Config manager, i18n translations, VolumeController (smoke test), and InputHandler (API-only, no device required). Requires `gtest` / `libgtest-dev` package (see Requirements).
+Tests cover the Config manager, i18n translations, `kv-ctl` command parsing, PipeWire utilities, VolumeController (smoke test), and InputHandler (API-only, no device required). Requires `gtest` / `libgtest-dev` package (see Requirements).
 
 ### Usage
 
@@ -150,28 +154,26 @@ Tests cover the Config manager, i18n translations, VolumeController (smoke test)
    - OSD colors (background, text, progress bar)
    - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers and target app; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls)
 
-7. **D-Bus remote control** — use `qdbus` or `dbus-send` to drive the app from scripts, custom keybinds, or external tools:
+7. **CLI / D-Bus remote control** — use `kv-ctl` to drive the running tray app from scripts, custom keybinds, or external tools without calling the external `qdbus` program:
 
    ```bash
    # Bump volume on the default profile's app
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeUp
+   kv-ctl up
 
    # Bump volume on a specific profile
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-       org.keyboardvolumeapp.VolumeControl.VolumeUpProfile firefox-ctrl
+   kv-ctl up --profile firefox-ctrl
 
    # List all profiles
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
-       org.keyboardvolumeapp.VolumeControl Profiles
+   kv-ctl get profiles
 
    # Switch to Firefox
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
-       org.keyboardvolumeapp.VolumeControl ActiveApp "Firefox"
+   kv-ctl set active-app Firefox
 
    # Read current volume
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
-       org.keyboardvolumeapp.VolumeControl Volume
+   kv-ctl get volume
    ```
+
+   `kv-ctl` still uses the app's existing session D-Bus API under the hood, so `keyboard-volume-app` must already be running.
 
 > **Hotkey capture note:** the app grabs its configured keys at the evdev level, so those exact keys won't be visible to Qt while the app is running. To reassign *currently active* hotkeys, first bind them to temporary placeholders (e.g. F9/F10/F11), save and reopen Settings, then set the final keys.
 
@@ -235,6 +237,8 @@ keyboard-volume-app/
 │       ├── firstrunwizard.h/cpp  # First-run wizard (language + device + app)
 │       ├── dbusinterface.h/cpp   # D-Bus VolumeControl interface
 │       ├── mprisinterface.h/cpp  # MPRIS v2 adaptor
+│       ├── kvctl.cpp             # kv-ctl D-Bus CLI client
+│       ├── kvctlcommand.h/cpp    # kv-ctl command parser
 │       ├── pwutils.h/cpp         # PipeWire client listing utility
 │       ├── applistwidget.h/cpp   # Reusable PW app list widget
 │       ├── appselectordialog.h/cpp  # Dialog for changing default audio app
@@ -244,6 +248,7 @@ keyboard-volume-app/
 │       ├── CMakeLists.txt
 │       ├── test_config.cpp
 │       ├── test_i18n.cpp
+│       ├── test_kvctlcommand.cpp
 │       ├── test_inputhandler.cpp
 │       ├── test_pwutils.cpp
 │       └── test_volumecontroller.cpp
@@ -303,9 +308,10 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
 - **Asystent pierwszego uruchomienia** — przy pierwszym starcie QWizard przeprowadza przez wybór języka, urządzenia wejściowego i domyślnej aplikacji audio; aplikacja działa od razu po kilku kliknięciach
 - **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile**; bare metody `VolumeUp/Down/ToggleMute/RefreshApps` plus per-profile `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
+- **CLI `kv-ctl`** — wygodny klient wiersza poleceń do sterowania przez D-Bus bez wywoływania zewnętrznego programu `qdbus`
 - **MPRIS v2** — zarejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS
 - **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
-- **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, narzędzi PipeWire, VolumeController i InputHandler
+- **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, parsera `kv-ctl`, narzędzi PipeWire, VolumeController i InputHandler
 
 ### Wymagania
 
@@ -329,7 +335,7 @@ cd keyboard-volume-app/pkg/arch
 makepkg -si
 ```
 
-Pobiera branch `main`, buduje binarę Release i instaluje wszystko do `/usr` wraz z wpisem `.desktop`, ikoną i usługą systemd user.
+Pobiera branch `main`, buduje binarki Release i instaluje wszystko do `/usr`, w tym `keyboard-volume-app`, `kv-ctl`, wpis `.desktop`, ikonę i usługę systemd user.
 
 #### Budowanie ze źródeł
 
@@ -355,6 +361,8 @@ sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev cmak
 cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
 cmake --build cpp/build -j$(nproc)
 ```
+
+Powstają binarki `cpp/build/keyboard-volume-app` oraz `cpp/build/kv-ctl`.
 
 **Uprawnienia do urządzenia wejściowego** — evdev wymaga dostępu do odczytu plików `/dev/input/event*`. Dodaj swojego użytkownika do grupy `input`:
 
@@ -392,6 +400,7 @@ Przy pierwszym uruchomieniu **asystent pierwszego uruchomienia** przeprowadzi pr
 ```bash
 cpp/build/keyboard-volume-app --help     # Pokaż pomoc
 cpp/build/keyboard-volume-app --version  # Pokaż wersję
+cpp/build/kv-ctl --help                  # Pokaż komendy sterowania CLI
 ```
 
 ### Testowanie
@@ -402,7 +411,7 @@ cmake --build cpp/build
 cd cpp/build && ctest
 ```
 
-Testy obejmują Config, i18n, VolumeController (test dymny) i InputHandler (API, bez potrzeby urządzenia). Wymaga pakietu `gtest` / `libgtest-dev` (zobacz Wymagania).
+Testy obejmują Config, i18n, parser `kv-ctl`, narzędzia PipeWire, VolumeController (test dymny) i InputHandler (API, bez potrzeby urządzenia). Wymaga pakietu `gtest` / `libgtest-dev` (zobacz Wymagania).
 
 ### Użytkowanie
 
@@ -420,28 +429,26 @@ Testy obejmują Config, i18n, VolumeController (test dymny) i InputHandler (API,
    - Kolory OSD (tło, tekst, pasek)
    - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją; pierwszy wiersz jest profilem domyślnym (używanym przez tray oraz przez bare metody D-Bus / MPRIS)
 
-7. **Zdalne sterowanie przez D-Bus** — użyj `qdbus` lub `dbus-send` do kontrolowania aplikacji ze skryptów, własnych skrótów lub zewnętrznych narzędzi:
+7. **Zdalne sterowanie CLI / D-Bus** — użyj `kv-ctl` do kontrolowania działającej aplikacji ze skryptów, własnych skrótów lub zewnętrznych narzędzi bez uruchamiania zewnętrznego programu `qdbus`:
 
    ```bash
    # Zwiększ głośność aplikacji profilu domyślnego
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeUp
+   kv-ctl up
 
    # Zwiększ głośność wybranego profilu
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-       org.keyboardvolumeapp.VolumeControl.VolumeUpProfile firefox-ctrl
+   kv-ctl up --profile firefox-ctrl
 
    # Wylistuj wszystkie profile
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
-       org.keyboardvolumeapp.VolumeControl Profiles
+   kv-ctl get profiles
 
    # Przełącz na Firefox
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
-       org.keyboardvolumeapp.VolumeControl ActiveApp "Firefox"
+   kv-ctl set active-app Firefox
 
    # Odczytaj aktualną głośność
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
-       org.keyboardvolumeapp.VolumeControl Volume
+   kv-ctl get volume
    ```
+
+   `kv-ctl` nadal używa istniejącego API D-Bus aplikacji, więc `keyboard-volume-app` musi już działać.
 
 > **Uwaga dot. przechwytywania klawiszy:** aplikacja blokuje aktualnie skonfigurowane klawisze na poziomie evdev, więc te właśnie klawisze nie są widoczne dla Qt podczas działania programu. Aby zmienić *aktywne* skróty, najpierw przypisz je do tymczasowych klawiszy (np. F9/F10/F11), zapisz i otwórz Ustawienia ponownie.
 
@@ -505,6 +512,8 @@ keyboard-volume-app/
 │       ├── firstrunwizard.h/cpp  # Asystent pierwszego uruchomienia
 │       ├── dbusinterface.h/cpp   # Interfejs D-Bus VolumeControl
 │       ├── mprisinterface.h/cpp  # Adaptor MPRIS v2
+│       ├── kvctl.cpp             # Klient CLI D-Bus kv-ctl
+│       ├── kvctlcommand.h/cpp    # Parser komend kv-ctl
 │       ├── pwutils.h/cpp         # Narzędzie do listowania klientów PipeWire
 │       ├── applistwidget.h/cpp   # Reusable widget listy aplikacji PW
 │       ├── appselectordialog.h/cpp  # Dialog zmiany domyślnej aplikacji audio
@@ -514,6 +523,7 @@ keyboard-volume-app/
 │       ├── CMakeLists.txt
 │       ├── test_config.cpp
 │       ├── test_i18n.cpp
+│       ├── test_kvctlcommand.cpp
 │       ├── test_inputhandler.cpp
 │       ├── test_pwutils.cpp
 │       └── test_volumecontroller.cpp

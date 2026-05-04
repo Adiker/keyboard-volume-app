@@ -180,9 +180,9 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 ### 19. Wbudowane CLI (Sub-komendy dla skryptów / Tiling WM)
 
 **Problem:** Używanie `qdbus` w konfiguracjach takich środowisk jak Sway, Hyprland czy i3 jest uciążliwe ze względu na bardzo długie komendy.
-**Rekomendacja:** Rozbudowa `QCommandLineParser`, by główna binarka mogła zadziałać w trybie lekkiego klienta CLI (np. `keyboard-volume-app cli --vol-up --profile firefox`), wysyłającego po prostu komendę DBus do głównego demona i kończącego od razu proces.
-**Pliki:** `cpp/src/main.cpp`.
-**Status:** Planowane.
+**Rekomendacja:** Osobna binarka `kv-ctl` jako lekki klient QtDBus bez zależności od zewnętrznego programu `qdbus`, np. `kv-ctl up`, `kv-ctl down --profile firefox`, `kv-ctl set volume 35`.
+**Pliki:** `cpp/src/kvctl.cpp`, `cpp/src/kvctlcommand.h/cpp`, `cpp/CMakeLists.txt`, `cpp/tests/test_kvctlcommand.cpp`.
+**Status:** Zrealizowane. `kv-ctl` używa istniejącego endpointu `org.keyboardvolumeapp.VolumeControl`, obsługuje komendy `up/down/mute/refresh/get/set`, mapuje profile na metody per-profile i ma testowany parser argumentów bez potrzeby uruchamiania D-Bus.
 
 ### 20. Relatywne pozycjonowanie OSD (Anchor) oraz Custom CSS
 
