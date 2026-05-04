@@ -110,12 +110,12 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** Nowy `cpp/src/dbusinterface.h/cpp`, `cpp/src/mprisinterface.h/cpp`, zmiana CMakeLists.txt
 **Status:** Zrealizowane. Własny interfejs `org.keyboardvolumeapp.VolumeControl` + MPRIS `org.mpris.MediaPlayer2`/`.Player`. Cache stanu, delegacja async do VolumeController. ExportAdaptors dla adaptorów MPRIS. Cleanup w App::cleanup().
 
-### 10. CI/CD (GitHub Actions)
+### 10. CI/CD (GitHub Actions) ✓
 
 **Problem:** Brak automatycznej walidacji przy PR/commit.
 **Rekomendacja:** Workflow: build (Release + Debug), testy, lint (clang-format, clang-tidy).
 **Pliki:** Nowy `.github/workflows/ci.yml`
-**Status:** Planowane.
+**Status:** Zrealizowane. `.github/workflows/ci.yml` uruchamia się dla PR-ów i pushy do `main`, buduje projekt w konfiguracjach Debug oraz Release, uruchamia CTest i sprawdza `clang-format` tylko dla zmienionych plików C++ w `cpp/src` oraz `cpp/tests`. `.clang-format` dodano w repo. `clang-tidy` pozostaje osobnym follow-upem. `Claude Code Review` jest tymczasowo wyłączony przez `if: false` w `.github/workflows/claude-code-review.yml`.
 
 ### 11. Systemd user service ✓
 
