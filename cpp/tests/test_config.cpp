@@ -15,7 +15,7 @@
 
 TEST(ConfigDeepMerge, ScalarOverride)
 {
-    QJsonObject base    {{"volume_step", 5}};
+    QJsonObject base{{"volume_step", 5}};
     QJsonObject override{{"volume_step", 10}};
 
     QJsonObject result = Config::deepMerge(base, override);
@@ -25,27 +25,20 @@ TEST(ConfigDeepMerge, ScalarOverride)
 
 TEST(ConfigDeepMerge, NestedMerge)
 {
-    QJsonObject base{
-        {"osd", QJsonObject{{"x", 50}, {"y", 1150}}}
-    };
-    QJsonObject override{
-        {"osd", QJsonObject{{"x", 200}}}
-    };
+    QJsonObject base{{"osd", QJsonObject{{"x", 50}, {"y", 1150}}}};
+    QJsonObject override{{"osd", QJsonObject{{"x", 200}}}};
 
     QJsonObject result = Config::deepMerge(base, override);
 
     QJsonObject osd = result["osd"].toObject();
-    EXPECT_EQ(osd["x"].toInt(), 200);     // overridden
-    EXPECT_EQ(osd["y"].toInt(), 1150);    // preserved from base
+    EXPECT_EQ(osd["x"].toInt(), 200);  // overridden
+    EXPECT_EQ(osd["y"].toInt(), 1150); // preserved from base
 }
 
 TEST(ConfigDeepMerge, DefaultsOnly)
 {
-    QJsonObject base{
-        {"language", "en"},
-        {"volume_step", 5}
-    };
-    QJsonObject override{};   // empty
+    QJsonObject base{{"language", "en"}, {"volume_step", 5}};
+    QJsonObject override{}; // empty
 
     QJsonObject result = Config::deepMerge(base, override);
 
@@ -55,12 +48,8 @@ TEST(ConfigDeepMerge, DefaultsOnly)
 
 TEST(ConfigDeepMerge, OverrideOnlyKeys)
 {
-    QJsonObject base{
-        {"language", "en"}
-    };
-    QJsonObject override{
-        {"future_key", "future_value"}
-    };
+    QJsonObject base{{"language", "en"}};
+    QJsonObject override{{"future_key", "future_value"}};
 
     QJsonObject result = Config::deepMerge(base, override);
 
@@ -71,12 +60,9 @@ TEST(ConfigDeepMerge, OverrideOnlyKeys)
 
 TEST(ConfigDeepMerge, NullPreserved)
 {
-    QJsonObject base{
-        {"input_device", QJsonValue::Null},
-        {"language", "en"}
-    };
+    QJsonObject base{{"input_device", QJsonValue::Null}, {"language", "en"}};
     QJsonObject override{
-        {"input_device", QJsonValue::Null}  // explicitly null
+        {"input_device", QJsonValue::Null} // explicitly null
     };
 
     QJsonObject result = Config::deepMerge(base, override);
@@ -87,18 +73,14 @@ TEST(ConfigDeepMerge, NullPreserved)
 
 TEST(ConfigDeepMerge, NestedObjectNewKey)
 {
-    QJsonObject base{
-        {"osd", QJsonObject{{"x", 50}}}
-    };
-    QJsonObject override{
-        {"osd", QJsonObject{{"z", 999}}}
-    };
+    QJsonObject base{{"osd", QJsonObject{{"x", 50}}}};
+    QJsonObject override{{"osd", QJsonObject{{"z", 999}}}};
 
     QJsonObject result = Config::deepMerge(base, override);
 
     QJsonObject osd = result["osd"].toObject();
-    EXPECT_EQ(osd["x"].toInt(), 50);   // preserved from base
-    EXPECT_EQ(osd["z"].toInt(), 999);  // added from override
+    EXPECT_EQ(osd["x"].toInt(), 50);  // preserved from base
+    EXPECT_EQ(osd["z"].toInt(), 999); // added from override
 }
 
 // ─── Config I/O tests (isolated via QTemporaryDir) ─────────────────────────────
@@ -122,10 +104,7 @@ TEST(Config, LoadExistingFile)
     // Write a config with some overrides
     QFile f(tmp.path() + "/config.json");
     ASSERT_TRUE(f.open(QIODevice::WriteOnly));
-    QJsonObject json{
-        {"language", "pl"},
-        {"volume_step", 10}
-    };
+    QJsonObject json{{"language", "pl"}, {"volume_step", 10}};
     f.write(QJsonDocument(json).toJson());
     f.close();
 
@@ -153,7 +132,7 @@ TEST(Config, SettersRoundtrip)
     config.setInputDevice("/dev/input/event3");
     EXPECT_EQ(config.inputDevice().toStdString(), "/dev/input/event3");
 
-    config.setInputDevice("");   // clear
+    config.setInputDevice(""); // clear
     EXPECT_TRUE(config.inputDevice().isEmpty());
 
     config.setSelectedApp("firefox");
@@ -171,8 +150,7 @@ TEST(Config, SettersRoundtrip)
 
 TEST(Config, SaveFailureKeepsExistingFile)
 {
-    if (geteuid() == 0)
-        GTEST_SKIP() << "Directory permissions do not block root writes";
+    if (geteuid() == 0) GTEST_SKIP() << "Directory permissions do not block root writes";
 
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
@@ -227,22 +205,22 @@ TEST(Config, HotkeysRoundtrip)
     Config config(tmp.path());
 
     auto hk = config.hotkeys();
-    EXPECT_EQ(hk.volumeUp,   115);
+    EXPECT_EQ(hk.volumeUp, 115);
     EXPECT_EQ(hk.volumeDown, 114);
-    EXPECT_EQ(hk.mute,       113);
+    EXPECT_EQ(hk.mute, 113);
 
     config.setHotkeys(200, 201, 202);
     hk = config.hotkeys();
-    EXPECT_EQ(hk.volumeUp,   200);
+    EXPECT_EQ(hk.volumeUp, 200);
     EXPECT_EQ(hk.volumeDown, 201);
-    EXPECT_EQ(hk.mute,       202);
+    EXPECT_EQ(hk.mute, 202);
 
     // Persisted
     Config config2(tmp.path());
     hk = config2.hotkeys();
-    EXPECT_EQ(hk.volumeUp,   200);
+    EXPECT_EQ(hk.volumeUp, 200);
     EXPECT_EQ(hk.volumeDown, 201);
-    EXPECT_EQ(hk.mute,       202);
+    EXPECT_EQ(hk.mute, 202);
 }
 
 TEST(Config, OsdRoundtrip)
@@ -252,35 +230,35 @@ TEST(Config, OsdRoundtrip)
     Config config(tmp.path());
 
     auto osd = config.osd();
-    EXPECT_EQ(osd.x,         50);
-    EXPECT_EQ(osd.y,         1150);
+    EXPECT_EQ(osd.x, 50);
+    EXPECT_EQ(osd.y, 1150);
     EXPECT_EQ(osd.timeoutMs, 1200);
-    EXPECT_EQ(osd.opacity,   85);
-    EXPECT_EQ(osd.screen,    0);
+    EXPECT_EQ(osd.opacity, 85);
+    EXPECT_EQ(osd.screen, 0);
 
     OsdConfig newOsd;
-    newOsd.x         = 100;
-    newOsd.y         = 200;
+    newOsd.x = 100;
+    newOsd.y = 200;
     newOsd.timeoutMs = 800;
-    newOsd.opacity   = 50;
-    newOsd.screen    = 2;
-    newOsd.colorBg   = "#000000";
+    newOsd.opacity = 50;
+    newOsd.screen = 2;
+    newOsd.colorBg = "#000000";
     newOsd.colorText = "#FF0000";
-    newOsd.colorBar  = "#00FF00";
+    newOsd.colorBar = "#00FF00";
     config.setOsd(newOsd);
 
     auto r = config.osd();
-    EXPECT_EQ(r.x,         100);
-    EXPECT_EQ(r.y,         200);
+    EXPECT_EQ(r.x, 100);
+    EXPECT_EQ(r.y, 200);
     EXPECT_EQ(r.timeoutMs, 800);
-    EXPECT_EQ(r.opacity,   50);
-    EXPECT_EQ(r.screen,    2);
+    EXPECT_EQ(r.opacity, 50);
+    EXPECT_EQ(r.screen, 2);
 
     // Persisted
     Config config2(tmp.path());
     r = config2.osd();
-    EXPECT_EQ(r.x,         100);
-    EXPECT_EQ(r.y,         200);
+    EXPECT_EQ(r.x, 100);
+    EXPECT_EQ(r.y, 200);
 }
 
 TEST(Config, UpdateOsdPartial)
@@ -292,19 +270,19 @@ TEST(Config, UpdateOsdPartial)
     config.updateOsd(3, 900, 300, 400, 70, "#AAA", "#BBB", "#CCC");
 
     auto r = config.osd();
-    EXPECT_EQ(r.screen,    3);
+    EXPECT_EQ(r.screen, 3);
     EXPECT_EQ(r.timeoutMs, 900);
-    EXPECT_EQ(r.x,         300);
-    EXPECT_EQ(r.y,         400);
-    EXPECT_EQ(r.opacity,   70);
-    EXPECT_EQ(r.colorBg.toStdString(),   "#AAA");
+    EXPECT_EQ(r.x, 300);
+    EXPECT_EQ(r.y, 400);
+    EXPECT_EQ(r.opacity, 70);
+    EXPECT_EQ(r.colorBg.toStdString(), "#AAA");
     EXPECT_EQ(r.colorText.toStdString(), "#BBB");
-    EXPECT_EQ(r.colorBar.toStdString(),  "#CCC");
+    EXPECT_EQ(r.colorBar.toStdString(), "#CCC");
 
     // Persisted
     Config config2(tmp.path());
     r = config2.osd();
-    EXPECT_EQ(r.screen,    3);
+    EXPECT_EQ(r.screen, 3);
     EXPECT_EQ(r.colorBg.toStdString(), "#AAA");
 }
 
@@ -320,11 +298,12 @@ TEST(ConfigProfiles, MigrationOldConfigSynthesizesDefaultProfile)
     ASSERT_TRUE(f.open(QIODevice::WriteOnly));
     QJsonObject json{
         {"selected_app", "spotify"},
-        {"hotkeys", QJsonObject{
-            {"volume_up",   200},
-            {"volume_down", 201},
-            {"mute",        202},
-        }},
+        {"hotkeys",
+         QJsonObject{
+             {"volume_up", 200},
+             {"volume_down", 201},
+             {"mute", 202},
+         }},
     };
     f.write(QJsonDocument(json).toJson());
     f.close();
@@ -332,12 +311,12 @@ TEST(ConfigProfiles, MigrationOldConfigSynthesizesDefaultProfile)
     Config config(tmp.path());
     auto profs = config.profiles();
     ASSERT_EQ(profs.size(), 1);
-    EXPECT_EQ(profs[0].id.toStdString(),   "default");
+    EXPECT_EQ(profs[0].id.toStdString(), "default");
     EXPECT_EQ(profs[0].name.toStdString(), "Default");
-    EXPECT_EQ(profs[0].app.toStdString(),  "spotify");
-    EXPECT_EQ(profs[0].hotkeys.volumeUp,   200);
+    EXPECT_EQ(profs[0].app.toStdString(), "spotify");
+    EXPECT_EQ(profs[0].hotkeys.volumeUp, 200);
     EXPECT_EQ(profs[0].hotkeys.volumeDown, 201);
-    EXPECT_EQ(profs[0].hotkeys.mute,       202);
+    EXPECT_EQ(profs[0].hotkeys.mute, 202);
     EXPECT_TRUE(profs[0].modifiers.isEmpty());
 
     // The config file should now contain a "profiles" array on disk.
@@ -356,11 +335,12 @@ TEST(ConfigProfiles, EmptyProfilesRebuildsDefaultProfile)
     ASSERT_TRUE(f.open(QIODevice::WriteOnly));
     QJsonObject json{
         {"selected_app", "spotify"},
-        {"hotkeys", QJsonObject{
-            {"volume_up",   210},
-            {"volume_down", 211},
-            {"mute",        212},
-        }},
+        {"hotkeys",
+         QJsonObject{
+             {"volume_up", 210},
+             {"volume_down", 211},
+             {"mute", 212},
+         }},
         {"profiles", QJsonArray{}},
     };
     f.write(QJsonDocument(json).toJson());
@@ -371,9 +351,9 @@ TEST(ConfigProfiles, EmptyProfilesRebuildsDefaultProfile)
     ASSERT_EQ(profs.size(), 1);
     EXPECT_EQ(profs[0].id.toStdString(), "default");
     EXPECT_EQ(profs[0].app.toStdString(), "spotify");
-    EXPECT_EQ(profs[0].hotkeys.volumeUp,   210);
+    EXPECT_EQ(profs[0].hotkeys.volumeUp, 210);
     EXPECT_EQ(profs[0].hotkeys.volumeDown, 211);
-    EXPECT_EQ(profs[0].hotkeys.mute,       212);
+    EXPECT_EQ(profs[0].hotkeys.mute, 212);
 }
 
 TEST(ConfigProfiles, MalformedProfilesRebuildsDefaultProfile)
@@ -385,15 +365,17 @@ TEST(ConfigProfiles, MalformedProfilesRebuildsDefaultProfile)
     ASSERT_TRUE(f.open(QIODevice::WriteOnly));
     QJsonObject json{
         {"selected_app", "vlc"},
-        {"hotkeys", QJsonObject{
-            {"volume_up",   220},
-            {"volume_down", 221},
-            {"mute",        222},
-        }},
-        {"profiles", QJsonArray{
-            QJsonObject{{"name", "Missing id"}, {"app", "firefox"}},
-            QStringLiteral("not an object"),
-        }},
+        {"hotkeys",
+         QJsonObject{
+             {"volume_up", 220},
+             {"volume_down", 221},
+             {"mute", 222},
+         }},
+        {"profiles",
+         QJsonArray{
+             QJsonObject{{"name", "Missing id"}, {"app", "firefox"}},
+             QStringLiteral("not an object"),
+         }},
     };
     f.write(QJsonDocument(json).toJson());
     f.close();
@@ -403,9 +385,9 @@ TEST(ConfigProfiles, MalformedProfilesRebuildsDefaultProfile)
     ASSERT_EQ(profs.size(), 1);
     EXPECT_EQ(profs[0].id.toStdString(), "default");
     EXPECT_EQ(profs[0].app.toStdString(), "vlc");
-    EXPECT_EQ(profs[0].hotkeys.volumeUp,   220);
+    EXPECT_EQ(profs[0].hotkeys.volumeUp, 220);
     EXPECT_EQ(profs[0].hotkeys.volumeDown, 221);
-    EXPECT_EQ(profs[0].hotkeys.mute,       222);
+    EXPECT_EQ(profs[0].hotkeys.mute, 222);
 }
 
 TEST(ConfigProfiles, RoundTripTwoProfiles)
@@ -460,9 +442,9 @@ TEST(ConfigProfiles, DefaultMirroringToLegacyKeys)
 
     // Legacy keys must mirror profile[0].
     EXPECT_EQ(config.selectedApp().toStdString(), "vlc");
-    EXPECT_EQ(config.hotkeys().volumeUp,   300);
+    EXPECT_EQ(config.hotkeys().volumeUp, 300);
     EXPECT_EQ(config.hotkeys().volumeDown, 301);
-    EXPECT_EQ(config.hotkeys().mute,       302);
+    EXPECT_EQ(config.hotkeys().mute, 302);
 }
 
 TEST(ConfigProfiles, RejectEmpty)
@@ -474,7 +456,7 @@ TEST(ConfigProfiles, RejectEmpty)
     auto before = config.profiles();
     ASSERT_FALSE(before.isEmpty());
 
-    config.setProfiles({});  // should be no-op
+    config.setProfiles({}); // should be no-op
 
     auto after = config.profiles();
     EXPECT_EQ(after, before);
@@ -488,7 +470,7 @@ TEST(ConfigProfiles, SetSelectedAppMirrorsToDefaultProfile)
 
     config.setSelectedApp("youtube-music");
     EXPECT_EQ(config.defaultProfile().app.toStdString(), "youtube-music");
-    EXPECT_EQ(config.selectedApp().toStdString(),        "youtube-music");
+    EXPECT_EQ(config.selectedApp().toStdString(), "youtube-music");
 }
 
 TEST(ConfigProfiles, SetHotkeysMirrorsToDefaultProfile)
@@ -499,9 +481,9 @@ TEST(ConfigProfiles, SetHotkeysMirrorsToDefaultProfile)
 
     config.setHotkeys(500, 501, 502);
     auto def = config.defaultProfile();
-    EXPECT_EQ(def.hotkeys.volumeUp,   500);
+    EXPECT_EQ(def.hotkeys.volumeUp, 500);
     EXPECT_EQ(def.hotkeys.volumeDown, 501);
-    EXPECT_EQ(def.hotkeys.mute,       502);
+    EXPECT_EQ(def.hotkeys.mute, 502);
 }
 
 TEST(ConfigProfiles, SetProfilesUniqueifiesIds)
@@ -510,12 +492,20 @@ TEST(ConfigProfiles, SetProfilesUniqueifiesIds)
     ASSERT_TRUE(tmp.isValid());
     Config config(tmp.path());
 
-    Profile a; a.id = "x"; a.name = "X"; a.app = "spotify"; a.hotkeys = {1, 2, 3};
-    Profile b; b.id = "x"; b.name = "X2"; a.app = "firefox"; b.hotkeys = {4, 5, 6};
+    Profile a;
+    a.id = "x";
+    a.name = "X";
+    a.app = "spotify";
+    a.hotkeys = {1, 2, 3};
+    Profile b;
+    b.id = "x";
+    b.name = "X2";
+    b.app = "firefox";
+    b.hotkeys = {4, 5, 6};
 
     config.setProfiles({a, b});
     auto profs = config.profiles();
     ASSERT_EQ(profs.size(), 2);
     EXPECT_EQ(profs[0].id.toStdString(), "x");
-    EXPECT_NE(profs[1].id.toStdString(), "x");  // suffixed
+    EXPECT_NE(profs[1].id.toStdString(), "x"); // suffixed
 }
