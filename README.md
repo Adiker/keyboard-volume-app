@@ -35,7 +35,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles**; bare `VolumeUp/Down/ToggleMute/RefreshApps` methods plus per-profile `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
 - **MPRIS v2** — registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client
 - **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
-- **Unit tests** — GTest + Qt Test suite covering Config, i18n, VolumeController, and InputHandler
+- **Unit tests** — GTest + Qt Test suite covering Config, i18n, PipeWire utilities, VolumeController, and InputHandler
 
 ### Requirements
 
@@ -44,7 +44,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 | Qt6 (Widgets, DBus) | System tray, OSD window, settings dialogs |
 | libevdev + libuinput | Global keyboard input capture and re-injection |
 | libpulse | Per-app volume control via PipeWire/PulseAudio socket |
-| `pw-dump` / `pw-cli` | Listing and controlling idle audio apps (part of `pipewire`) |
+| libpipewire | Listing and controlling idle PipeWire audio apps without subprocesses |
 | GTest | Unit tests (optional, `BUILD_TESTING=ON`) |
 | CMake 3.20+ | Build system |
 | C++20 compiler | GCC 11+ or Clang 13+ |
@@ -72,12 +72,12 @@ cd keyboard-volume-app
 
 Arch / Manjaro:
 ```bash
-sudo pacman -S qt6-base libevdev libpulse cmake gcc gtest
+sudo pacman -S qt6-base libevdev libpulse pipewire cmake gcc gtest
 ```
 
 Ubuntu / Debian:
 ```bash
-sudo apt install qt6-base-dev libevdev-dev libpulse-dev cmake g++ libgtest-dev
+sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev cmake g++ libgtest-dev
 ```
 
 **Build**
@@ -245,6 +245,7 @@ keyboard-volume-app/
 │       ├── test_config.cpp
 │       ├── test_i18n.cpp
 │       ├── test_inputhandler.cpp
+│       ├── test_pwutils.cpp
 │       └── test_volumecontroller.cpp
 ├── deploy/
 │   └── keyboard-volume-app.service  # systemd user service
@@ -263,7 +264,7 @@ keyboard-volume-app/
 
 ### Performance
 
-The volume change hot path (keypress → OSD update) uses a single libpulse IPC call (~1ms). The heavier `pw-dump` subprocess is only invoked when listing idle apps, with a cached result to avoid redundant calls. All PulseAudio operations run on a dedicated worker thread — the Qt event loop is never blocked. If the PulseAudio context fails or terminates, the worker reconnects with backoff and keeps pending volume/mute state until the target app reconnects. Transient app-list refreshes during audio daemon restarts do not replace the configured selected app. D-Bus property reads are served from a local cache (zero IPC); writes delegate asynchronously to the PulseAudio worker thread.
+The volume change hot path (keypress → OSD update) uses a single libpulse IPC call (~1ms). Idle PipeWire app listing and paused-node fallback use libpipewire directly, so the app does not spawn `pw-dump` or `pw-cli` subprocesses. All PulseAudio/PipeWire operations run on a dedicated worker thread — the Qt event loop is never blocked. If the PulseAudio context fails or terminates, the worker reconnects with backoff and keeps pending volume/mute state until the target app reconnects. Transient app-list refreshes during audio daemon restarts do not replace the configured selected app. D-Bus property reads are served from a local cache (zero IPC); writes delegate asynchronously to the PulseAudio worker thread.
 
 ### License
 
@@ -304,7 +305,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile**; bare metody `VolumeUp/Down/ToggleMute/RefreshApps` plus per-profile `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
 - **MPRIS v2** — zarejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS
 - **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
-- **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, VolumeController, InputHandler
+- **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, narzędzi PipeWire, VolumeController i InputHandler
 
 ### Wymagania
 
@@ -313,7 +314,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 | Qt6 (Widgets, DBus) | Zasobnik systemowy, okno OSD, dialogi ustawień |
 | libevdev + libuinput | Globalne przechwytywanie klawiszy i reinjekcja zdarzeń |
 | libpulse | Sterowanie głośnością per aplikacja przez gniazdo PipeWire/PulseAudio |
-| `pw-dump` / `pw-cli` | Listowanie i sterowanie nieaktywnymi aplikacjami audio (część pakietu `pipewire`) |
+| libpipewire | Listowanie i sterowanie nieaktywnymi aplikacjami PipeWire bez subprocessów |
 | GTest | Testy jednostkowe (opcjonalne, `BUILD_TESTING=ON`) |
 | CMake 3.20+ | System budowania |
 | Kompilator C++20 | GCC 11+ lub Clang 13+ |
@@ -341,12 +342,12 @@ cd keyboard-volume-app
 
 Arch / Manjaro:
 ```bash
-sudo pacman -S qt6-base libevdev libpulse cmake gcc gtest
+sudo pacman -S qt6-base libevdev libpulse pipewire cmake gcc gtest
 ```
 
 Ubuntu / Debian:
 ```bash
-sudo apt install qt6-base-dev libevdev-dev libpulse-dev cmake g++ libgtest-dev
+sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev cmake g++ libgtest-dev
 ```
 
 **Kompilacja**
@@ -514,6 +515,7 @@ keyboard-volume-app/
 │       ├── test_config.cpp
 │       ├── test_i18n.cpp
 │       ├── test_inputhandler.cpp
+│       ├── test_pwutils.cpp
 │       └── test_volumecontroller.cpp
 ├── deploy/
 │   └── keyboard-volume-app.service  # Usługa systemd user
@@ -532,7 +534,7 @@ keyboard-volume-app/
 
 ### Wydajność
 
-Hot path zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykonuje jedno wywołanie IPC przez libpulse (~1ms). Cięższy subprocess `pw-dump` jest uruchamiany wyłącznie przy listowaniu nieaktywnych aplikacji. Wszystkie operacje PulseAudio działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Jeśli kontekst PulseAudio zakończy się błędem lub zostanie zerwany, worker reconnectuje z backoffem i zachowuje pending volume/mute do czasu ponownego pojawienia się aplikacji. Przejściowe odświeżenia listy podczas restartu daemona audio nie zmieniają skonfigurowanej wybranej aplikacji. Odczyty właściwości D-Bus są serwowane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku PulseAudio.
+Hot path zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykonuje jedno wywołanie IPC przez libpulse (~1ms). Listowanie nieaktywnych aplikacji PipeWire i fallback dla wstrzymanych node'ów używają bezpośrednio libpipewire, więc aplikacja nie uruchamia subprocessów `pw-dump` ani `pw-cli`. Wszystkie operacje PulseAudio/PipeWire działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Jeśli kontekst PulseAudio zakończy się błędem lub zostanie zerwany, worker reconnectuje z backoffem i zachowuje pending volume/mute do czasu ponownego pojawienia się aplikacji. Przejściowe odświeżenia listy podczas restartu daemona audio nie zmieniają skonfigurowanej wybranej aplikacji. Odczyty właściwości D-Bus są serwowane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku PulseAudio.
 
 ### Licencja
 

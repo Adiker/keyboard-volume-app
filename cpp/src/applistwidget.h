@@ -14,7 +14,7 @@ class AppListWidget : public QWidget
 public:
     explicit AppListWidget(QWidget *parent = nullptr);
 
-    // Repopulate the list from pw-dump and highlight the saved selection.
+    // Repopulate the list from PipeWire and highlight the saved selection.
     void populate(Config *config);
 
     // Returns the currently selected app name, or "" for "No default".

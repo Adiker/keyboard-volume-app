@@ -55,7 +55,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Problem:** Użytkownik musi po pierwszym uruchomieniu wejść do tray menu aby wybrać aplikację audio.
 **Rekomendacja:** Dodać trzecią stronę w `FirstRunWizard` umożliwiającą wybór domyślnej aplikacji już przy pierwszym uruchomieniu.
 **Pliki:** Nowe `cpp/src/pwutils.h/cpp`, modyfikacja `cpp/src/firstrunwizard.h/cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/i18n.cpp`, `cpp/CMakeLists.txt`, `cpp/tests/CMakeLists.txt`
-**Status:** Zrealizowane. `AppPage` z listą klientów PipeWire (poprzez `pw-dump` subprocess). Zawiera opcję "Bez domyślnej aplikacji", przycisk Refresh, i zapisuje wybór do `Config::selectedApp`. Wydzielono `listPipeWireClients()` do wspólnego modułu `pwutils.h/cpp`. Lista wydzielona później do reusable `AppListWidget`. 4/4 testów przechodzi.
+**Status:** Zrealizowane. `AppPage` z listą klientów PipeWire (obecnie przez libpipewire). Zawiera opcję "Bez domyślnej aplikacji", przycisk Refresh, i zapisuje wybór do `Config::selectedApp`. Wydzielono `listPipeWireClients()` do wspólnego modułu `pwutils.h/cpp`. Lista wydzielona później do reusable `AppListWidget`.
 
 ### 5b. Zmiana domyślnej aplikacji z tray menu ✓
 
@@ -89,8 +89,8 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 
 **Problem:** `pw-dump` i `pw-cli` subprocesy są wolne (~30ms) i wymagają obecności tych binarek.
 **Rekomendacja:** Rozważyć libpipewire bezpośrednio zamiast subprocesów. Alternatywnie: PulseAudio API działa przez pipewire-pulse.
-**Pliki:** `cpp/src/volumecontroller.cpp` — zmiana strategii fallbacku
-**Status:** Planowane.
+**Pliki:** `cpp/src/pwutils.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/CMakeLists.txt`
+**Status:** Zrealizowane. `pwutils` używa libpipewire do snapshotu registry, listowania klientów PipeWire oraz odczytu/zapisu `SPA_PARAM_Props` na node'ach streamów. `VolumeController` zachowuje libpulse jako szybki primary backend, ale fallback dla idle/paused node'ów nie uruchamia już `pw-dump` ani `pw-cli`. Dodano zależność CMake `libpipewire-0.3` i testy filtrowania/deduplikacji klientów.
 
 ---
 

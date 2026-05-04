@@ -3,7 +3,7 @@
 **keyboard-volume-app** is a Linux desktop utility that intercepts keyboard volume/mute keys at the evdev level and routes them to a single user-selected audio application, rather than the system master volume. It displays an OSD overlay (Qt6 frameless window) showing the app name, volume bar, and percentage.
 
 **Stack:** C++20, Qt6 (Widgets, DBus)  
-**Audio backend:** PipeWire / PulseAudio (via libpulse IPC + `pw-dump`/`pw-cli` subprocesses)  
+**Audio backend:** PipeWire / PulseAudio (via libpulse IPC + libpipewire)
 **Input:** libevdev + libuinput  
 **Build system:** CMake 3.20+  
 **Platform:** Linux only (KDE Plasma primary target; XWayland required on Wayland sessions)
@@ -27,14 +27,14 @@ These are read at startup in `cpp/src/main.cpp` to decide whether to force XWayl
 ```
 keyboard-volume-app/
 ├── cpp/
-│   ├── CMakeLists.txt           # CMake build (Qt6, libevdev, libpulse, DBus)
+│   ├── CMakeLists.txt           # CMake build (Qt6, libevdev, libpulse, libpipewire, DBus)
 │   ├── resources.qrc            # Qt resource file — embeds icon.png
 │   └── src/
 │       ├── main.cpp             # Entry point; App class wires all modules
 │       ├── config.h/cpp         # JSON config r/w (XDG config dir via QStandardPaths)
 │       ├── i18n.h/cpp           # PL/EN translations; tr() lookup function
-│       ├── volumecontroller.h/cpp  # Per-app volume/mute via libpulse + pw-dump/pw-cli
-│       ├── pwutils.h/cpp           # Shared PipeWire client listing (pw-dump subprocess)
+│       ├── volumecontroller.h/cpp  # Per-app volume/mute via libpulse + libpipewire
+│       ├── pwutils.h/cpp           # Shared PipeWire helpers (libpipewire)
 │       ├── applistwidget.h/cpp     # Reusable PW app list widget + Refresh button
 │       ├── appselectordialog.h/cpp # QDialog for changing the default audio app from tray
 │       ├── inputhandler.h/cpp   # evdev QThread — global key capture + uinput re-injection
@@ -131,13 +131,15 @@ Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=11
 
 **Migration & legacy mirror.** `Config::load()` synthesizes a single `default` profile from legacy `selected_app` + top-level `hotkeys` when `profiles` is missing/empty, then `saveUnlocked()` writes the new schema. Top-level `selected_app` and `hotkeys` are kept in sync as a deprecated mirror of `profiles[0]` (one release of compat) — `setSelectedApp()`/`setHotkeys()` mirror into the default profile and vice versa, so existing D-Bus/MPRIS clients keep working.
 
-### `cpp/src/pwutils.h/cpp` — PipeWire client listing utility
+### `cpp/src/pwutils.h/cpp` — PipeWire utility
 
-Shared utility for listing idle PipeWire audio clients via `pw-dump` subprocess. Used by both `VolumeController` (via `PaWorker`) and the first-run wizard (`AppPage`).
+Shared utility for listing idle PipeWire audio clients and controlling PipeWire stream nodes via libpipewire. Used by both `VolumeController` (via `PaWorker`) and the first-run wizard (`AppPage`).
 
 - **`PipeWireClient` struct** — `{ QString name; QString binary; }`
+- **`PipeWireNode` struct** — `{ uint32_t id; double volume; bool muted; }`
 - **`SYSTEM_BINARIES` / `SKIP_APP_NAMES`** — `QSet<QString>` filter constants shared between `pwutils` and `VolumeController`
-- **`listPipeWireClients()`** — spawns `pw-dump`, waits up to 3s for start + 3s for finish, checks exit code, parses JSON, filters system binaries, renames skipped app names to their binary, returns deduplicated list. `qWarning()` on every failure path. Returns empty list on any error.
+- **`listPipeWireClients()`** — snapshots the PipeWire registry through libpipewire, filters system binaries, renames skipped app names to their binary, and returns a deduplicated list. Returns empty list on connection failure or timeout.
+- **`findPipeWireNodeForApp()` / `setPipeWireNodeVolume()` / `setPipeWireNodeMute()`** — bind PipeWire stream nodes and read/write `SPA_PARAM_Props` without spawning `pw-cli`.
 
 ### `cpp/src/applistwidget.h/cpp` — `AppListWidget`
 
@@ -182,12 +184,12 @@ All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved v
 
 1. **Active sink input** (libpulse IPC, ~0.5ms) — fastest, for currently playing apps
 2. **Stream restore DB** (libpulse) — persists across pause/resume
-3. **PipeWire node** (`pw-dump` + `pw-cli`, ~30ms) — for paused apps with an idle node
+3. **PipeWire node** (libpipewire) — for paused apps with an idle node
 4. **Pending watcher** — stores desired volume/mute in `PaWorker`; applies when app reconnects
 
 `listApps()` returns cached data immediately and posts a background refresh that emits `appsReady(list)`. The background watcher listens for new sink-input events and applies pending volumes.
 
-`PaWorker` detects `PA_CONTEXT_FAILED` / `PA_CONTEXT_TERMINATED`, tears down the stale libpulse context, and reconnects with exponential backoff (500ms up to 30s). PA hot paths first check `contextReady()`; if PA is down, they skip libpulse, try the existing PipeWire subprocess fallback, and otherwise park pending volume/mute until the app reconnects.
+`PaWorker` detects `PA_CONTEXT_FAILED` / `PA_CONTEXT_TERMINATED`, tears down the stale libpulse context, and reconnects with exponential backoff (500ms up to 30s). PA hot paths first check `contextReady()`; if PA is down, they skip libpulse, try the PipeWire libpipewire fallback, and otherwise park pending volume/mute until the app reconnects.
 
 `PaWatcherThread` emits both `sinkInputAppeared` (PA NEW event) and `sinkInputRemoved` (PA REMOVE event). It also rebuilds its PA subscription after context loss. `PaWorker` connects both sink-input signals to a 500ms debounce `QTimer` (`m_refreshTimer`) that calls `doListApps(true)` — so the tray menu rebuilds automatically whenever an audio app starts or stops, without any manual Refresh click. The existing `appsReady → TrayApp::rebuildMenu` connection handles the UI update. `doApplyPending` (100ms one-shot) always fires before the debounce timer, so pending volumes are applied before the refreshed list is emitted.
 
@@ -345,7 +347,7 @@ MPRIS external call
 | Main | Qt event loop | UI, signals, OSD updates, D-Bus dispatch |
 | `InputHandler` | `QThread` | evdev polling with `epoll()` (50ms timeout) |
 | `KeyCaptureThread` | `QThread` | One-shot key capture for hotkey rebinding |
-| `PaWorker` | `QThread` (via `moveToThread`) | All PulseAudio/pw-dump operations |
+| `PaWorker` | `QThread` (via `moveToThread`) | All PulseAudio/libpipewire operations |
 
 D-Bus calls arrive on the main thread and are forwarded to `VolumeController` (which posts to `PaWorker`). `DbusInterface` property reads are served from main-thread caches — no blocking.
 
@@ -438,6 +440,7 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_config` — 22 tests (merge, load/save, thread-safety, profile migration / round-trip / mirror / id uniqueification)
 - `test_i18n` — 7 tests (lookup, fallback)
+- `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 15 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity)
 
@@ -450,10 +453,10 @@ Run: `cd cpp/build && ctest --output-on-failure`. No CI workflow yet.
 - **No global master volume changes** — all volume operations target a specific app's sink input
 - **Evdev key codes** in config/hotkeys, not Qt key codes. Conversion: evdev = X11 keycode − 8
 - **Config saves on every setter** — no explicit "save all" step needed
-- **All PA operations on PaWorker thread** — never block the Qt event loop with libpulse or pw-dump calls
+- **All PA/PipeWire operations on PaWorker thread** — never block the Qt event loop with libpulse or libpipewire calls
 - **PA reconnect is part of the audio contract** — on context failure/termination, reconnect in `PaWorker` with backoff; do not lose pending volume/mute or the configured `selected_app`.
 - **All hotkey devices grabbed exclusively** — siblings of the primary device AND every other device advertising the hotkey codes; non-hotkey events re-injected via uinput so typing is unaffected
-- **`pw-dump` is slow** (~30ms) — only called for idle-app lookup and PW-node fallback; never in the main hotkey path
+- **No PipeWire subprocess fallback** — idle-app lookup and PW-node fallback use libpipewire directly, so `pw-dump`/`pw-cli` do not need to be in `PATH`
 - **Wayland position workaround** — after every `widget.show()` that positions the OSD, also call `QWindow::setPosition()` on `windowHandle()`
 - **Dialog centering on multi-monitor** — use `centerDialogOnScreenAt(window, QCursor::pos())` from `screenutils.h` before `exec()` for parentless dialogs. Never use event filters, QTimer hacks, or `Qt::Dialog` flag changes for positioning.
 - **Icon embedded as Qt resource** — loaded via `:/icon.png` from `resources.qrc`; no external file needed at runtime

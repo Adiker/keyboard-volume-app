@@ -2,17 +2,12 @@
 #include "pwutils.h"
 
 #include <QDateTime>
-#include <QProcess>
 #include <QDebug>
 #include <QTimer>
 #include <QMutex>
 #include <QMutexLocker>
 #include <QEventLoop>
 #include <QElapsedTimer>
-#include <QJsonDocument>
-#include <QJsonArray>
-#include <QJsonObject>
-#include <QJsonParseError>
 #include <algorithm>
 #include <atomic>
 
@@ -306,11 +301,11 @@ public slots:
             return;
         }
 
-        // 3. PipeWire node (subprocess)
-        auto node = findPwNodeForApp(appName);
+        // 3. PipeWire node (libpipewire)
+        auto node = ::findPipeWireNodeForApp(appName);
         if (node) {
             double newVol = std::clamp(node->volume + delta, 0.0, 1.0);
-            if (setPwNodeVolume(node->id, newVol)) {
+            if (::setPipeWireNodeVolume(node->id, newVol)) {
                 m_appVolumes[appName] = newVol;
                 removePending(appName);
                 emit volumeChanged(appName, newVol, m_appMutes.value(appName, false));
@@ -371,10 +366,10 @@ public slots:
         }
 
         // 3. PipeWire node
-        auto node = findPwNodeForApp(appName);
+        auto node = ::findPipeWireNodeForApp(appName);
         if (node) {
             bool newMuted = !node->muted;
-            if (setPwNodeMute(node->id, newMuted)) {
+            if (::setPipeWireNodeMute(node->id, newMuted)) {
                 m_appMutes[appName] = newMuted;
                 {
                     QMutexLocker lk(&m_pendingMutex);
@@ -427,7 +422,7 @@ public slots:
             }
         }
 
-        // 2. Idle PW clients (subprocess — runs here in PA thread, not main thread)
+        // 2. Idle PW clients (libpipewire — runs here in PA thread, not main thread)
         for (const PipeWireClient &client : ::listPipeWireClients()) {
             if (SKIP_APP_NAMES.contains(client.name)) continue;
             if (activeBinaries.contains(client.binary)) continue;
@@ -787,71 +782,6 @@ private:
                          "read stream restore mute");
         pa_threaded_mainloop_unlock(m_mainloop);
         return result;
-    }
-
-    // ── PipeWire subprocess helpers ───────────────────────────────────────────
-    struct PwNode { int id; double volume; bool muted; };
-
-    std::optional<PwNode> findPwNodeForApp(const QString &appName)
-    {
-        QProcess p;
-        p.start(QStringLiteral("pw-dump"), QStringList{});
-        if (!p.waitForFinished(2000)) return std::nullopt;
-
-        QJsonParseError err;
-        QJsonDocument doc = QJsonDocument::fromJson(p.readAllStandardOutput(), &err);
-        if (err.error != QJsonParseError::NoError || !doc.isArray()) return std::nullopt;
-
-        std::optional<PwNode> best;
-        for (const QJsonValue &val : doc.array()) {
-            QJsonObject obj = val.toObject();
-            if (!obj[QStringLiteral("type")].toString().contains(QStringLiteral("Node")))
-                continue;
-            QJsonObject info  = obj[QStringLiteral("info")].toObject();
-            QJsonObject props = info[QStringLiteral("props")].toObject();
-            QString name   = props[QStringLiteral("application.name")].toString();
-            QString binary = props[QStringLiteral("application.process.binary")].toString();
-            if (name != appName && binary != appName) continue;
-
-            QString mediaClass = props[QStringLiteral("media.class")].toString();
-            if (!mediaClass.startsWith(QStringLiteral("Stream/"))) continue;
-
-            QJsonArray propList = info[QStringLiteral("params")].toObject()
-                                      [QStringLiteral("Props")].toArray();
-            double vol   = 1.0;
-            bool   muted = false;
-            if (!propList.isEmpty()) {
-                QJsonObject p0 = propList[0].toObject();
-                vol   = p0[QStringLiteral("volume")].toDouble(1.0);
-                muted = p0[QStringLiteral("mute")].toBool(false);
-            }
-            PwNode node { obj[QStringLiteral("id")].toInt(), vol, muted };
-            if (mediaClass.contains(QStringLiteral("Output"))) return node;
-            best = node;
-        }
-        return best;
-    }
-
-    bool setPwNodeVolume(int nodeId, double volume)
-    {
-        QProcess p;
-        p.start(QStringLiteral("pw-cli"), {
-            QStringLiteral("set-param"), QString::number(nodeId),
-            QStringLiteral("Props"),
-            QStringLiteral("{ volume: %1 }").arg(volume, 0, 'f', 6),
-        });
-        return p.waitForFinished(1000);
-    }
-
-    bool setPwNodeMute(int nodeId, bool muted)
-    {
-        QProcess p;
-        p.start(QStringLiteral("pw-cli"), {
-            QStringLiteral("set-param"), QString::number(nodeId),
-            QStringLiteral("Props"),
-            muted ? QStringLiteral("{ mute: true }") : QStringLiteral("{ mute: false }"),
-        });
-        return p.waitForFinished(1000);
     }
 
     void removePending(const QString &app)

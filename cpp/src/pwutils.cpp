@@ -1,12 +1,17 @@
 #include "pwutils.h"
 
-#include <QProcess>
-#include <QJsonDocument>
-#include <QJsonArray>
-#include <QJsonObject>
-#include <QJsonParseError>
 #include <QMap>
 #include <QDebug>
+#include <QElapsedTimer>
+
+#include <algorithm>
+#include <mutex>
+
+#include <pipewire/pipewire.h>
+#include <spa/param/param.h>
+#include <spa/param/props.h>
+#include <spa/pod/builder.h>
+#include <spa/pod/parser.h>
 
 // ─── Filter constants ─────────────────────────────────────────────────────────
 const QSet<QString> SYSTEM_BINARIES {
@@ -26,50 +31,333 @@ const QSet<QString> SKIP_APP_NAMES {
     QStringLiteral("Chromium input"),
 };
 
-// ─── listPipeWireClients ──────────────────────────────────────────────────────
-QList<PipeWireClient> listPipeWireClients()
+namespace {
+constexpr int PW_CONNECT_TIMEOUT_MS = 1000;
+constexpr int PW_SYNC_TIMEOUT_MS = 1000;
+
+void ensurePipeWireInitialized()
 {
-    QProcess p;
-    p.start(QStringLiteral("pw-dump"), QStringList{});
+    static std::once_flag initOnce;
+    std::call_once(initOnce, []() {
+        pw_init(nullptr, nullptr);
+    });
+}
 
-    if (!p.waitForStarted(3000)) {
-        qWarning() << "[pwutils] pw-dump failed to start";
+QString dictValue(const spa_dict *dict, const char *key)
+{
+    if (!dict)
         return {};
-    }
-    if (!p.waitForFinished(3000)) {
-        qWarning() << "[pwutils] pw-dump timed out";
-        return {};
-    }
-    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
-        qWarning() << "[pwutils] pw-dump exit status:" << p.exitStatus()
-                    << "code:" << p.exitCode();
-        return {};
+
+    const char *value = spa_dict_lookup(dict, key);
+    return value ? QString::fromUtf8(value) : QString{};
+}
+
+struct RegistryGlobal {
+    uint32_t id = SPA_ID_INVALID;
+    QString type;
+    QString name;
+    QString binary;
+    QString mediaClass;
+};
+
+struct PipeWireSession {
+    pw_thread_loop *loop = nullptr;
+    pw_context *context = nullptr;
+    pw_core *core = nullptr;
+    pw_registry *registry = nullptr;
+    spa_hook coreListener {};
+    spa_hook registryListener {};
+    bool loopStarted = false;
+    bool coreListenerAdded = false;
+    bool registryListenerAdded = false;
+    QList<RegistryGlobal> globals;
+    int pendingSeq = 0;
+    bool syncDone = false;
+    bool coreError = false;
+
+    PipeWireSession()
+    {
+        ensurePipeWireInitialized();
     }
 
-    QJsonParseError err;
-    QJsonDocument doc = QJsonDocument::fromJson(p.readAllStandardOutput(), &err);
-    if (err.error != QJsonParseError::NoError) {
-        qWarning() << "[pwutils] pw-dump JSON parse error:" << err.errorString();
-        return {};
-    }
-    if (!doc.isArray()) {
-        qWarning() << "[pwutils] pw-dump output is not a JSON array";
-        return {};
+    ~PipeWireSession()
+    {
+        if (loop && loopStarted)
+            pw_thread_loop_lock(loop);
+
+        if (registryListenerAdded)
+            spa_hook_remove(&registryListener);
+        if (coreListenerAdded)
+            spa_hook_remove(&coreListener);
+        if (registry) {
+            pw_proxy_destroy(reinterpret_cast<pw_proxy *>(registry));
+            registry = nullptr;
+        }
+        if (core) {
+            pw_core_disconnect(core);
+            core = nullptr;
+        }
+        if (context) {
+            pw_context_destroy(context);
+            context = nullptr;
+        }
+
+        if (loop) {
+            if (loopStarted) {
+                pw_thread_loop_unlock(loop);
+                pw_thread_loop_stop(loop);
+            }
+            pw_thread_loop_destroy(loop);
+            loop = nullptr;
+        }
     }
 
+    bool connect()
+    {
+        loop = pw_thread_loop_new("keyboard-volume-app-pwutils", nullptr);
+        if (!loop) {
+            qWarning() << "[pwutils] Failed to create PipeWire thread loop";
+            return false;
+        }
+        if (pw_thread_loop_start(loop) < 0) {
+            qWarning() << "[pwutils] Failed to start PipeWire thread loop";
+            return false;
+        }
+        loopStarted = true;
+
+        pw_thread_loop_lock(loop);
+        context = pw_context_new(pw_thread_loop_get_loop(loop), nullptr, 0);
+        if (!context) {
+            qWarning() << "[pwutils] Failed to create PipeWire context";
+            pw_thread_loop_unlock(loop);
+            return false;
+        }
+
+        core = pw_context_connect(context, nullptr, 0);
+        if (!core) {
+            qWarning() << "[pwutils] Failed to connect to PipeWire";
+            pw_thread_loop_unlock(loop);
+            return false;
+        }
+
+        static const pw_core_events coreEvents {
+            PW_VERSION_CORE_EVENTS,
+            nullptr,
+            &PipeWireSession::onCoreDone,
+            nullptr,
+            &PipeWireSession::onCoreError,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+        };
+        pw_core_add_listener(core, &coreListener, &coreEvents, this);
+        coreListenerAdded = true;
+
+        registry = pw_core_get_registry(core, PW_VERSION_REGISTRY, 0);
+        if (!registry) {
+            qWarning() << "[pwutils] Failed to get PipeWire registry";
+            pw_thread_loop_unlock(loop);
+            return false;
+        }
+
+        static const pw_registry_events registryEvents {
+            PW_VERSION_REGISTRY_EVENTS,
+            &PipeWireSession::onRegistryGlobal,
+            nullptr,
+        };
+        pw_registry_add_listener(registry, &registryListener, &registryEvents, this);
+        registryListenerAdded = true;
+
+        const bool ok = sync(PW_CONNECT_TIMEOUT_MS);
+        pw_thread_loop_unlock(loop);
+        if (!ok)
+            qWarning() << "[pwutils] PipeWire registry sync timed out or failed";
+        return ok;
+    }
+
+    bool sync(int timeoutMs)
+    {
+        if (!loop || !core || coreError)
+            return false;
+
+        syncDone = false;
+        pendingSeq = pw_core_sync(core, PW_ID_CORE, pendingSeq);
+
+        QElapsedTimer timer;
+        timer.start();
+        while (!syncDone && !coreError && timer.elapsed() < timeoutMs) {
+            timespec abstime {};
+            const int remaining = std::max(1, timeoutMs - static_cast<int>(timer.elapsed()));
+            if (pw_thread_loop_get_time(loop, &abstime, remaining * SPA_NSEC_PER_MSEC) < 0)
+                break;
+            pw_thread_loop_timed_wait_full(loop, &abstime);
+        }
+        return syncDone && !coreError;
+    }
+
+    static void onCoreDone(void *data, uint32_t id, int seq)
+    {
+        auto *self = static_cast<PipeWireSession *>(data);
+        if (id == PW_ID_CORE && seq == self->pendingSeq) {
+            self->syncDone = true;
+            pw_thread_loop_signal(self->loop, false);
+        }
+    }
+
+    static void onCoreError(void *data, uint32_t, int, int, const char *message)
+    {
+        auto *self = static_cast<PipeWireSession *>(data);
+        self->coreError = true;
+        qWarning() << "[pwutils] PipeWire error:" << (message ? message : "unknown");
+        pw_thread_loop_signal(self->loop, false);
+    }
+
+    static void onRegistryGlobal(void *data, uint32_t id, uint32_t, const char *type,
+                                 uint32_t, const spa_dict *props)
+    {
+        auto *self = static_cast<PipeWireSession *>(data);
+        RegistryGlobal global;
+        global.id = id;
+        global.type = QString::fromUtf8(type ? type : "");
+        global.name = dictValue(props, "application.name");
+        global.binary = dictValue(props, "application.process.binary");
+        global.mediaClass = dictValue(props, "media.class");
+        self->globals.append(global);
+    }
+};
+
+struct NodeParamReader {
+    PipeWireSession *session = nullptr;
+    double volume = 1.0;
+    bool muted = false;
+    bool hasProps = false;
+
+    static void onNodeInfo(void *, const pw_node_info *) {}
+
+    static void onNodeParam(void *data, int, uint32_t id, uint32_t, uint32_t,
+                            const spa_pod *param)
+    {
+        if (id != SPA_PARAM_Props || !param)
+            return;
+
+        auto *self = static_cast<NodeParamReader *>(data);
+        float volume = 1.0f;
+        bool muted = false;
+        uint32_t objectId = SPA_ID_INVALID;
+        const int res = spa_pod_parse_object(param,
+            SPA_TYPE_OBJECT_Props, &objectId,
+            SPA_PROP_volume, SPA_POD_OPT_Float(&volume),
+            SPA_PROP_mute, SPA_POD_OPT_Bool(&muted));
+        if (res >= 0) {
+            self->volume = volume;
+            self->muted = muted;
+            self->hasProps = true;
+        }
+    }
+};
+
+bool nodeMatchesApp(const RegistryGlobal &global, const QString &appName)
+{
+    if (global.type != QString::fromUtf8(PW_TYPE_INTERFACE_Node))
+        return false;
+    if (global.name != appName && global.binary != appName)
+        return false;
+    return global.mediaClass.startsWith(QStringLiteral("Stream/"));
+}
+
+bool readNodeProps(PipeWireSession &session, uint32_t nodeId, double *volume, bool *muted)
+{
+    auto *node = static_cast<pw_node *>(pw_registry_bind(
+        session.registry, nodeId, PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, 0));
+    if (!node)
+        return false;
+
+    spa_hook nodeListener {};
+    NodeParamReader reader;
+    reader.session = &session;
+    static const pw_node_events nodeEvents {
+        PW_VERSION_NODE_EVENTS,
+        &NodeParamReader::onNodeInfo,
+        &NodeParamReader::onNodeParam,
+    };
+
+    pw_node_add_listener(node, &nodeListener, &nodeEvents, &reader);
+    uint32_t ids[] = { SPA_PARAM_Props };
+    pw_node_subscribe_params(node, ids, 1);
+    pw_node_enum_params(node, 0, SPA_PARAM_Props, 0, 1, nullptr);
+    const bool ok = session.sync(PW_SYNC_TIMEOUT_MS) && reader.hasProps;
+
+    if (ok) {
+        *volume = reader.volume;
+        *muted = reader.muted;
+    }
+
+    spa_hook_remove(&nodeListener);
+    pw_proxy_destroy(reinterpret_cast<pw_proxy *>(node));
+    return ok;
+}
+
+bool setNodeProp(uint32_t nodeId, std::optional<double> volume, std::optional<bool> muted)
+{
+    PipeWireSession session;
+    if (!session.connect())
+        return false;
+
+    pw_thread_loop_lock(session.loop);
+    auto *node = static_cast<pw_node *>(pw_registry_bind(
+        session.registry, nodeId, PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, 0));
+    if (!node) {
+        pw_thread_loop_unlock(session.loop);
+        return false;
+    }
+
+    uint8_t buffer[256];
+    spa_pod_builder builder;
+    spa_pod_builder_init(&builder, buffer, sizeof(buffer));
+
+    const spa_pod *param = nullptr;
+    if (volume && muted) {
+        const float vol = static_cast<float>(*volume);
+        param = static_cast<const spa_pod *>(spa_pod_builder_add_object(&builder,
+            SPA_TYPE_OBJECT_Props, SPA_PARAM_Props,
+            SPA_PROP_volume, SPA_POD_Float(vol),
+            SPA_PROP_mute, SPA_POD_Bool(*muted)));
+    } else if (volume) {
+        const float vol = static_cast<float>(*volume);
+        param = static_cast<const spa_pod *>(spa_pod_builder_add_object(&builder,
+            SPA_TYPE_OBJECT_Props, SPA_PARAM_Props,
+            SPA_PROP_volume, SPA_POD_Float(vol)));
+    } else if (muted) {
+        param = static_cast<const spa_pod *>(spa_pod_builder_add_object(&builder,
+            SPA_TYPE_OBJECT_Props, SPA_PARAM_Props,
+            SPA_PROP_mute, SPA_POD_Bool(*muted)));
+    }
+
+    bool ok = false;
+    if (param && pw_node_set_param(node, SPA_PARAM_Props, 0, param) >= 0)
+        ok = session.sync(PW_SYNC_TIMEOUT_MS);
+
+    pw_proxy_destroy(reinterpret_cast<pw_proxy *>(node));
+    pw_thread_loop_unlock(session.loop);
+    return ok;
+}
+}
+
+// ─── Pure client filtering ────────────────────────────────────────────────────
+QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps> &globals)
+{
     QMap<QString, QString> seen;
-    for (const QJsonValue &val : doc.array()) {
-        QJsonObject obj = val.toObject();
-        if (!obj[QStringLiteral("type")].toString().contains(QStringLiteral("Client")))
+    for (const PipeWireGlobalProps &global : globals) {
+        if (!global.type.contains(QStringLiteral("Client")))
             continue;
 
-        QJsonObject props = obj[QStringLiteral("info")].toObject()
-                                [QStringLiteral("props")].toObject();
-        QString binary = props[QStringLiteral("application.process.binary")].toString();
+        QString binary = global.binary;
         if (binary.isEmpty() || SYSTEM_BINARIES.contains(binary))
             continue;
 
-        QString name = props[QStringLiteral("application.name")].toString();
+        QString name = global.name;
         if (name.isEmpty())
             name = binary;
         if (SKIP_APP_NAMES.contains(name)
@@ -85,4 +373,64 @@ QList<PipeWireClient> listPipeWireClients()
     for (auto it = seen.begin(); it != seen.end(); ++it)
         result.append({ it.key(), it.value() });
     return result;
+}
+
+// ─── libpipewire public helpers ───────────────────────────────────────────────
+QList<PipeWireClient> listPipeWireClients()
+{
+    PipeWireSession session;
+    if (!session.connect())
+        return {};
+
+    QList<PipeWireGlobalProps> globals;
+    for (const RegistryGlobal &global : session.globals) {
+        globals.append({
+            global.type,
+            global.name,
+            global.binary,
+        });
+    }
+    return clientsFromPipeWireGlobals(globals);
+}
+
+std::optional<PipeWireNode> findPipeWireNodeForApp(const QString &appName)
+{
+    PipeWireSession session;
+    if (!session.connect())
+        return std::nullopt;
+
+    std::optional<RegistryGlobal> best;
+    for (const RegistryGlobal &global : session.globals) {
+        if (!nodeMatchesApp(global, appName))
+            continue;
+
+        if (global.mediaClass.contains(QStringLiteral("Output"))) {
+            best = global;
+            break;
+        }
+        best = global;
+    }
+    if (!best)
+        return std::nullopt;
+
+    double volume = 1.0;
+    bool muted = false;
+
+    pw_thread_loop_lock(session.loop);
+    const bool ok = readNodeProps(session, best->id, &volume, &muted);
+    pw_thread_loop_unlock(session.loop);
+    if (!ok)
+        return std::nullopt;
+
+    return PipeWireNode { best->id, volume, muted };
+}
+
+bool setPipeWireNodeVolume(uint32_t nodeId, double volume)
+{
+    return setNodeProp(nodeId, volume, std::nullopt);
+}
+
+bool setPipeWireNodeMute(uint32_t nodeId, bool muted)
+{
+    return setNodeProp(nodeId, std::nullopt, muted);
 }
