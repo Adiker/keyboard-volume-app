@@ -123,6 +123,14 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
       "modifiers": ["ctrl"],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
       "ducking": { "enabled": true, "volume": 25, "hotkey": 88 } }
+  ],
+  "scenes": [
+    { "id": "meeting", "name": "Meeting",
+      "targets": [
+        { "match": "Spotify", "volume": 10, "muted": false },
+        { "match": "Discord", "volume": 80 },
+        { "match": "Steam", "muted": true }
+      ] }
   ]
 }
 ```
@@ -135,6 +143,12 @@ Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=11
 - `enum class Modifier { Ctrl, Shift }` — left/right collapsed to canonical (Ctrl/Shift only in v1; Alt/Meta out of scope)
 - API: `profiles()`, `setProfiles(QList<Profile>)` (validates non-empty + uniqueifies ids with numeric suffix on collision), `defaultProfile()` (= `profiles().first()`), `setDefaultProfileApp(QString)`
 - `Modifier` ↔ string helpers: `modifierToString(Modifier)`, `modifierFromString(QString)`
+
+**Audio scenes** (named mixer presets). Each scene:
+- `struct AudioScene { QString id, name; QList<SceneTarget> targets; }`
+- `struct SceneTarget { QString match; std::optional<int> volume; std::optional<bool> muted; }`
+- `match` uses the same app/binary names accepted by `VolumeController`; `volume` is clamped to `0..100`; omitted `volume`/`muted` leaves that state unchanged.
+- API: `scenes()`, `setScenes(QList<AudioScene>)` (uniqueifies ids and drops malformed targets).
 
 **Migration & legacy mirror.** `Config::load()` synthesizes a single `default` profile from legacy `selected_app` + top-level `hotkeys` when `profiles` is missing/empty, then `saveUnlocked()` writes the new schema. Top-level `selected_app` and `hotkeys` are kept in sync as a deprecated mirror of `profiles[0]` (one release of compat) — `setSelectedApp()`/`setHotkeys()` mirror into the default profile and vice versa, so existing D-Bus/MPRIS clients keep working.
 
@@ -273,21 +287,24 @@ Filters `/dev/input/event*` to show only devices exposing `KEY_VOLUMEUP`/`KEY_VO
 
 Exposes `org.keyboardvolumeapp.VolumeControl` on the D-Bus session bus (bus name `org.keyboardvolumeapp`, object path `/org/keyboardvolumeapp`).
 
-Caches volume/mute/app state by listening to `VolumeController::volumeChanged`, `VolumeController::appsReady`, and `TrayApp::appChanged`. D-Bus properties (`Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`, `Profiles`) are served from the cache; setters delegate to `VolumeController`/`Config` async.
+Caches volume/mute/app state by listening to `VolumeController::volumeChanged`, `VolumeController::appsReady`, and `TrayApp::appChanged`. D-Bus properties (`Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`, `Profiles`, `Scenes`) are served from the cache; setters delegate to `VolumeController`/`Config` async.
 
 D-Bus methods:
 - `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `ToggleDucking()`, `RefreshApps()` — bare methods target the default profile / `m_activeApp`, kept for backwards compat and script-friendly default-profile control.
 - `VolumeUpProfile(QString id)`, `VolumeDownProfile(QString id)`, `ToggleMuteProfile(QString id)`, `ToggleDuckingProfile(QString id)` — per-profile methods, route directly to the profile's app via `m_volumeCtrl`.
+- `ApplyScene(QString id)` — applies a configured audio scene by posting absolute volume/mute operations to `VolumeController`; unknown scene ids are a no-op.
 
 `Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute}), ducking ({enabled, volume, hotkey})}`. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
+`Scenes` property is `QVariantList` of `QVariantMap` entries — `{id, name, targets ([{match, volume?, muted?}])}`.
 
 ### `cpp/src/kvctl.cpp`, `cpp/src/kvctlcommand.h/cpp` — `kv-ctl`
 
 `kv-ctl` is a small CLI client for scripts and tiling WM keybinds. Commands:
 - `kv-ctl up|down|mute [--profile id]` maps to bare D-Bus methods or `VolumeUpProfile` / `VolumeDownProfile` / `ToggleMuteProfile`.
 - `kv-ctl duck [--profile id]` maps to bare `ToggleDucking` or `ToggleDuckingProfile(id)`; without `--profile`, the daemon resolves the current default profile server-side.
+- `kv-ctl scene ID` maps to `ApplyScene(ID)`.
 - `kv-ctl refresh` maps to `RefreshApps`.
-- `kv-ctl get volume|muted|active-app|apps|step|profiles` reads D-Bus properties through `org.freedesktop.DBus.Properties.Get`.
+- `kv-ctl get volume|muted|active-app|apps|step|profiles|scenes` reads D-Bus properties through `org.freedesktop.DBus.Properties.Get`.
 - `kv-ctl set volume|muted|active-app|step VALUE` writes properties through `org.freedesktop.DBus.Properties.Set`; volume is given as `0..100` percent and mapped to `0.0..1.0`.
 
 Exit codes: `0` success, `1` usage, `2` daemon unavailable, `3` D-Bus error, `4` invalid value. Parser logic lives in `kvctlcommand` so it can be unit-tested without a session bus.
@@ -446,6 +463,8 @@ sudo usermod -aG input $USER
 
 For breaking schema changes (new structured field replacing legacy keys), follow the **profiles** pattern: synthesize the new shape from legacy keys in `Config::load()`, write it back via `saveUnlocked()`, and keep legacy keys mirrored on every write for one release cycle so existing D-Bus/MPRIS callers don't break.
 
+For additive structured config like `scenes`, add defaults through `defaultJson()`, typed accessors, sanitizing JSON conversion helpers, D-Bus property exposure, CLI parser coverage, and Config round-trip tests. Do not migrate or mirror unless replacing an existing field.
+
 ### OSD Styling
 
 OSD background is not set via stylesheet (Qt skips it for translucent top-level windows). Background is drawn in `OSDWindow::paintEvent()` using `QPainter::drawRoundedRect()`.
@@ -502,4 +521,5 @@ temporarily disabled via `if: false` in `.github/workflows/claude-code-review.ym
 - **`QDBusConnection::sessionBus()` returns by value** in Qt6 (not by reference as in Qt5) — use `auto bus = ...` not `auto &bus`
 - **`ExportAdaptors` flag required** when registering objects that have `QDBusAbstractAdaptor` children (like the MPRIS endpoint). Without it, adaptor interfaces are not exported
 - **Profiles are the source of truth** for hotkey → app mapping. Legacy `selected_app` and top-level `hotkeys` are deprecated mirrors of `profiles[0]`, kept in sync on every write for one release cycle of backwards compat (D-Bus/MPRIS callers reading the old fields keep working).
+- **Scenes are additive mixer presets** — they do not change the active app/profile, and applying one only posts absolute per-app volume/mute operations to the existing audio worker.
 - **Modifiers tracked only from grabbed devices** — a modifier key on a separate keyboard with no hotkey codes won't be observed in v1. Documented limitation; v2 may add passive read-only opens for modifier-only devices.

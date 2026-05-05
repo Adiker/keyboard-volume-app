@@ -19,6 +19,7 @@ class DbusInterface : public QObject
     Q_PROPERTY(QStringList Apps READ apps NOTIFY appsUpdated)
     Q_PROPERTY(int VolumeStep READ volumeStep WRITE setVolumeStep)
     Q_PROPERTY(QVariantList Profiles READ profilesProp NOTIFY profilesChanged)
+    Q_PROPERTY(QVariantList Scenes READ scenesProp NOTIFY scenesChanged)
 
   public:
     explicit DbusInterface(Config* config, VolumeController* volumeCtrl, TrayApp* tray,
@@ -48,6 +49,10 @@ class DbusInterface : public QObject
     {
         return m_profilesProp;
     }
+    QVariantList scenesProp() const
+    {
+        return m_scenesProp;
+    }
 
     void setVolume(double vol);
     void setMuted(bool muted);
@@ -70,6 +75,7 @@ class DbusInterface : public QObject
     Q_SCRIPTABLE void VolumeDownProfile(const QString& profileId);
     Q_SCRIPTABLE void ToggleMuteProfile(const QString& profileId);
     Q_SCRIPTABLE void ToggleDuckingProfile(const QString& profileId);
+    Q_SCRIPTABLE void ApplyScene(const QString& sceneId);
 
   signals:
     void volumeChanged(double vol);
@@ -77,12 +83,15 @@ class DbusInterface : public QObject
     void activeAppChanged(const QString& name);
     void appsUpdated();
     void profilesChanged(const QVariantList& profiles);
+    void scenesChanged(const QVariantList& scenes);
 
   private:
     // Build the QVariantList wire representation from current Config profiles.
     QVariantList buildProfilesProp() const;
+    QVariantList buildScenesProp() const;
     // Resolve a profile id to a Profile (or empty Profile if unknown).
     Profile findProfile(const QString& id) const;
+    AudioScene findScene(const QString& id) const;
 
     Config* m_config = nullptr;
     VolumeController* m_volumeCtrl = nullptr;
@@ -94,4 +103,5 @@ class DbusInterface : public QObject
     QStringList m_apps;
     int m_volumeStep = 5;
     QVariantList m_profilesProp;
+    QVariantList m_scenesProp;
 };

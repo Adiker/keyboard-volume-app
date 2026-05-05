@@ -68,6 +68,7 @@ QJsonObject Config::defaultJson()
              {QStringLiteral("mute"), 113},
          }},
         {QStringLiteral("profiles"), QJsonArray{defaultProfile}},
+        {QStringLiteral("scenes"), QJsonArray{}},
     };
 }
 
@@ -184,6 +185,76 @@ QJsonArray Config::profilesToJsonArray(const QList<Profile>& profiles)
 {
     QJsonArray arr;
     for (const auto& p : profiles) arr.append(profileToJson(p));
+    return arr;
+}
+
+// ─── Scene <-> JSON ──────────────────────────────────────────────────────────
+QJsonObject Config::sceneToJson(const AudioScene& scene)
+{
+    QJsonArray targets;
+    for (const SceneTarget& target : scene.targets)
+    {
+        if (target.match.trimmed().isEmpty()) continue;
+
+        QJsonObject o{{QStringLiteral("match"), target.match.trimmed()}};
+        if (target.volume) o[QStringLiteral("volume")] = std::clamp(*target.volume, 0, 100);
+        if (target.muted) o[QStringLiteral("muted")] = *target.muted;
+        targets.append(o);
+    }
+
+    return QJsonObject{
+        {QStringLiteral("id"), scene.id},
+        {QStringLiteral("name"), scene.name},
+        {QStringLiteral("targets"), targets},
+    };
+}
+
+AudioScene Config::sceneFromJson(const QJsonObject& o)
+{
+    AudioScene scene;
+    scene.id = o[QStringLiteral("id")].toString().trimmed();
+    scene.name = o[QStringLiteral("name")].toString();
+
+    const QJsonArray targets = o[QStringLiteral("targets")].toArray();
+    for (const QJsonValue& v : targets)
+    {
+        if (!v.isObject()) continue;
+
+        const QJsonObject to = v.toObject();
+        SceneTarget target;
+        target.match = to[QStringLiteral("match")].toString().trimmed();
+        if (target.match.isEmpty()) continue;
+
+        if (to.contains(QStringLiteral("volume")) && to[QStringLiteral("volume")].isDouble())
+            target.volume = std::clamp(to[QStringLiteral("volume")].toInt(), 0, 100);
+        if (to.contains(QStringLiteral("muted")) && to[QStringLiteral("muted")].isBool())
+            target.muted = to[QStringLiteral("muted")].toBool();
+
+        if (!target.volume && !target.muted) continue;
+        scene.targets.append(target);
+    }
+
+    return scene;
+}
+
+QList<AudioScene> Config::scenesFromJson(const QJsonArray& arr)
+{
+    QList<AudioScene> out;
+    out.reserve(arr.size());
+    for (const QJsonValue& v : arr)
+    {
+        if (!v.isObject()) continue;
+        AudioScene scene = sceneFromJson(v.toObject());
+        if (scene.id.isEmpty()) continue;
+        out.push_back(std::move(scene));
+    }
+    return out;
+}
+
+QJsonArray Config::scenesToJsonArray(const QList<AudioScene>& scenes)
+{
+    QJsonArray arr;
+    for (const AudioScene& scene : scenes) arr.append(sceneToJson(scene));
     return arr;
 }
 
@@ -506,6 +577,46 @@ void Config::setProfiles(const QList<Profile>& profiles)
     std::lock_guard<std::mutex> lock(m_mutex);
     m_data[QStringLiteral("profiles")] = profilesToJsonArray(sanitized);
     mirrorDefaultProfileToLegacyUnlocked();
+    saveUnlocked();
+}
+
+// ─── Scenes API ──────────────────────────────────────────────────────────────
+QList<AudioScene> Config::scenes() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return scenesFromJson(m_data[QStringLiteral("scenes")].toArray());
+}
+
+void Config::setScenes(const QList<AudioScene>& scenes)
+{
+    QList<AudioScene> sanitized = scenes;
+    QSet<QString> seen;
+    for (AudioScene& scene : sanitized)
+    {
+        if (scene.id.isEmpty()) scene.id = QStringLiteral("scene");
+        QString base = scene.id.trimmed();
+        if (base.isEmpty()) base = QStringLiteral("scene");
+        scene.id = base;
+
+        int suffix = 2;
+        while (seen.contains(scene.id))
+            scene.id = base + QStringLiteral("-") + QString::number(suffix++);
+        seen.insert(scene.id);
+
+        QList<SceneTarget> targets;
+        for (SceneTarget target : std::as_const(scene.targets))
+        {
+            target.match = target.match.trimmed();
+            if (target.match.isEmpty()) continue;
+            if (target.volume) target.volume = std::clamp(*target.volume, 0, 100);
+            if (!target.volume && !target.muted) continue;
+            targets.append(target);
+        }
+        scene.targets = targets;
+    }
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_data[QStringLiteral("scenes")] = scenesToJsonArray(sanitized);
     saveUnlocked();
 }
 

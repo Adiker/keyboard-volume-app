@@ -16,6 +16,7 @@ DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, TrayA
     m_activeApp = m_tray->currentApp();
     m_volumeStep = m_config->volumeStep();
     m_profilesProp = buildProfilesProp();
+    m_scenesProp = buildScenesProp();
 
     connect(m_volumeCtrl, &VolumeController::volumeChanged, this,
             [this](const QString& app, double vol, bool muted)
@@ -162,6 +163,31 @@ QVariantList DbusInterface::buildProfilesProp() const
     return out;
 }
 
+// ─── Scenes ──────────────────────────────────────────────────────────────────
+QVariantList DbusInterface::buildScenesProp() const
+{
+    QVariantList out;
+    for (const AudioScene& scene : m_config->scenes())
+    {
+        QVariantList targets;
+        for (const SceneTarget& target : scene.targets)
+        {
+            QVariantMap tm;
+            tm[QStringLiteral("match")] = target.match;
+            if (target.volume) tm[QStringLiteral("volume")] = *target.volume;
+            if (target.muted) tm[QStringLiteral("muted")] = *target.muted;
+            targets.append(tm);
+        }
+
+        QVariantMap m;
+        m[QStringLiteral("id")] = scene.id;
+        m[QStringLiteral("name")] = scene.name;
+        m[QStringLiteral("targets")] = targets;
+        out.append(m);
+    }
+    return out;
+}
+
 Profile DbusInterface::findProfile(const QString& id) const
 {
     for (const Profile& p : m_config->profiles())
@@ -171,12 +197,28 @@ Profile DbusInterface::findProfile(const QString& id) const
     return Profile{};
 }
 
+AudioScene DbusInterface::findScene(const QString& id) const
+{
+    for (const AudioScene& scene : m_config->scenes())
+    {
+        if (scene.id == id) return scene;
+    }
+    return AudioScene{};
+}
+
 void DbusInterface::reloadProfiles()
 {
     QVariantList fresh = buildProfilesProp();
-    if (fresh == m_profilesProp) return;
-    m_profilesProp = fresh;
-    emit profilesChanged(m_profilesProp);
+    if (fresh != m_profilesProp)
+    {
+        m_profilesProp = fresh;
+        emit profilesChanged(m_profilesProp);
+    }
+
+    QVariantList freshScenes = buildScenesProp();
+    if (freshScenes == m_scenesProp) return;
+    m_scenesProp = freshScenes;
+    emit scenesChanged(m_scenesProp);
 }
 
 void DbusInterface::VolumeUpProfile(const QString& profileId)
@@ -207,4 +249,17 @@ void DbusInterface::ToggleDuckingProfile(const QString& profileId)
     Profile p = findProfile(profileId);
     if (p.app.isEmpty() || !p.ducking.enabled) return;
     m_volumeCtrl->toggleDucking(p.app, p.ducking.volume / 100.0);
+}
+
+void DbusInterface::ApplyScene(const QString& sceneId)
+{
+    const AudioScene scene = findScene(sceneId);
+    if (scene.id.isEmpty()) return;
+
+    for (const SceneTarget& target : scene.targets)
+    {
+        if (target.match.isEmpty()) continue;
+        if (target.volume) m_volumeCtrl->setVolume(target.match, *target.volume / 100.0);
+        if (target.muted) m_volumeCtrl->setMuted(target.match, *target.muted);
+    }
 }

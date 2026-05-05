@@ -35,6 +35,20 @@ struct DuckingConfig
     int hotkey = 0;  // 0 = unassigned
 };
 
+struct SceneTarget
+{
+    QString match;             // Audio app name or binary name
+    std::optional<int> volume; // Percent, 0-100; nullopt = leave unchanged
+    std::optional<bool> muted; // nullopt = leave unchanged
+};
+
+struct AudioScene
+{
+    QString id; // stable slug, unique within scenes list
+    QString name;
+    QList<SceneTarget> targets;
+};
+
 // ─── Modifier set for profile matching ───────────────────────────────────────
 // L/R variants of each modifier collapse to a single canonical value.
 enum class Modifier
@@ -76,6 +90,24 @@ inline bool operator==(const DuckingConfig& a, const DuckingConfig& b)
     return a.enabled == b.enabled && a.volume == b.volume && a.hotkey == b.hotkey;
 }
 inline bool operator!=(const DuckingConfig& a, const DuckingConfig& b)
+{
+    return !(a == b);
+}
+
+inline bool operator==(const SceneTarget& a, const SceneTarget& b)
+{
+    return a.match == b.match && a.volume == b.volume && a.muted == b.muted;
+}
+inline bool operator!=(const SceneTarget& a, const SceneTarget& b)
+{
+    return !(a == b);
+}
+
+inline bool operator==(const AudioScene& a, const AudioScene& b)
+{
+    return a.id == b.id && a.name == b.name && a.targets == b.targets;
+}
+inline bool operator!=(const AudioScene& a, const AudioScene& b)
 {
     return !(a == b);
 }
@@ -145,6 +177,10 @@ class Config
     Profile defaultProfile() const;
     void setDefaultProfileApp(const QString& app);
 
+    // Audio scenes: named mixer presets applied through D-Bus / kv-ctl.
+    QList<AudioScene> scenes() const;
+    void setScenes(const QList<AudioScene>& scenes);
+
     // Modifier serialization helpers (kanoniczne nazwy: "ctrl", "shift")
     static QString modifierToString(Modifier m);
     static std::optional<Modifier> modifierFromString(const QString& s);
@@ -165,6 +201,10 @@ class Config
     static Profile profileFromJson(const QJsonObject& o);
     static QList<Profile> profilesFromJson(const QJsonArray& arr);
     static QJsonArray profilesToJsonArray(const QList<Profile>& profiles);
+    static QJsonObject sceneToJson(const AudioScene& scene);
+    static AudioScene sceneFromJson(const QJsonObject& o);
+    static QList<AudioScene> scenesFromJson(const QJsonArray& arr);
+    static QJsonArray scenesToJsonArray(const QList<AudioScene>& scenes);
 
     // Synthesize a default profile from legacy selected_app + hotkeys when
     // m_data has no "profiles" array. Caller must hold the mutex.

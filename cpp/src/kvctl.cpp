@@ -58,6 +58,8 @@ QString propertyName(KvCtlCommand::Field field)
         return QStringLiteral("VolumeStep");
     case KvCtlCommand::Field::Profiles:
         return QStringLiteral("Profiles");
+    case KvCtlCommand::Field::Scenes:
+        return QStringLiteral("Scenes");
     case KvCtlCommand::Field::None:
         return QString();
     }
@@ -122,6 +124,27 @@ QString mapToText(const QVariantMap& map)
     const QString id = map.value(QStringLiteral("id")).toString();
     const QString name = map.value(QStringLiteral("name")).toString();
     const QString app = map.value(QStringLiteral("app")).toString();
+    if (map.contains(QStringLiteral("targets")))
+    {
+        const QVariantList targets = map.value(QStringLiteral("targets")).toList();
+        QStringList renderedTargets;
+        for (const QVariant& targetValue : targets)
+        {
+            const QVariantMap target = targetValue.toMap();
+            QStringList fields{target.value(QStringLiteral("match")).toString()};
+            if (target.contains(QStringLiteral("volume")))
+                fields << QStringLiteral("volume=%1")
+                              .arg(target.value(QStringLiteral("volume")).toString());
+            if (target.contains(QStringLiteral("muted")))
+                fields << QStringLiteral("muted=%1")
+                              .arg(target.value(QStringLiteral("muted")).toBool()
+                                       ? QStringLiteral("true")
+                                       : QStringLiteral("false"));
+            renderedTargets << fields.join(QLatin1Char(','));
+        }
+        return QStringLiteral("%1\t%2\t%3").arg(id, name, renderedTargets.join(QLatin1Char(';')));
+    }
+
     if (!id.isEmpty() || !name.isEmpty() || !app.isEmpty())
     {
         QString modifiers =
@@ -209,6 +232,7 @@ QVariant setValueForCommand(const KvCtlCommand& cmd, bool* ok)
     case KvCtlCommand::Field::None:
     case KvCtlCommand::Field::Apps:
     case KvCtlCommand::Field::Profiles:
+    case KvCtlCommand::Field::Scenes:
         *ok = false;
         return {};
     }
@@ -229,6 +253,8 @@ QString methodName(const KvCtlCommand& cmd)
         return profile ? QStringLiteral("ToggleMuteProfile") : QStringLiteral("ToggleMute");
     case KvCtlCommand::Action::ToggleDucking:
         return profile ? QStringLiteral("ToggleDuckingProfile") : QStringLiteral("ToggleDucking");
+    case KvCtlCommand::Action::ApplyScene:
+        return QStringLiteral("ApplyScene");
     case KvCtlCommand::Action::Refresh:
         return QStringLiteral("RefreshApps");
     case KvCtlCommand::Action::Get:
@@ -268,9 +294,16 @@ int callControlMethod(const KvCtlCommand& cmd)
 
     QDBusMessage reply;
     if (cmd.profile.isEmpty())
-        reply = control.call(methodName(cmd));
+    {
+        if (cmd.action == KvCtlCommand::Action::ApplyScene)
+            reply = control.call(methodName(cmd), cmd.scene);
+        else
+            reply = control.call(methodName(cmd));
+    }
     else
+    {
         reply = control.call(methodName(cmd), cmd.profile);
+    }
 
     if (reply.type() == QDBusMessage::ErrorMessage)
     {

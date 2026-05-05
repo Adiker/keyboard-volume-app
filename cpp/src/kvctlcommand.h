@@ -11,6 +11,7 @@ struct KvCtlCommand
         VolumeDown,
         ToggleMute,
         ToggleDucking,
+        ApplyScene,
         Refresh,
         Get,
         Set
@@ -24,12 +25,14 @@ struct KvCtlCommand
         ActiveApp,
         Apps,
         Step,
-        Profiles
+        Profiles,
+        Scenes
     };
 
     Action action = Action::Refresh;
     Field field = Field::None;
     QString profile;
+    QString scene;
     QString value;
 };
 
