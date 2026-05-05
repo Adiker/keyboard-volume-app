@@ -432,6 +432,89 @@ class PaWorker : public QObject
         emit volumeChanged(appName, vol, newMuted);
     }
 
+    void setAppMute(const QString& appName, bool targetMuted)
+    {
+        if (m_stopping) return;
+
+        // 1. Active sink input
+        if (contextReady())
+        {
+            pa_threaded_mainloop_lock(m_mainloop);
+            const auto inputs = getSinkInputs();
+            for (const auto& si : inputs)
+            {
+                if (si.name != appName && si.binary != appName) continue;
+
+                if (si.muted == targetMuted)
+                {
+                    pa_threaded_mainloop_unlock(m_mainloop);
+                    m_appVolumes[appName] = si.volume;
+                    m_appMutes[appName] = targetMuted;
+                    {
+                        QMutexLocker lk(&m_pendingMutex);
+                        m_pendingMutes.remove(appName);
+                    }
+                    emit volumeChanged(appName, si.volume, targetMuted);
+                    return;
+                }
+
+                pa_operation* op = pa_context_set_sink_input_mute(
+                    m_ctx, si.index, targetMuted ? 1 : 0, operationDoneCallback, this);
+                if (!waitForOperation(op, "set sink input absolute mute"))
+                {
+                    pa_threaded_mainloop_unlock(m_mainloop);
+                    return;
+                }
+                pa_threaded_mainloop_unlock(m_mainloop);
+
+                m_appVolumes[appName] = si.volume;
+                m_appMutes[appName] = targetMuted;
+                {
+                    QMutexLocker lk(&m_pendingMutex);
+                    m_pendingMutes.remove(appName);
+                }
+                emit volumeChanged(appName, si.volume, targetMuted);
+                return;
+            }
+            pa_threaded_mainloop_unlock(m_mainloop);
+        }
+
+        // 2. Stream restore
+        auto result = streamRestoreSetMute(appName, targetMuted);
+        if (result)
+        {
+            m_appMutes[appName] = result->first;
+            {
+                QMutexLocker lk(&m_pendingMutex);
+                m_pendingMutes.remove(appName);
+            }
+            emit volumeChanged(appName, result->second, result->first);
+            return;
+        }
+
+        // 3. PipeWire node
+        auto node = ::findPipeWireNodeForApp(appName);
+        if (node && ::setPipeWireNodeMute(node->id, targetMuted))
+        {
+            m_appMutes[appName] = targetMuted;
+            {
+                QMutexLocker lk(&m_pendingMutex);
+                m_pendingMutes.remove(appName);
+            }
+            emit volumeChanged(appName, node->volume, targetMuted);
+            return;
+        }
+
+        // 4. Disconnected — park desired absolute mute.
+        const double vol = m_appVolumes.value(appName, 1.0);
+        m_appMutes[appName] = targetMuted;
+        {
+            QMutexLocker lk(&m_pendingMutex);
+            m_pendingMutes[appName] = targetMuted;
+        }
+        emit volumeChanged(appName, vol, targetMuted);
+    }
+
     void setAppVolume(const QString& appName, double targetVolume)
     {
         if (m_stopping) return;
@@ -925,6 +1008,7 @@ class PaWorker : public QObject
         double targetVolume;
         bool absoluteVolume;
         bool isMute;
+        bool targetMute;
         std::optional<double>* outVol;
         std::optional<std::pair<bool, double>>* outMute;
     };
@@ -951,7 +1035,7 @@ class PaWorker : public QObject
         }
         else
         {
-            bool newMuted = !info->mute;
+            bool newMuted = d->absoluteVolume ? d->targetMute : !info->mute;
             pa_ext_stream_restore_info out = *info;
             out.mute = newMuted ? 1 : 0;
             pa_operation* op = pa_ext_stream_restore_write(ctx, PA_UPDATE_REPLACE, &out, 1, 1,
@@ -965,10 +1049,11 @@ class PaWorker : public QObject
     {
         if (!contextReady()) return std::nullopt;
         std::optional<double> result;
-        StreamRestoreCbData d{this,    QStringLiteral("sink-input-by-application-name:") + app,
-                              delta,   0.0,
-                              false,   false,
-                              &result, nullptr};
+        StreamRestoreCbData d{this,   QStringLiteral("sink-input-by-application-name:") + app,
+                              delta,  0.0,
+                              false,  false,
+                              false,  &result,
+                              nullptr};
         pa_threaded_mainloop_lock(m_mainloop);
         waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
                          "read stream restore volume");
@@ -981,10 +1066,11 @@ class PaWorker : public QObject
         if (!contextReady()) return std::nullopt;
         targetVolume = std::clamp(targetVolume, 0.0, 1.0);
         std::optional<double> result;
-        StreamRestoreCbData d{this,    QStringLiteral("sink-input-by-application-name:") + app,
-                              0.0,     targetVolume,
-                              true,    false,
-                              &result, nullptr};
+        StreamRestoreCbData d{this,   QStringLiteral("sink-input-by-application-name:") + app,
+                              0.0,    targetVolume,
+                              true,   false,
+                              false,  &result,
+                              nullptr};
         pa_threaded_mainloop_lock(m_mainloop);
         waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
                          "read stream restore absolute volume");
@@ -996,13 +1082,32 @@ class PaWorker : public QObject
     {
         if (!contextReady()) return std::nullopt;
         std::optional<std::pair<bool, double>> result;
-        StreamRestoreCbData d{this,    QStringLiteral("sink-input-by-application-name:") + app,
-                              0.0,     0.0,
-                              false,   true,
-                              nullptr, &result};
+        const bool targetMuted = false;
+        StreamRestoreCbData d{this,        QStringLiteral("sink-input-by-application-name:") + app,
+                              0.0,         0.0,
+                              false,       true,
+                              targetMuted, nullptr,
+                              &result};
         pa_threaded_mainloop_lock(m_mainloop);
         waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
                          "read stream restore mute");
+        pa_threaded_mainloop_unlock(m_mainloop);
+        return result;
+    }
+
+    std::optional<std::pair<bool, double>> streamRestoreSetMute(const QString& app,
+                                                                bool targetMuted)
+    {
+        if (!contextReady()) return std::nullopt;
+        std::optional<std::pair<bool, double>> result;
+        StreamRestoreCbData d{this,        QStringLiteral("sink-input-by-application-name:") + app,
+                              0.0,         0.0,
+                              true,        true,
+                              targetMuted, nullptr,
+                              &result};
+        pa_threaded_mainloop_lock(m_mainloop);
+        waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
+                         "read stream restore absolute mute");
         pa_threaded_mainloop_unlock(m_mainloop);
         return result;
     }
@@ -1105,12 +1210,28 @@ void VolumeController::changeVolume(const QString& appName, double delta)
                               Q_ARG(QString, appName), Q_ARG(double, delta));
 }
 
+void VolumeController::setVolume(const QString& appName, double targetVolume)
+{
+    if (m_closing || !m_worker) return;
+
+    QMetaObject::invokeMethod(m_worker, "setAppVolume", Qt::QueuedConnection,
+                              Q_ARG(QString, appName), Q_ARG(double, targetVolume));
+}
+
 void VolumeController::toggleMute(const QString& appName)
 {
     if (m_closing || !m_worker) return;
 
     QMetaObject::invokeMethod(m_worker, "doToggleMute", Qt::QueuedConnection,
                               Q_ARG(QString, appName));
+}
+
+void VolumeController::setMuted(const QString& appName, bool muted)
+{
+    if (m_closing || !m_worker) return;
+
+    QMetaObject::invokeMethod(m_worker, "setAppMute", Qt::QueuedConnection, Q_ARG(QString, appName),
+                              Q_ARG(bool, muted));
 }
 
 void VolumeController::toggleDucking(const QString& keepApp, double duckVolume)

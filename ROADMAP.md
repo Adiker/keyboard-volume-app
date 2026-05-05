@@ -191,6 +191,13 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** `cpp/src/config.cpp`, `cpp/src/osdwindow.cpp`, `cpp/src/settingsdialog.cpp`.
 **Status:** Planowane.
 
+### 21. Sceny audio / Mixer Presets ✓
+
+**Problem:** Power userzy często potrzebują przełączać cały miks między kontekstami pracy: meeting, gaming, streaming, focus. Ręczne ustawianie kilku aplikacji albo kilka osobnych komend `kv-ctl` jest wolne i trudne do utrzymania.
+**Rekomendacja:** Dodać tablicę `scenes` w `config.json`, gdzie każda scena ma `id`, `name` oraz `targets` z `match`, opcjonalnym `volume` i opcjonalnym `muted`. Wystawić sceny przez D-Bus i odpalać je z CLI jako `kv-ctl scene ID`.
+**Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/volumecontroller.{h,cpp}`, `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/kvctl*.{h,cpp}`, testy i dokumentacja.
+**Status:** Zrealizowane. `Config` serializuje i sanityzuje sceny, `DbusInterface` wystawia property `Scenes` i metodę `ApplyScene(id)`, `kv-ctl` obsługuje `scene ID` oraz `get scenes`. `VolumeController` dostał absolutne async `setVolume(app, value)` i `setMuted(app, bool)`, nadal wykonywane na `PaWorker`. Ryzyko/rollback: zmiana dotyka D-Bus i libpulse/PipeWire mute path; rollback to usunięcie `ApplyScene`/`Scenes` i pozostawienie istniejących profili bez zmian.
+
 ---
 
 ## Weryfikacja (dla każdej zmiany)

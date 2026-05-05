@@ -18,6 +18,7 @@ KvCtlCommand::Field parseField(const QString& name)
     if (name == QStringLiteral("apps")) return KvCtlCommand::Field::Apps;
     if (name == QStringLiteral("step")) return KvCtlCommand::Field::Step;
     if (name == QStringLiteral("profiles")) return KvCtlCommand::Field::Profiles;
+    if (name == QStringLiteral("scenes")) return KvCtlCommand::Field::Scenes;
     return KvCtlCommand::Field::None;
 }
 
@@ -65,12 +66,24 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
         return {true, cmd, QString()};
     }
 
+    if (action == QStringLiteral("scene"))
+    {
+        if (profileSet) return fail(QStringLiteral("scene does not accept --profile"));
+        if (positionalArgs.size() != 2) return fail(QStringLiteral("usage: kv-ctl scene ID"));
+
+        cmd.scene = positionalArgs[1].trimmed();
+        if (cmd.scene.isEmpty()) return fail(QStringLiteral("scene requires a non-empty id"));
+
+        cmd.action = KvCtlCommand::Action::ApplyScene;
+        return {true, cmd, QString()};
+    }
+
     if (action == QStringLiteral("get"))
     {
         if (profileSet) return fail(QStringLiteral("get does not accept --profile"));
         if (positionalArgs.size() != 2)
-            return fail(
-                QStringLiteral("usage: kv-ctl get volume|muted|active-app|apps|step|profiles"));
+            return fail(QStringLiteral(
+                "usage: kv-ctl get volume|muted|active-app|apps|step|profiles|scenes"));
 
         cmd.action = KvCtlCommand::Action::Get;
         cmd.field = parseField(positionalArgs[1]);
@@ -110,8 +123,9 @@ QString kvCtlUsageText()
                           "  kv-ctl down [--profile ID]\n"
                           "  kv-ctl mute [--profile ID]\n"
                           "  kv-ctl duck [--profile ID]\n"
+                          "  kv-ctl scene ID\n"
                           "  kv-ctl refresh\n"
-                          "  kv-ctl get volume|muted|active-app|apps|step|profiles\n"
+                          "  kv-ctl get volume|muted|active-app|apps|step|profiles|scenes\n"
                           "  kv-ctl set volume VALUE\n"
                           "  kv-ctl set muted true|false\n"
                           "  kv-ctl set active-app NAME\n"

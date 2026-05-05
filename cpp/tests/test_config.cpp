@@ -568,3 +568,75 @@ TEST(ConfigProfiles, SetProfilesUniqueifiesIds)
     EXPECT_EQ(profs[0].id.toStdString(), "x");
     EXPECT_NE(profs[1].id.toStdString(), "x"); // suffixed
 }
+
+// ─── Audio scene tests ───────────────────────────────────────────────────────
+
+TEST(ConfigScenes, DefaultsToEmptyList)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Config config(tmp.path());
+
+    EXPECT_TRUE(config.scenes().isEmpty());
+}
+
+TEST(ConfigScenes, RoundTripSceneTargets)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AudioScene scene;
+    scene.id = "meeting";
+    scene.name = "Meeting";
+    scene.targets = {
+        SceneTarget{QStringLiteral("Spotify"), 10, false},
+        SceneTarget{QStringLiteral("Discord"), 80, std::nullopt},
+        SceneTarget{QStringLiteral("Steam"), std::nullopt, true},
+    };
+
+    {
+        Config config(tmp.path());
+        config.setScenes({scene});
+    }
+
+    Config config2(tmp.path());
+    const auto scenes = config2.scenes();
+    ASSERT_EQ(scenes.size(), 1);
+    EXPECT_EQ(scenes[0], scene);
+}
+
+TEST(ConfigScenes, SanitizesTargetsAndUniqueifiesIds)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AudioScene a;
+    a.id = "scene";
+    a.name = "A";
+    a.targets = {
+        SceneTarget{QStringLiteral(" Spotify "), 150, std::nullopt},
+        SceneTarget{QStringLiteral(""), 50, false},
+        SceneTarget{QStringLiteral("Ignored"), std::nullopt, std::nullopt},
+    };
+
+    AudioScene b;
+    b.id = "scene";
+    b.name = "B";
+    b.targets = {SceneTarget{QStringLiteral("Discord"), -10, true}};
+
+    Config config(tmp.path());
+    config.setScenes({a, b});
+
+    const auto scenes = config.scenes();
+    ASSERT_EQ(scenes.size(), 2);
+    EXPECT_EQ(scenes[0].id.toStdString(), "scene");
+    EXPECT_EQ(scenes[1].id.toStdString(), "scene-2");
+    ASSERT_EQ(scenes[0].targets.size(), 1);
+    EXPECT_EQ(scenes[0].targets[0].match.toStdString(), "Spotify");
+    ASSERT_TRUE(scenes[0].targets[0].volume);
+    EXPECT_EQ(*scenes[0].targets[0].volume, 100);
+    ASSERT_EQ(scenes[1].targets.size(), 1);
+    ASSERT_TRUE(scenes[1].targets[0].volume);
+    EXPECT_EQ(*scenes[1].targets[0].volume, 0);
+}

@@ -51,6 +51,10 @@ TEST(KvCtlCommand, RejectsProfileWhereUnsupported)
     auto refresh =
         parseKvCtlCommand({QStringLiteral("refresh")}, QStringLiteral("firefox-ctrl"), true);
     EXPECT_FALSE(refresh.ok);
+
+    auto scene = parseKvCtlCommand({QStringLiteral("scene"), QStringLiteral("meeting")},
+                                   QStringLiteral("firefox-ctrl"), true);
+    EXPECT_FALSE(scene.ok);
 }
 
 TEST(KvCtlCommand, ParsesGetFields)
@@ -58,6 +62,7 @@ TEST(KvCtlCommand, ParsesGetFields)
     const QStringList fields = {
         QStringLiteral("volume"), QStringLiteral("muted"), QStringLiteral("active-app"),
         QStringLiteral("apps"),   QStringLiteral("step"),  QStringLiteral("profiles"),
+        QStringLiteral("scenes"),
     };
 
     for (const QString& field : fields)
@@ -67,6 +72,16 @@ TEST(KvCtlCommand, ParsesGetFields)
         EXPECT_EQ(result.command.action, KvCtlCommand::Action::Get);
         EXPECT_NE(result.command.field, KvCtlCommand::Field::None);
     }
+}
+
+TEST(KvCtlCommand, ParsesSceneCommand)
+{
+    auto result =
+        parseKvCtlCommand({QStringLiteral("scene"), QStringLiteral("meeting")}, {}, false);
+
+    ASSERT_TRUE(result.ok) << result.error.toStdString();
+    EXPECT_EQ(result.command.action, KvCtlCommand::Action::ApplyScene);
+    EXPECT_EQ(result.command.scene.toStdString(), "meeting");
 }
 
 TEST(KvCtlCommand, ParsesSetFields)
@@ -108,4 +123,10 @@ TEST(KvCtlCommand, RejectsBadCommands)
     EXPECT_FALSE(parseKvCtlCommand({QStringLiteral("up")}, {}, true).ok);
     EXPECT_FALSE(
         parseKvCtlCommand({QStringLiteral("duck"), QStringLiteral("extra")}, {}, false).ok);
+    EXPECT_FALSE(parseKvCtlCommand({QStringLiteral("scene")}, {}, false).ok);
+    EXPECT_FALSE(parseKvCtlCommand({QStringLiteral("scene"), QStringLiteral(" ")}, {}, false).ok);
+    EXPECT_FALSE(parseKvCtlCommand(
+                     {QStringLiteral("scene"), QStringLiteral("meeting"), QStringLiteral("extra")},
+                     {}, false)
+                     .ok);
 }
