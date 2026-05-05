@@ -735,6 +735,24 @@ class PaWorker : public QObject
                 if (volumeApplied && muteApplied) applied.insert(app);
             }
         }
+
+        // Second pass: apps with a pending mute but no pending volume change
+        for (const auto& si : inputs)
+        {
+            for (auto it = pendMutes.begin(); it != pendMutes.end(); ++it)
+            {
+                const QString& app = it.key();
+                if (pendVols.contains(app)) continue; // already handled above
+                if (si.name != app && si.binary != app) continue;
+
+                bool muteApplied = waitForOperation(
+                    pa_context_set_sink_input_mute(m_ctx, si.index, it.value() ? 1 : 0,
+                                                   operationDoneCallback, this),
+                    "apply pending sink input mute only");
+
+                if (muteApplied) applied.insert(app);
+            }
+        }
         pa_threaded_mainloop_unlock(m_mainloop);
 
         if (!applied.isEmpty())
