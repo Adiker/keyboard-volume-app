@@ -118,6 +118,13 @@ void DbusInterface::ToggleMute()
     m_volumeCtrl->toggleMute(m_activeApp);
 }
 
+void DbusInterface::ToggleDucking()
+{
+    const Profile p = m_config->defaultProfile();
+    if (p.app.isEmpty() || !p.ducking.enabled) return;
+    m_volumeCtrl->toggleDucking(p.app, p.ducking.volume / 100.0);
+}
+
 void DbusInterface::RefreshApps()
 {
     m_volumeCtrl->listApps(true);

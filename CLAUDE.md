@@ -276,7 +276,7 @@ Exposes `org.keyboardvolumeapp.VolumeControl` on the D-Bus session bus (bus name
 Caches volume/mute/app state by listening to `VolumeController::volumeChanged`, `VolumeController::appsReady`, and `TrayApp::appChanged`. D-Bus properties (`Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`, `Profiles`) are served from the cache; setters delegate to `VolumeController`/`Config` async.
 
 D-Bus methods:
-- `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `RefreshApps()` — bare methods target `m_activeApp` (= default profile's app), kept for backwards compat.
+- `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `ToggleDucking()`, `RefreshApps()` — bare methods target the default profile / `m_activeApp`, kept for backwards compat and script-friendly default-profile control.
 - `VolumeUpProfile(QString id)`, `VolumeDownProfile(QString id)`, `ToggleMuteProfile(QString id)`, `ToggleDuckingProfile(QString id)` — per-profile methods, route directly to the profile's app via `m_volumeCtrl`.
 
 `Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute}), ducking ({enabled, volume, hotkey})}`. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
@@ -285,7 +285,7 @@ D-Bus methods:
 
 `kv-ctl` is a small CLI client for scripts and tiling WM keybinds. Commands:
 - `kv-ctl up|down|mute [--profile id]` maps to bare D-Bus methods or `VolumeUpProfile` / `VolumeDownProfile` / `ToggleMuteProfile`.
-- `kv-ctl duck [--profile id]` maps to `ToggleDuckingProfile`; without `--profile`, it targets the `default` profile.
+- `kv-ctl duck [--profile id]` maps to bare `ToggleDucking` or `ToggleDuckingProfile(id)`; without `--profile`, the daemon resolves the current default profile server-side.
 - `kv-ctl refresh` maps to `RefreshApps`.
 - `kv-ctl get volume|muted|active-app|apps|step|profiles` reads D-Bus properties through `org.freedesktop.DBus.Properties.Get`.
 - `kv-ctl set volume|muted|active-app|step VALUE` writes properties through `org.freedesktop.DBus.Properties.Set`; volume is given as `0..100` percent and mapped to `0.0..1.0`.
