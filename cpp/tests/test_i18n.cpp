@@ -21,7 +21,7 @@ TEST(I18n, SwitchLanguage)
 TEST(I18n, UnknownCodeIgnored)
 {
     setLanguage("pl");
-    setLanguage("xyz");  // unknown → ignored
+    setLanguage("xyz"); // unknown → ignored
     EXPECT_EQ(currentLanguage().toStdString(), "pl");
 }
 
@@ -29,9 +29,11 @@ TEST(I18n, LookupExistingKey)
 {
     setLanguage("en");
     EXPECT_EQ(tr("settings.title").toStdString(), "Settings");
+    EXPECT_EQ(tr("settings.profiles.ducking_hotkey").toStdString(), "Focus audio hotkey:");
 
     setLanguage("pl");
     EXPECT_EQ(tr("settings.title").toStdString(), "Ustawienia");
+    EXPECT_EQ(tr("settings.profiles.ducking_hotkey").toStdString(), "Skrót trybu skupienia:");
 }
 
 TEST(I18n, FallbackToRawKey)
@@ -59,7 +61,7 @@ TEST(I18n, BothLanguagesGiveDifferentTranslations)
 
 TEST(I18n, LanguagesList)
 {
-    const auto &langs = languages();
+    const auto& langs = languages();
     ASSERT_GE(langs.size(), 2);
     EXPECT_TRUE(langs.contains("en"));
     EXPECT_TRUE(langs.contains("pl"));

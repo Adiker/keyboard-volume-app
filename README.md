@@ -21,9 +21,10 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 
 - **Per-app volume control** — changes the volume of only the selected application, not the system master
 - **Multiple audio profiles** — define several profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, and target audio app. Bare `VolUp` controls Spotify, `Ctrl+VolUp` controls Firefox, `F11` controls VLC — all from the same keyboard
+- **Focus audio / ducking** — each profile can bind a manual ducking hotkey that lowers every other known audio app to a configured percentage, then restores the previous levels on the next press
 - **Global key capture** — reads directly from an evdev input device, works regardless of which window is focused
 - **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising volume keys from any profile, so the desktop never intercepts them
-- **Configurable hotkeys** — every profile's Volume Up, Volume Down and Mute keys are reassignable via Settings → Profiles; defaults are the dedicated media keys
+- **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio keys are reassignable via Settings → Profiles; defaults are the dedicated media keys
 - **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists non-system PipeWire audio clients, including apps that are connected but not currently playing
@@ -32,7 +33,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Persistent config** — all settings saved atomically to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
 - **PL / EN interface** — switch language in Settings
 - **First-run wizard** — on first launch, a QWizard guides through language, input device, and default audio app selection; the app is production-ready out of the box after a few clicks
-- **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles**; bare `VolumeUp/Down/ToggleMute/RefreshApps` methods plus per-profile `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
+- **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles**; bare `VolumeUp/Down/ToggleMute/RefreshApps` methods plus per-profile `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile/ToggleDuckingProfile(id)`
 - **`kv-ctl` CLI** — script-friendly command-line client for D-Bus control without calling the external `qdbus` program
 - **MPRIS v2** — registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client
 - **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
@@ -152,7 +153,7 @@ Tests cover the Config manager, i18n translations, `kv-ctl` command parsing, Pip
    - OSD opacity (0–100%)
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
-   - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers and target app; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls)
+   - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app, and optional Focus audio ducking hotkey; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls)
 
 7. **CLI / D-Bus remote control** — use `kv-ctl` to drive the running tray app from scripts, custom keybinds, or external tools without calling the external `qdbus` program:
 
@@ -162,6 +163,12 @@ Tests cover the Config manager, i18n translations, `kv-ctl` command parsing, Pip
 
    # Bump volume on a specific profile
    kv-ctl up --profile firefox-ctrl
+
+   # Toggle Focus audio ducking for the default profile
+   kv-ctl duck
+
+   # Toggle Focus audio ducking for a specific profile
+   kv-ctl duck --profile discord
 
    # List all profiles
    kv-ctl get profiles
@@ -206,10 +213,12 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
       "modifiers": [],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } },
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 } },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } }
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 } }
   ]
 }
 ```
@@ -297,9 +306,10 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 
 - **Sterowanie głośnością per aplikacja** — zmienia głośność wyłącznie wybranej aplikacji, nie ruszając głośności systemowej
 - **Wiele profili audio** — definiuj kilka profili, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją. `VolUp` steruje Spotify, `Ctrl+VolUp` steruje Firefoxem, `F11` steruje VLC — wszystko z tej samej klawiatury
+- **Tryb skupienia audio / ducking** — każdy profil może mieć ręczny skrót, który ścisza wszystkie inne znane aplikacje audio do ustawionego procentu, a kolejne naciśnięcie przywraca poprzednie poziomy
 - **Globalne przechwytywanie klawiszy** — odczytuje zdarzenia bezpośrednio z urządzenia evdev, działa niezależnie od tego, które okno jest aktywne
 - **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające klawisze użyte w którymkolwiek profilu, aby system nie przechwytywał ich
-- **Konfigurowalne skróty** — Głośność w górę, Głośność w dół i Wyciszenie każdego profilu można przypisać do dowolnego klawisza przez Ustawienia → Profile; domyślnie są to dedykowane klawisze multimedialne
+- **Konfigurowalne skróty** — Głośność w górę, Głośność w dół, Wyciszenie i tryb skupienia każdego profilu można przypisać do dowolnego klawisza przez Ustawienia → Profile; domyślnie są to dedykowane klawisze multimedialne
 - **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; znika automatycznie po upływie skonfigurowanego czasu
 - **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego oraz dostęp do ustawień
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera niesystemowe klienty audio PipeWire, także aplikacje podłączone, ale aktualnie nieodtwarzające dźwięku
@@ -308,7 +318,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Trwała konfiguracja** — wszystkie ustawienia zapisywane atomowo w `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`)
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
 - **Asystent pierwszego uruchomienia** — przy pierwszym starcie QWizard przeprowadza przez wybór języka, urządzenia wejściowego i domyślnej aplikacji audio; aplikacja działa od razu po kilku kliknięciach
-- **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile**; metody bez wskazania profilu `VolumeUp/Down/ToggleMute/RefreshApps` oraz metody profilowe `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile(id)`
+- **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile**; metody bez wskazania profilu `VolumeUp/Down/ToggleMute/RefreshApps` oraz metody profilowe `VolumeUpProfile/VolumeDownProfile/ToggleMuteProfile/ToggleDuckingProfile(id)`
 - **CLI `kv-ctl`** — wygodny klient wiersza poleceń do sterowania przez D-Bus bez wywoływania zewnętrznego programu `qdbus`
 - **MPRIS v2** — zarejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS
 - **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
@@ -428,7 +438,7 @@ Testy obejmują Config, i18n, parser `kv-ctl`, narzędzia PipeWire, VolumeContro
    - Krycie OSD (0–100%)
    - Krok zmiany głośności na jedno naciśnięcie klawisza (%)
    - Kolory OSD (tło, tekst, pasek)
-   - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją; pierwszy wiersz jest profilem domyślnym (używanym przez zasobnik oraz przez metody D-Bus / MPRIS bez wskazania profilu)
+   - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift`, docelową aplikacją i opcjonalnym skrótem trybu skupienia; pierwszy wiersz jest profilem domyślnym (używanym przez zasobnik oraz przez metody D-Bus / MPRIS bez wskazania profilu)
 
 7. **Zdalne sterowanie CLI / D-Bus** — użyj `kv-ctl` do kontrolowania działającej aplikacji ze skryptów, własnych skrótów lub zewnętrznych narzędzi bez uruchamiania zewnętrznego programu `qdbus`:
 
@@ -438,6 +448,12 @@ Testy obejmują Config, i18n, parser `kv-ctl`, narzędzia PipeWire, VolumeContro
 
    # Zwiększ głośność wybranego profilu
    kv-ctl up --profile firefox-ctrl
+
+   # Włącz lub wyłącz ducking profilu domyślnego
+   kv-ctl duck
+
+   # Włącz lub wyłącz ducking wybranego profilu
+   kv-ctl duck --profile discord
 
    # Wylistuj wszystkie profile
    kv-ctl get profiles
@@ -482,10 +498,12 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
       "modifiers": [],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } },
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 } },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } }
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 } }
   ]
 }
 ```

@@ -318,6 +318,9 @@ TEST(ConfigProfiles, MigrationOldConfigSynthesizesDefaultProfile)
     EXPECT_EQ(profs[0].hotkeys.volumeDown, 201);
     EXPECT_EQ(profs[0].hotkeys.mute, 202);
     EXPECT_TRUE(profs[0].modifiers.isEmpty());
+    EXPECT_FALSE(profs[0].ducking.enabled);
+    EXPECT_EQ(profs[0].ducking.volume, 25);
+    EXPECT_EQ(profs[0].ducking.hotkey, 0);
 
     // The config file should now contain a "profiles" array on disk.
     QFile f2(tmp.path() + "/config.json");
@@ -407,6 +410,9 @@ TEST(ConfigProfiles, RoundTripTwoProfiles)
     b.app = "firefox";
     b.hotkeys = {115, 114, 113};
     b.modifiers.insert(Modifier::Ctrl);
+    b.ducking.enabled = true;
+    b.ducking.volume = 20;
+    b.ducking.hotkey = 88;
 
     {
         Config config(tmp.path());
@@ -418,6 +424,59 @@ TEST(ConfigProfiles, RoundTripTwoProfiles)
     ASSERT_EQ(profs.size(), 2);
     EXPECT_EQ(profs[0], a);
     EXPECT_EQ(profs[1], b);
+}
+
+TEST(ConfigProfiles, MissingDuckingUsesDefaults)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    QFile f(tmp.path() + "/config.json");
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject profile{
+        {"id", "default"},
+        {"name", "Default"},
+        {"app", "spotify"},
+        {"modifiers", QJsonArray{}},
+        {"hotkeys",
+         QJsonObject{
+             {"volume_up", 115},
+             {"volume_down", 114},
+             {"mute", 113},
+         }},
+    };
+    QJsonObject json{{"profiles", QJsonArray{profile}}};
+    f.write(QJsonDocument(json).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    auto profs = config.profiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_FALSE(profs[0].ducking.enabled);
+    EXPECT_EQ(profs[0].ducking.volume, 25);
+    EXPECT_EQ(profs[0].ducking.hotkey, 0);
+}
+
+TEST(ConfigProfiles, DuckingVolumeAndHotkeyAreSanitized)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    Profile p;
+    p.id = "default";
+    p.name = "Default";
+    p.hotkeys = {115, 114, 113};
+    p.ducking.enabled = true;
+    p.ducking.volume = 150;
+    p.ducking.hotkey = -9;
+
+    config.setProfiles({p});
+    auto profs = config.profiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_TRUE(profs[0].ducking.enabled);
+    EXPECT_EQ(profs[0].ducking.volume, 100);
+    EXPECT_EQ(profs[0].ducking.hotkey, 0);
 }
 
 TEST(ConfigProfiles, DefaultMirroringToLegacyKeys)

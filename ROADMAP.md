@@ -170,12 +170,12 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** `cpp/src/config.cpp`, `cpp/src/pwutils.cpp`, `cpp/src/volumecontroller.cpp`.
 **Status:** Planowane.
 
-### 18. Tryb "Audio Ducking" (Izolacja dźwiękowa / Focus Mode)
+### 18. Tryb "Audio Ducking" (Izolacja dźwiękowa / Focus Mode) ✓
 
 **Problem:** Gdy użytkownik odbiera połączenie (np. na Discordzie), musi ręcznie ściszać inne aplikacje w tle (muzykę, grę).
 **Rekomendacja:** Wprowadzenie dedykowanej akcji / skrótu klawiszowego, który automatycznie obniża o np. 70% (lub całkowicie wycisza) głośność *wszystkich innych aplikacji* w PipeWire, oprócz aktualnie wybranego profilu. Drugie wciśnięcie przywraca stary stan.
-**Pliki:** `cpp/src/volumecontroller.cpp`, `cpp/src/inputhandler.cpp`.
-**Status:** Planowane.
+**Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/inputhandler.{h,cpp}`, `cpp/src/volumecontroller.{h,cpp}`, `cpp/src/main.cpp`, `cpp/src/profileeditdialog.{h,cpp}`, `cpp/src/settingsdialog.{h,cpp}`, `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/kvctl*.{h,cpp}`, `cpp/src/i18n.cpp`, testy i dokumentacja.
+**Status:** Zrealizowane jako ręczny Focus Audio per profil. Profil ma `ducking.enabled`, `ducking.volume` i `ducking.hotkey`; `InputHandler` emituje `ducking_toggle(profileId)`, `PaWorker` zapisuje snapshot głośności innych aplikacji i przywraca go przy kolejnym toggle. D-Bus ma `ToggleDuckingProfile(id)`, a CLI `kv-ctl duck [--profile id]`. Ryzyko/rollback: zmiana dotyka evdev, D-Bus i libpulse/PipeWire hot path; rollback to wyłączenie duckingu w profilach lub revert PR.
 
 ### 19. Wbudowane CLI (Sub-komendy dla skryptów / Tiling WM)
 

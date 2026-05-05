@@ -12,8 +12,8 @@
 class VolumeController : public QObject
 {
     Q_OBJECT
-public:
-    explicit VolumeController(QObject *parent = nullptr);
+  public:
+    explicit VolumeController(QObject* parent = nullptr);
     ~VolumeController() override;
 
     // Returns the cached app list immediately and posts an async refresh.
@@ -21,21 +21,22 @@ public:
     QList<AudioApp> listApps(bool forceRefresh = false);
 
     // Async volume operations — result arrives via volumeChanged().
-    void changeVolume(const QString &appName, double delta);
-    void toggleMute(const QString &appName);
+    void changeVolume(const QString& appName, double delta);
+    void toggleMute(const QString& appName);
+    void toggleDucking(const QString& keepApp, double duckVolume);
 
     void close();
 
-signals:
+  signals:
     // Emitted in the main thread after a volume/mute change completes.
-    void volumeChanged(const QString &app, double newVol, bool muted);
+    void volumeChanged(const QString& app, double newVol, bool muted);
 
     // Emitted in the main thread after an async app-list refresh finishes.
     void appsReady(QList<AudioApp> apps);
 
-private:
-    QThread         *m_paThread  = nullptr;
-    class PaWorker  *m_worker    = nullptr;
-    QList<AudioApp>  m_listCache;
-    bool             m_closing   = false;
+  private:
+    QThread* m_paThread = nullptr;
+    class PaWorker* m_worker = nullptr;
+    QList<AudioApp> m_listCache;
+    bool m_closing = false;
 };

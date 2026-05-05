@@ -18,7 +18,8 @@
 #define APP_VERSION "unknown"
 #endif
 
-namespace {
+namespace
+{
 
 constexpr int ExitOk = 0;
 constexpr int ExitUsage = 1;
@@ -31,45 +32,49 @@ const QString ObjectPath = QStringLiteral("/org/keyboardvolumeapp");
 const QString ControlInterface = QStringLiteral("org.keyboardvolumeapp.VolumeControl");
 const QString PropertiesInterface = QStringLiteral("org.freedesktop.DBus.Properties");
 
-void printLine(const QString &text)
+void printLine(const QString& text)
 {
     QTextStream(stdout) << text << Qt::endl;
 }
 
-void printError(const QString &text)
+void printError(const QString& text)
 {
     QTextStream(stderr) << "kv-ctl: " << text << Qt::endl;
 }
 
 QString propertyName(KvCtlCommand::Field field)
 {
-    switch (field) {
-    case KvCtlCommand::Field::Volume:    return QStringLiteral("Volume");
-    case KvCtlCommand::Field::Muted:     return QStringLiteral("Muted");
-    case KvCtlCommand::Field::ActiveApp: return QStringLiteral("ActiveApp");
-    case KvCtlCommand::Field::Apps:      return QStringLiteral("Apps");
-    case KvCtlCommand::Field::Step:      return QStringLiteral("VolumeStep");
-    case KvCtlCommand::Field::Profiles:  return QStringLiteral("Profiles");
-    case KvCtlCommand::Field::None:      return QString();
+    switch (field)
+    {
+    case KvCtlCommand::Field::Volume:
+        return QStringLiteral("Volume");
+    case KvCtlCommand::Field::Muted:
+        return QStringLiteral("Muted");
+    case KvCtlCommand::Field::ActiveApp:
+        return QStringLiteral("ActiveApp");
+    case KvCtlCommand::Field::Apps:
+        return QStringLiteral("Apps");
+    case KvCtlCommand::Field::Step:
+        return QStringLiteral("VolumeStep");
+    case KvCtlCommand::Field::Profiles:
+        return QStringLiteral("Profiles");
+    case KvCtlCommand::Field::None:
+        return QString();
     }
     return QString();
 }
 
-bool parseBool(const QString &value, bool *out)
+bool parseBool(const QString& value, bool* out)
 {
     const QString normalized = value.trimmed().toLower();
-    if (normalized == QStringLiteral("true")
-        || normalized == QStringLiteral("1")
-        || normalized == QStringLiteral("yes")
-        || normalized == QStringLiteral("on"))
+    if (normalized == QStringLiteral("true") || normalized == QStringLiteral("1") ||
+        normalized == QStringLiteral("yes") || normalized == QStringLiteral("on"))
     {
         *out = true;
         return true;
     }
-    if (normalized == QStringLiteral("false")
-        || normalized == QStringLiteral("0")
-        || normalized == QStringLiteral("no")
-        || normalized == QStringLiteral("off"))
+    if (normalized == QStringLiteral("false") || normalized == QStringLiteral("0") ||
+        normalized == QStringLiteral("no") || normalized == QStringLiteral("off"))
     {
         *out = false;
         return true;
@@ -77,22 +82,20 @@ bool parseBool(const QString &value, bool *out)
     return false;
 }
 
-bool parseVolumePercent(const QString &value, double *out)
+bool parseVolumePercent(const QString& value, double* out)
 {
     bool ok = false;
     const double percent = value.toDouble(&ok);
-    if (!ok || percent < 0.0 || percent > 100.0)
-        return false;
+    if (!ok || percent < 0.0 || percent > 100.0) return false;
     *out = percent / 100.0;
     return true;
 }
 
-bool parseStep(const QString &value, int *out)
+bool parseStep(const QString& value, int* out)
 {
     bool ok = false;
     const int step = value.toInt(&ok);
-    if (!ok || step < 1 || step > 50)
-        return false;
+    if (!ok || step < 1 || step > 50) return false;
     *out = step;
     return true;
 }
@@ -105,33 +108,34 @@ QString percentString(double fraction)
     return QString::number(percent, 'f', 1);
 }
 
-QString variantToText(const QVariant &value);
+QString variantToText(const QVariant& value);
 
-QStringList listToText(const QVariantList &list)
+QStringList listToText(const QVariantList& list)
 {
     QStringList lines;
-    for (const QVariant &entry : list)
-        lines << variantToText(entry);
+    for (const QVariant& entry : list) lines << variantToText(entry);
     return lines;
 }
 
-QString mapToText(const QVariantMap &map)
+QString mapToText(const QVariantMap& map)
 {
     const QString id = map.value(QStringLiteral("id")).toString();
     const QString name = map.value(QStringLiteral("name")).toString();
     const QString app = map.value(QStringLiteral("app")).toString();
-    if (!id.isEmpty() || !name.isEmpty() || !app.isEmpty()) {
-        QString modifiers = map.value(QStringLiteral("modifiers")).toStringList().join(QLatin1Char(','));
-        if (modifiers.isEmpty())
-            modifiers = QStringLiteral("-");
+    if (!id.isEmpty() || !name.isEmpty() || !app.isEmpty())
+    {
+        QString modifiers =
+            map.value(QStringLiteral("modifiers")).toStringList().join(QLatin1Char(','));
+        if (modifiers.isEmpty()) modifiers = QStringLiteral("-");
 
         QString hotkeys = QStringLiteral("-");
         const QVariantMap hotkeyMap = map.value(QStringLiteral("hotkeys")).toMap();
-        if (!hotkeyMap.isEmpty()) {
+        if (!hotkeyMap.isEmpty())
+        {
             hotkeys = QStringLiteral("up=%1,down=%2,mute=%3")
-                .arg(hotkeyMap.value(QStringLiteral("volume_up")).toString(),
-                     hotkeyMap.value(QStringLiteral("volume_down")).toString(),
-                     hotkeyMap.value(QStringLiteral("mute")).toString());
+                          .arg(hotkeyMap.value(QStringLiteral("volume_up")).toString(),
+                               hotkeyMap.value(QStringLiteral("volume_down")).toString(),
+                               hotkeyMap.value(QStringLiteral("mute")).toString());
         }
 
         return QStringLiteral("%1\t%2\t%3\t%4\t%5").arg(id, name, app, modifiers, hotkeys);
@@ -143,7 +147,7 @@ QString mapToText(const QVariantMap &map)
     return parts.join(QLatin1Char('\t'));
 }
 
-QString variantToText(const QVariant &value)
+QString variantToText(const QVariant& value)
 {
     if (value.userType() == qMetaTypeId<QDBusVariant>())
         return variantToText(qvariant_cast<QDBusVariant>(value).variant());
@@ -151,47 +155,52 @@ QString variantToText(const QVariant &value)
     if (value.typeId() == QMetaType::Bool)
         return value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
 
-    if (value.canConvert<QStringList>())
-        return value.toStringList().join(QLatin1Char('\n'));
+    if (value.canConvert<QStringList>()) return value.toStringList().join(QLatin1Char('\n'));
 
-    if (value.canConvert<QVariantList>())
-        return listToText(value.toList()).join(QLatin1Char('\n'));
+    if (value.canConvert<QVariantList>()) return listToText(value.toList()).join(QLatin1Char('\n'));
 
-    if (value.canConvert<QVariantMap>())
-        return mapToText(value.toMap());
+    if (value.canConvert<QVariantMap>()) return mapToText(value.toMap());
 
     return value.toString();
 }
 
-QVariant setValueForCommand(const KvCtlCommand &cmd, bool *ok)
+QVariant setValueForCommand(const KvCtlCommand& cmd, bool* ok)
 {
     *ok = true;
-    switch (cmd.field) {
-    case KvCtlCommand::Field::Volume: {
+    switch (cmd.field)
+    {
+    case KvCtlCommand::Field::Volume:
+    {
         double volume = 0.0;
-        if (!parseVolumePercent(cmd.value, &volume)) {
+        if (!parseVolumePercent(cmd.value, &volume))
+        {
             *ok = false;
             return {};
         }
         return volume;
     }
-    case KvCtlCommand::Field::Muted: {
+    case KvCtlCommand::Field::Muted:
+    {
         bool muted = false;
-        if (!parseBool(cmd.value, &muted)) {
+        if (!parseBool(cmd.value, &muted))
+        {
             *ok = false;
             return {};
         }
         return muted;
     }
     case KvCtlCommand::Field::ActiveApp:
-        if (cmd.value.trimmed().isEmpty()) {
+        if (cmd.value.trimmed().isEmpty())
+        {
             *ok = false;
             return {};
         }
         return cmd.value.trimmed();
-    case KvCtlCommand::Field::Step: {
+    case KvCtlCommand::Field::Step:
+    {
         int step = 0;
-        if (!parseStep(cmd.value, &step)) {
+        if (!parseStep(cmd.value, &step))
+        {
             *ok = false;
             return {};
         }
@@ -207,16 +216,19 @@ QVariant setValueForCommand(const KvCtlCommand &cmd, bool *ok)
     return {};
 }
 
-QString methodName(const KvCtlCommand &cmd)
+QString methodName(const KvCtlCommand& cmd)
 {
     const bool profile = !cmd.profile.isEmpty();
-    switch (cmd.action) {
+    switch (cmd.action)
+    {
     case KvCtlCommand::Action::VolumeUp:
         return profile ? QStringLiteral("VolumeUpProfile") : QStringLiteral("VolumeUp");
     case KvCtlCommand::Action::VolumeDown:
         return profile ? QStringLiteral("VolumeDownProfile") : QStringLiteral("VolumeDown");
     case KvCtlCommand::Action::ToggleMute:
         return profile ? QStringLiteral("ToggleMuteProfile") : QStringLiteral("ToggleMute");
+    case KvCtlCommand::Action::ToggleDucking:
+        return QStringLiteral("ToggleDuckingProfile");
     case KvCtlCommand::Action::Refresh:
         return QStringLiteral("RefreshApps");
     case KvCtlCommand::Action::Get:
@@ -226,10 +238,9 @@ QString methodName(const KvCtlCommand &cmd)
     return QString();
 }
 
-bool ensureServiceAvailable(QDBusConnectionInterface *iface)
+bool ensureServiceAvailable(QDBusConnectionInterface* iface)
 {
-    if (!iface)
-        return false;
+    if (!iface) return false;
 
     QDBusReply<bool> registered = iface->isServiceRegistered(Service);
     return registered.isValid() && registered.value();
@@ -238,31 +249,33 @@ bool ensureServiceAvailable(QDBusConnectionInterface *iface)
 bool ensureDaemonAvailable()
 {
     auto bus = QDBusConnection::sessionBus();
-    if (ensureServiceAvailable(bus.interface()))
-        return true;
+    if (ensureServiceAvailable(bus.interface())) return true;
 
     printError(QStringLiteral("keyboard-volume-app is not running on the session bus"));
     return false;
 }
 
-int callControlMethod(const KvCtlCommand &cmd)
+int callControlMethod(const KvCtlCommand& cmd)
 {
-    if (!ensureDaemonAvailable())
-        return ExitUnavailable;
+    if (!ensureDaemonAvailable()) return ExitUnavailable;
 
     QDBusInterface control(Service, ObjectPath, ControlInterface, QDBusConnection::sessionBus());
-    if (!control.isValid()) {
+    if (!control.isValid())
+    {
         printError(control.lastError().message());
         return ExitDbusError;
     }
 
     QDBusMessage reply;
-    if (cmd.profile.isEmpty())
+    if (cmd.action == KvCtlCommand::Action::ToggleDucking && cmd.profile.isEmpty())
+        reply = control.call(methodName(cmd), QStringLiteral("default"));
+    else if (cmd.profile.isEmpty())
         reply = control.call(methodName(cmd));
     else
         reply = control.call(methodName(cmd), cmd.profile);
 
-    if (reply.type() == QDBusMessage::ErrorMessage) {
+    if (reply.type() == QDBusMessage::ErrorMessage)
+    {
         printError(reply.errorMessage());
         return ExitDbusError;
     }
@@ -271,45 +284,47 @@ int callControlMethod(const KvCtlCommand &cmd)
 
 int getProperty(KvCtlCommand::Field field)
 {
-    if (!ensureDaemonAvailable())
-        return ExitUnavailable;
+    if (!ensureDaemonAvailable()) return ExitUnavailable;
 
     QDBusInterface props(Service, ObjectPath, PropertiesInterface, QDBusConnection::sessionBus());
-    QDBusReply<QVariant> reply = props.call(QStringLiteral("Get"),
-                                            ControlInterface,
-                                            propertyName(field));
-    if (!reply.isValid()) {
+    QDBusReply<QVariant> reply =
+        props.call(QStringLiteral("Get"), ControlInterface, propertyName(field));
+    if (!reply.isValid())
+    {
         printError(reply.error().message());
         return ExitDbusError;
     }
 
     const QVariant value = reply.value();
-    if (field == KvCtlCommand::Field::Volume) {
+    if (field == KvCtlCommand::Field::Volume)
+    {
         printLine(percentString(value.toDouble()));
-    } else {
+    }
+    else
+    {
         printLine(variantToText(value));
     }
     return ExitOk;
 }
 
-int setProperty(const KvCtlCommand &cmd)
+int setProperty(const KvCtlCommand& cmd)
 {
     bool ok = false;
     const QVariant value = setValueForCommand(cmd, &ok);
-    if (!ok) {
+    if (!ok)
+    {
         printError(QStringLiteral("invalid value for '%1'").arg(propertyName(cmd.field)));
         return ExitInvalidValue;
     }
 
-    if (!ensureDaemonAvailable())
-        return ExitUnavailable;
+    if (!ensureDaemonAvailable()) return ExitUnavailable;
 
     QDBusInterface props(Service, ObjectPath, PropertiesInterface, QDBusConnection::sessionBus());
-    QDBusMessage reply = props.call(QStringLiteral("Set"),
-                                    ControlInterface,
-                                    propertyName(cmd.field),
-                                    QVariant::fromValue(QDBusVariant(value)));
-    if (reply.type() == QDBusMessage::ErrorMessage) {
+    QDBusMessage reply =
+        props.call(QStringLiteral("Set"), ControlInterface, propertyName(cmd.field),
+                   QVariant::fromValue(QDBusVariant(value)));
+    if (reply.type() == QDBusMessage::ErrorMessage)
+    {
         printError(reply.errorMessage());
         return ExitDbusError;
     }
@@ -319,7 +334,7 @@ int setProperty(const KvCtlCommand &cmd)
 
 } // namespace
 
-int main(int argc, char *argv[])
+int main(int argc, char* argv[])
 {
     QCoreApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("kv-ctl"));
@@ -330,38 +345,40 @@ int main(int argc, char *argv[])
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addOption(QCommandLineOption(QStringList{QStringLiteral("p"), QStringLiteral("profile")},
-                                        QStringLiteral("Target profile id for up/down/mute."),
+                                        QStringLiteral("Target profile id for up/down/mute/duck."),
                                         QStringLiteral("ID")));
     parser.addPositionalArgument(QStringLiteral("command"), kvCtlUsageText());
 
-    if (!parser.parse(app.arguments())) {
+    if (!parser.parse(app.arguments()))
+    {
         printError(parser.errorText());
         QTextStream(stderr) << kvCtlUsageText();
         return ExitUsage;
     }
-    if (parser.isSet(QStringLiteral("help"))) {
+    if (parser.isSet(QStringLiteral("help")))
+    {
         QTextStream(stdout) << parser.helpText() << Qt::endl << kvCtlUsageText();
         return ExitOk;
     }
-    if (parser.isSet(QStringLiteral("version"))) {
+    if (parser.isSet(QStringLiteral("version")))
+    {
         printLine(QStringLiteral("kv-ctl %1").arg(app.applicationVersion()));
         return ExitOk;
     }
 
-    KvCtlParseResult parsed = parseKvCtlCommand(parser.positionalArguments(),
-                                                parser.value(QStringLiteral("profile")),
-                                                parser.isSet(QStringLiteral("profile")));
-    if (!parsed.ok) {
+    KvCtlParseResult parsed =
+        parseKvCtlCommand(parser.positionalArguments(), parser.value(QStringLiteral("profile")),
+                          parser.isSet(QStringLiteral("profile")));
+    if (!parsed.ok)
+    {
         printError(parsed.error);
         QTextStream(stderr) << kvCtlUsageText();
         return ExitUsage;
     }
 
-    const KvCtlCommand &cmd = parsed.command;
-    if (cmd.action == KvCtlCommand::Action::Get)
-        return getProperty(cmd.field);
-    if (cmd.action == KvCtlCommand::Action::Set)
-        return setProperty(cmd);
+    const KvCtlCommand& cmd = parsed.command;
+    if (cmd.action == KvCtlCommand::Action::Get) return getProperty(cmd.field);
+    if (cmd.action == KvCtlCommand::Action::Set) return setProperty(cmd);
 
     return callControlMethod(cmd);
 }

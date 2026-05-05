@@ -37,6 +37,12 @@ QJsonObject Config::defaultJson()
              {QStringLiteral("volume_down"), 114},
              {QStringLiteral("mute"), 113},
          }},
+        {QStringLiteral("ducking"),
+         QJsonObject{
+             {QStringLiteral("enabled"), false},
+             {QStringLiteral("volume"), 25},
+             {QStringLiteral("hotkey"), 0},
+         }},
     };
 
     return QJsonObject{
@@ -125,6 +131,12 @@ QJsonObject Config::profileToJson(const Profile& p)
              {QStringLiteral("volume_down"), p.hotkeys.volumeDown},
              {QStringLiteral("mute"), p.hotkeys.mute},
          }},
+        {QStringLiteral("ducking"),
+         QJsonObject{
+             {QStringLiteral("enabled"), p.ducking.enabled},
+             {QStringLiteral("volume"), std::clamp(p.ducking.volume, 0, 100)},
+             {QStringLiteral("hotkey"), std::max(0, p.ducking.hotkey)},
+         }},
     };
 }
 
@@ -146,6 +158,11 @@ Profile Config::profileFromJson(const QJsonObject& o)
     {
         if (auto m = modifierFromString(v.toString())) p.modifiers.insert(*m);
     }
+
+    QJsonObject duck = o[QStringLiteral("ducking")].toObject();
+    p.ducking.enabled = duck[QStringLiteral("enabled")].toBool(false);
+    p.ducking.volume = std::clamp(duck[QStringLiteral("volume")].toInt(25), 0, 100);
+    p.ducking.hotkey = std::max(0, duck[QStringLiteral("hotkey")].toInt(0));
     return p;
 }
 
@@ -196,6 +213,12 @@ void Config::migrateLegacyToProfilesUnlocked()
              {QStringLiteral("volume_up"), vUp},
              {QStringLiteral("volume_down"), vDown},
              {QStringLiteral("mute"), mute},
+         }},
+        {QStringLiteral("ducking"),
+         QJsonObject{
+             {QStringLiteral("enabled"), false},
+             {QStringLiteral("volume"), 25},
+             {QStringLiteral("hotkey"), 0},
          }},
     };
     m_data[QStringLiteral("profiles")] = QJsonArray{defaultProfile};
@@ -476,6 +499,8 @@ void Config::setProfiles(const QList<Profile>& profiles)
         int suffix = 2;
         while (seen.contains(p.id)) p.id = base + QStringLiteral("-") + QString::number(suffix++);
         seen.insert(p.id);
+        p.ducking.volume = std::clamp(p.ducking.volume, 0, 100);
+        p.ducking.hotkey = std::max(0, p.ducking.hotkey);
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
