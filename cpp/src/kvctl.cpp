@@ -228,7 +228,7 @@ QString methodName(const KvCtlCommand& cmd)
     case KvCtlCommand::Action::ToggleMute:
         return profile ? QStringLiteral("ToggleMuteProfile") : QStringLiteral("ToggleMute");
     case KvCtlCommand::Action::ToggleDucking:
-        return QStringLiteral("ToggleDuckingProfile");
+        return profile ? QStringLiteral("ToggleDuckingProfile") : QStringLiteral("ToggleDucking");
     case KvCtlCommand::Action::Refresh:
         return QStringLiteral("RefreshApps");
     case KvCtlCommand::Action::Get:
@@ -267,9 +267,7 @@ int callControlMethod(const KvCtlCommand& cmd)
     }
 
     QDBusMessage reply;
-    if (cmd.action == KvCtlCommand::Action::ToggleDucking && cmd.profile.isEmpty())
-        reply = control.call(methodName(cmd), QStringLiteral("default"));
-    else if (cmd.profile.isEmpty())
+    if (cmd.profile.isEmpty())
         reply = control.call(methodName(cmd));
     else
         reply = control.call(methodName(cmd), cmd.profile);

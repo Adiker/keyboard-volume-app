@@ -61,6 +61,7 @@ class DbusInterface : public QObject
     Q_SCRIPTABLE void VolumeUp();
     Q_SCRIPTABLE void VolumeDown();
     Q_SCRIPTABLE void ToggleMute();
+    Q_SCRIPTABLE void ToggleDucking();
     Q_SCRIPTABLE void RefreshApps();
 
     // Per-profile volume control. Routes to the profile's app regardless of

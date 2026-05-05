@@ -44,7 +44,7 @@ This is the concise working guide for Gemini / Antigravity agents in this reposi
 - `cpp/src/deviceselector.h/cpp`: dialog for picking an evdev input device with volume keys.
 - `cpp/src/settingsdialog.h/cpp`: settings dialog for OSD position/colors/timeout, volume step, profiles, ducking controls, hotkey rebinding, and language.
 - `cpp/src/firstrunwizard.h/cpp`: first-run `QWizard` with 3 pages — `WelcomePage` (language), `DevicePage` (evdev device), `AppPage` (default application via `AppListWidget`).
-- `cpp/src/dbusinterface.h/cpp`: custom D-Bus interface `org.keyboardvolumeapp.VolumeControl`, including per-profile ducking via `ToggleDuckingProfile`.
+- `cpp/src/dbusinterface.h/cpp`: custom D-Bus interface `org.keyboardvolumeapp.VolumeControl`, including bare `ToggleDucking` and per-profile ducking via `ToggleDuckingProfile`.
 - `cpp/src/mprisinterface.h/cpp`: MPRIS endpoint `org.mpris.MediaPlayer2.keyboardvolumeapp`.
 - `cpp/src/evdevdevice.h/cpp`: shared RAII wrapper for evdev/uinput resources.
 - `cpp/src/screenutils.h`: header-only utility `centerDialogOnScreenAt(QWidget*, QPoint)` — centers a parentless dialog on the screen containing the given cursor position. Used before `exec()` in all 4 parentless dialogs (`SettingsDialog`, `AppSelectorDialog`, `DeviceSelectorDialog`, `FirstRunWizard`). No event filters, QTimer, or window-flag changes.

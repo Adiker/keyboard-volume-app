@@ -264,6 +264,7 @@ class PaWorker : public QObject
     {
         if (m_stopping || contextReady()) return;
 
+        clearDuckingState();
         disconnectContext();
         if (connectContext())
         {
@@ -282,6 +283,7 @@ class PaWorker : public QObject
     void handleContextLost()
     {
         if (m_stopping) return;
+        clearDuckingState();
         disconnectContext();
         scheduleReconnect();
         doListApps(/*forceRefresh=*/true);
@@ -430,6 +432,69 @@ class PaWorker : public QObject
         emit volumeChanged(appName, vol, newMuted);
     }
 
+    void setAppVolume(const QString& appName, double targetVolume)
+    {
+        if (m_stopping) return;
+
+        targetVolume = std::clamp(targetVolume, 0.0, 1.0);
+
+        // 1. Active sink input (absolute target, not relative delta)
+        if (contextReady())
+        {
+            pa_threaded_mainloop_lock(m_mainloop);
+            const auto inputs = getSinkInputs();
+            for (const auto& si : inputs)
+            {
+                if (si.name != appName && si.binary != appName) continue;
+
+                pa_cvolume cv;
+                pa_cvolume_set(&cv, 2, static_cast<pa_volume_t>(targetVolume * PA_VOLUME_NORM));
+                pa_operation* op = pa_context_set_sink_input_volume(m_ctx, si.index, &cv,
+                                                                    operationDoneCallback, this);
+                if (!waitForOperation(op, "set sink input absolute volume"))
+                {
+                    pa_threaded_mainloop_unlock(m_mainloop);
+                    return;
+                }
+                pa_threaded_mainloop_unlock(m_mainloop);
+
+                m_appVolumes[appName] = targetVolume;
+                m_appMutes[appName] = si.muted;
+                removePending(appName);
+                emit volumeChanged(appName, targetVolume, si.muted);
+                return;
+            }
+            pa_threaded_mainloop_unlock(m_mainloop);
+        }
+
+        // 2. Stream restore DB
+        if (streamRestoreSetVolume(appName, targetVolume))
+        {
+            m_appVolumes[appName] = targetVolume;
+            removePending(appName);
+            emit volumeChanged(appName, targetVolume, m_appMutes.value(appName, false));
+            return;
+        }
+
+        // 3. PipeWire node (libpipewire)
+        auto node = ::findPipeWireNodeForApp(appName);
+        if (node && ::setPipeWireNodeVolume(node->id, targetVolume))
+        {
+            m_appVolumes[appName] = targetVolume;
+            removePending(appName);
+            emit volumeChanged(appName, targetVolume, m_appMutes.value(appName, false));
+            return;
+        }
+
+        // 4. Disconnected — park desired absolute volume.
+        m_appVolumes[appName] = targetVolume;
+        {
+            QMutexLocker lk(&m_pendingMutex);
+            m_pendingVolumes[appName] = targetVolume;
+        }
+        emit volumeChanged(appName, targetVolume, m_appMutes.value(appName, false));
+    }
+
     void doToggleDucking(const QString& keepApp, double duckVolume)
     {
         if (m_stopping || keepApp.isEmpty()) return;
@@ -439,16 +504,11 @@ class PaWorker : public QObject
         if (m_duckingActive)
         {
             const QMap<QString, DuckingSnapshot> restore = m_duckingSnapshot;
-            m_duckingActive = false;
-            m_duckingKeepApp.clear();
-            m_duckingSnapshot.clear();
+            clearDuckingState();
 
             for (auto it = restore.begin(); it != restore.end(); ++it)
             {
-                const QString& app = it.key();
-                const double current = m_appVolumes.value(app, duckVolume);
-                const double delta = it.value().volume - current;
-                if (qAbs(delta) > 0.0001) doChangeVolume(app, delta);
+                setAppVolume(it.key(), it.value().volume);
             }
             return;
         }
@@ -462,19 +522,17 @@ class PaWorker : public QObject
             if (app.name == keepApp || app.binary == keepApp) continue;
 
             double currentVolume = app.volume;
-            bool currentMuted = app.muted;
             if (!app.active)
             {
                 if (auto node = ::findPipeWireNodeForApp(app.name))
                 {
                     currentVolume = node->volume;
-                    currentMuted = node->muted;
                 }
             }
 
             if (qAbs(currentVolume - duckVolume) <= 0.0001) continue;
 
-            snapshot[app.name] = DuckingSnapshot{currentVolume, currentMuted};
+            snapshot[app.name] = DuckingSnapshot{currentVolume};
         }
 
         if (snapshot.isEmpty()) return;
@@ -485,7 +543,7 @@ class PaWorker : public QObject
 
         for (auto it = snapshot.begin(); it != snapshot.end(); ++it)
         {
-            doChangeVolume(it.key(), duckVolume - it.value().volume);
+            setAppVolume(it.key(), duckVolume);
         }
     }
 
@@ -616,7 +674,6 @@ class PaWorker : public QObject
     struct DuckingSnapshot
     {
         double volume = 1.0;
-        bool muted = false;
     };
 
     pa_threaded_mainloop* m_mainloop = nullptr;
@@ -865,6 +922,8 @@ class PaWorker : public QObject
         PaWorker* self;
         QString target;
         double delta;
+        double targetVolume;
+        bool absoluteVolume;
         bool isMute;
         std::optional<double>* outVol;
         std::optional<std::pair<bool, double>>* outMute;
@@ -880,7 +939,8 @@ class PaWorker : public QObject
         double vol = static_cast<double>(pa_cvolume_avg(&info->volume)) / PA_VOLUME_NORM;
         if (!d->isMute)
         {
-            double newVol = std::clamp(vol + d->delta, 0.0, 1.0);
+            double newVol =
+                d->absoluteVolume ? d->targetVolume : std::clamp(vol + d->delta, 0.0, 1.0);
             pa_ext_stream_restore_info out = *info;
             pa_cvolume_set(const_cast<pa_cvolume*>(&out.volume), 2,
                            static_cast<pa_volume_t>(newVol * PA_VOLUME_NORM));
@@ -906,11 +966,28 @@ class PaWorker : public QObject
         if (!contextReady()) return std::nullopt;
         std::optional<double> result;
         StreamRestoreCbData d{this,    QStringLiteral("sink-input-by-application-name:") + app,
-                              delta,   false,
+                              delta,   0.0,
+                              false,   false,
                               &result, nullptr};
         pa_threaded_mainloop_lock(m_mainloop);
         waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
                          "read stream restore volume");
+        pa_threaded_mainloop_unlock(m_mainloop);
+        return result;
+    }
+
+    std::optional<double> streamRestoreSetVolume(const QString& app, double targetVolume)
+    {
+        if (!contextReady()) return std::nullopt;
+        targetVolume = std::clamp(targetVolume, 0.0, 1.0);
+        std::optional<double> result;
+        StreamRestoreCbData d{this,    QStringLiteral("sink-input-by-application-name:") + app,
+                              0.0,     targetVolume,
+                              true,    false,
+                              &result, nullptr};
+        pa_threaded_mainloop_lock(m_mainloop);
+        waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
+                         "read stream restore absolute volume");
         pa_threaded_mainloop_unlock(m_mainloop);
         return result;
     }
@@ -920,7 +997,8 @@ class PaWorker : public QObject
         if (!contextReady()) return std::nullopt;
         std::optional<std::pair<bool, double>> result;
         StreamRestoreCbData d{this,    QStringLiteral("sink-input-by-application-name:") + app,
-                              0.0,     true,
+                              0.0,     0.0,
+                              false,   true,
                               nullptr, &result};
         pa_threaded_mainloop_lock(m_mainloop);
         waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
@@ -934,6 +1012,13 @@ class PaWorker : public QObject
         QMutexLocker lk(&m_pendingMutex);
         m_pendingVolumes.remove(app);
         m_pendingMutes.remove(app);
+    }
+
+    void clearDuckingState()
+    {
+        m_duckingActive = false;
+        m_duckingKeepApp.clear();
+        m_duckingSnapshot.clear();
     }
 };
 
