@@ -28,6 +28,8 @@ TEST(VolumeController, ChangeVolumeAndToggleMute)
     // Should not crash even when the target app does not exist.
     vc.changeVolume("nonexistent_app", 0.05);
     vc.toggleMute("nonexistent_app");
+    vc.toggleDucking("nonexistent_app", 0.25);
+    vc.toggleDucking("nonexistent_app", 0.25);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 }
@@ -47,7 +49,7 @@ TEST(VolumeController, CloseIsIdempotent)
     VolumeController vc;
 
     vc.close();
-    vc.close();  // second close must be harmless
+    vc.close(); // second close must be harmless
 
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     SUCCEED();
@@ -65,6 +67,7 @@ TEST(VolumeController, UnavailablePulseAudioDoesNotBlockOperations)
         vc.listApps(true);
         vc.changeVolume("nonexistent_app", 0.05);
         vc.toggleMute("nonexistent_app");
+        vc.toggleDucking("nonexistent_app", 0.25);
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         vc.close();
@@ -78,7 +81,7 @@ TEST(VolumeController, UnavailablePulseAudioDoesNotBlockOperations)
     SUCCEED();
 }
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     // VolumeController uses Qt signals/slots — QCoreApplication required.
     QCoreApplication app(argc, argv);

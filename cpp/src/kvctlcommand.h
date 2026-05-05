@@ -5,16 +5,19 @@
 
 struct KvCtlCommand
 {
-    enum class Action {
+    enum class Action
+    {
         VolumeUp,
         VolumeDown,
         ToggleMute,
+        ToggleDucking,
         Refresh,
         Get,
         Set
     };
 
-    enum class Field {
+    enum class Field
+    {
         None,
         Volume,
         Muted,
@@ -37,9 +40,7 @@ struct KvCtlParseResult
     QString error;
 };
 
-KvCtlParseResult parseKvCtlCommand(const QStringList &positionalArgs,
-                                   const QString &profile,
+KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QString& profile,
                                    bool profileSet);
 
 QString kvCtlUsageText();
-

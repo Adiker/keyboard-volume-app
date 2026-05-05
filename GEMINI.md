@@ -18,6 +18,7 @@ This is the concise working guide for Gemini / Antigravity agents in this reposi
 - Config hotkeys and internal key handling use **Linux evdev key codes**, not Qt key codes. X11 native scan code conversion is `evdev = X11_keycode - 8`.
 - `InputHandler` is a direct `QThread` subclass. It runs `epoll()` in `run()` with a 50ms timeout and handles both key press (`ev.value == 1`) and repeat (`ev.value == 2`) with 100ms debounce per key code.
 - `PaWorker` uses `moveToThread()`. All libpulse calls must go through `QMetaObject::invokeMethod` targeting the PaWorker thread. Never call libpulse from the main thread.
+- Manual Focus Audio / ducking is per profile. `InputHandler` emits `ducking_toggle(profileId)` from the configured evdev hotkey, and `VolumeController::toggleDucking()` snapshots/restores other apps on the PA worker thread.
 - PipeWire idle-app lookup and node fallback use libpipewire. Keep those calls off the main Qt thread.
 - Use `std::atomic<bool>` for thread-shared flags such as `m_running` and `m_stopping`; do not use `volatile bool`.
 - `EvdevDevice` is the RAII, move-only wrapper for fd, `libevdev*`, grab/ungrab, and `libevdev_uinput*`. Reuse it instead of duplicating evdev cleanup logic.
@@ -33,17 +34,17 @@ This is the concise working guide for Gemini / Antigravity agents in this reposi
 - `cpp/src/main.cpp`: entry point and `App` coordinator. Uses two-phase init: constructor creates only `Config`, then `init()` creates UI, input, audio, and D-Bus/MPRIS integration after the optional first-run wizard.
 - `cpp/src/config.h/cpp`: thread-safe JSON config via `QStandardPaths::ConfigLocation`. Loads with deep-merge defaults. Setters save automatically via atomic `QSaveFile` commits.
 - `cpp/src/i18n.h/cpp`: PL/EN translation tables; `tr(key)` lookup with English fallback.
-- `cpp/src/inputhandler.h/cpp`: evdev hotkey capture, device grabbing, uinput mirroring, and `KeyCaptureThread` for hotkey rebinding. Also exposes `getVolumeDevices()` for device enumeration.
-- `cpp/src/volumecontroller.h/cpp`: async per-app volume/mute controller. Fast path is libpulse active sink input, then stream restore, then PipeWire node fallback, then pending state in `PaWorker`. Reconnects PA context with backoff after daemon/context loss.
+- `cpp/src/inputhandler.h/cpp`: evdev hotkey capture, device grabbing, uinput mirroring, per-profile volume/mute/ducking dispatch, and `KeyCaptureThread` for hotkey rebinding. Also exposes `getVolumeDevices()` for device enumeration.
+- `cpp/src/volumecontroller.h/cpp`: async per-app volume/mute/ducking controller. Fast path is libpulse active sink input, then stream restore, then PipeWire node fallback, then pending state in `PaWorker`. Reconnects PA context with backoff after daemon/context loss.
 - `cpp/src/pwutils.h/cpp`: shared libpipewire helpers for client listing and stream-node volume/mute fallback. Exports `PipeWireClient`, `PipeWireNode`, and filter constants (`SYSTEM_BINARIES`, `SKIP_APP_NAMES`). Used by `VolumeController`, `AppListWidget`, and `AppSelectorDialog`.
 - `cpp/src/applistwidget.h/cpp`: reusable `QWidget` with a `QListWidget` + Refresh button. `populate(Config*)` lists PW clients, pre-selects current config choice. Shared between `AppPage` (wizard) and `AppSelectorDialog` (tray).
 - `cpp/src/appselectordialog.h/cpp`: modal `QDialog` for changing the default audio app. Embeds an `AppListWidget`. Opened from tray via "Change default application..." action.
 - `cpp/src/osdwindow.h/cpp`: frameless always-on-top OSD with custom translucent painting and explicit XWayland positioning.
 - `cpp/src/trayapp.h/cpp`: tray icon and context menu. Radio-list for audio app selection, "Change default application..." (opens `AppSelectorDialog`), Refresh, Change device, Settings, Quit. Rebuilds never replace the configured selected app just because it temporarily disappeared from the refreshed list.
 - `cpp/src/deviceselector.h/cpp`: dialog for picking an evdev input device with volume keys.
-- `cpp/src/settingsdialog.h/cpp`: settings dialog for OSD position/colors/timeout, volume step, hotkey rebinding, and language.
+- `cpp/src/settingsdialog.h/cpp`: settings dialog for OSD position/colors/timeout, volume step, profiles, ducking controls, hotkey rebinding, and language.
 - `cpp/src/firstrunwizard.h/cpp`: first-run `QWizard` with 3 pages — `WelcomePage` (language), `DevicePage` (evdev device), `AppPage` (default application via `AppListWidget`).
-- `cpp/src/dbusinterface.h/cpp`: custom D-Bus interface `org.keyboardvolumeapp.VolumeControl`.
+- `cpp/src/dbusinterface.h/cpp`: custom D-Bus interface `org.keyboardvolumeapp.VolumeControl`, including per-profile ducking via `ToggleDuckingProfile`.
 - `cpp/src/mprisinterface.h/cpp`: MPRIS endpoint `org.mpris.MediaPlayer2.keyboardvolumeapp`.
 - `cpp/src/evdevdevice.h/cpp`: shared RAII wrapper for evdev/uinput resources.
 - `cpp/src/screenutils.h`: header-only utility `centerDialogOnScreenAt(QWidget*, QPoint)` — centers a parentless dialog on the screen containing the given cursor position. Used before `exec()` in all 4 parentless dialogs (`SettingsDialog`, `AppSelectorDialog`, `DeviceSelectorDialog`, `FirstRunWizard`). No event filters, QTimer, or window-flag changes.
@@ -69,7 +70,7 @@ Common edits:
 
 - **Adding a translation key:** add the English string to `_en` in `cpp/src/i18n.cpp`, add the Polish string to `_pl`, then call `tr("your.key")` from UI code.
 - **Adding a config field:** add the default to the merge logic in `Config::load()`, add a typed getter/setter pair in `Config`, and rely on the setter's automatic save.
-- **Changing D-Bus behavior:** keep property reads served from cached main-thread state and delegate setters/methods asynchronously to `VolumeController` or config.
+- **Changing D-Bus behavior:** keep property reads served from cached main-thread state and delegate setters/methods asynchronously to `VolumeController` or config. `Profiles` exposes nested `hotkeys` and `ducking` maps.
 
 ## Risk Areas
 
@@ -85,11 +86,12 @@ Common edits:
 
 Unit tests are in `cpp/tests/` and run through CTest:
 
-- `test_config` — config merge, load/save, thread-safety
+- `test_config` — config merge, load/save, thread-safety, profile ducking defaults
 - `test_i18n` — lookup and fallback
+- `test_kvctlcommand` — CLI parser, including `duck [--profile id]`
 - `test_pwutils` — PipeWire client filtering and deduplication
 - `test_volumecontroller` — 5 smoke tests
-- `test_inputhandler` — API and evdev device listing
+- `test_inputhandler` — API, evdev device listing, profile resolution, ducking action matching
 
 Run:
 

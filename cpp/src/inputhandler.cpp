@@ -21,35 +21,35 @@ QList<QString> listEvdevDevices()
 {
     QList<QString> result;
     QDir dir(QStringLiteral("/dev/input"));
-    dir.setNameFilters({ QStringLiteral("event*") });
+    dir.setNameFilters({QStringLiteral("event*")});
     dir.setSorting(QDir::Name);
-    for (const QFileInfo &fi : dir.entryInfoList(QDir::System))
+    for (const QFileInfo& fi : dir.entryInfoList(QDir::System))
         result.append(fi.absoluteFilePath());
     return result;
 }
 
-QList<QString> findSiblingDevices(const QString &primaryPath)
+QList<QString> findSiblingDevices(const QString& primaryPath)
 {
     EvdevDevice primary(primaryPath);
-    if (!primary.isOpen()) return { primaryPath };
+    if (!primary.isOpen()) return {primaryPath};
 
-    const char *physRaw = primary.phys();
+    const char* physRaw = primary.phys();
     QString phys = physRaw ? QString::fromLocal8Bit(physRaw) : QString{};
     primary.close();
 
-    if (phys.isEmpty()) return { primaryPath };
+    if (phys.isEmpty()) return {primaryPath};
 
     int slashIdx = phys.lastIndexOf(QLatin1String("/input"));
     QString physPrefix = (slashIdx >= 0) ? phys.left(slashIdx) : phys;
 
     QList<QString> siblings;
-    for (const QString &path : listEvdevDevices()) {
+    for (const QString& path : listEvdevDevices())
+    {
         EvdevDevice dev(path);
         if (!dev.isOpen()) continue;
-        const char *p = dev.phys();
+        const char* p = dev.phys();
         QString devPhys = p ? QString::fromLocal8Bit(p) : QString{};
-        if (devPhys.isEmpty() || !devPhys.startsWith(physPrefix)
-            || !dev.hasEventType(EV_KEY))
+        if (devPhys.isEmpty() || !devPhys.startsWith(physPrefix) || !dev.hasEventType(EV_KEY))
         {
             dev.close();
             continue;
@@ -57,58 +57,76 @@ QList<QString> findSiblingDevices(const QString &primaryPath)
         dev.close();
         siblings.append(path);
     }
-    return siblings.isEmpty() ? QList<QString>{ primaryPath } : siblings;
+    return siblings.isEmpty() ? QList<QString>{primaryPath} : siblings;
 }
 
-QList<QString> findCaptureDevices(const QString &primaryPath)
+QList<QString> findCaptureDevices(const QString& primaryPath)
 {
     QList<QString> result;
-    QSet<QString>  seen;
+    QSet<QString> seen;
 
-    if (!primaryPath.isEmpty()) {
-        for (const QString &p : findSiblingDevices(primaryPath)) {
-            if (!seen.contains(p)) { seen.insert(p); result.append(p); }
+    if (!primaryPath.isEmpty())
+    {
+        for (const QString& p : findSiblingDevices(primaryPath))
+        {
+            if (!seen.contains(p))
+            {
+                seen.insert(p);
+                result.append(p);
+            }
         }
     }
 
-    for (const QString &path : listEvdevDevices()) {
+    for (const QString& path : listEvdevDevices())
+    {
         if (seen.contains(path)) continue;
         EvdevDevice dev(path);
         if (!dev.isOpen()) continue;
-        if (dev.hasEventType(EV_KEY)) { seen.insert(path); result.append(path); }
+        if (dev.hasEventType(EV_KEY))
+        {
+            seen.insert(path);
+            result.append(path);
+        }
     }
     return result;
 }
 
-QList<std::pair<QString, bool>> findHotkeyDevices(const QString &primaryPath,
-                                                    const QSet<int> &hotkeyCodes)
+QList<std::pair<QString, bool>> findHotkeyDevices(const QString& primaryPath,
+                                                  const QSet<int>& hotkeyCodes)
 {
     QList<std::pair<QString, bool>> result;
     QSet<QString> seen;
 
-    if (!primaryPath.isEmpty()) {
-        for (const QString &p : findSiblingDevices(primaryPath)) {
-            if (!seen.contains(p)) {
+    if (!primaryPath.isEmpty())
+    {
+        for (const QString& p : findSiblingDevices(primaryPath))
+        {
+            if (!seen.contains(p))
+            {
                 seen.insert(p);
-                result.append({ p, true });
+                result.append({p, true});
             }
         }
     }
 
-    for (const QString &path : listEvdevDevices()) {
+    for (const QString& path : listEvdevDevices())
+    {
         if (seen.contains(path)) continue;
         EvdevDevice dev(path);
         if (!dev.isOpen()) continue;
         bool hasHotkey = false;
-        for (int code : hotkeyCodes) {
-            if (dev.hasEventCode(EV_KEY, static_cast<unsigned int>(code))) {
+        for (int code : hotkeyCodes)
+        {
+            if (dev.hasEventCode(EV_KEY, static_cast<unsigned int>(code)))
+            {
                 hasHotkey = true;
                 break;
             }
         }
-        if (hasHotkey) {
+        if (hasHotkey)
+        {
             seen.insert(path);
-            result.append({ path, true });
+            result.append({path, true});
         }
     }
     return result;
@@ -117,22 +135,23 @@ QList<std::pair<QString, bool>> findHotkeyDevices(const QString &primaryPath,
 QList<std::pair<QString, QString>> getVolumeDevices()
 {
     QList<std::pair<QString, QString>> result;
-    for (const QString &path : listEvdevDevices()) {
+    for (const QString& path : listEvdevDevices())
+    {
         EvdevDevice dev(path);
         if (!dev.isOpen()) continue;
-        bool hasVol = dev.hasEventCode(EV_KEY, KEY_VOLUMEUP)
-                   || dev.hasEventCode(EV_KEY, KEY_VOLUMEDOWN);
+        bool hasVol =
+            dev.hasEventCode(EV_KEY, KEY_VOLUMEUP) || dev.hasEventCode(EV_KEY, KEY_VOLUMEDOWN);
         QString name = QString::fromUtf8(dev.name());
-        if (hasVol)
-            result.append({ path, QStringLiteral("%1  [%2]").arg(name, path) });
+        if (hasVol) result.append({path, QStringLiteral("%1  [%2]").arg(name, path)});
     }
     return result;
 }
 
 // ─── KeyCaptureThread ─────────────────────────────────────────────────────────
-KeyCaptureThread::KeyCaptureThread(const QString &devicePath, QObject *parent)
+KeyCaptureThread::KeyCaptureThread(const QString& devicePath, QObject* parent)
     : QThread(parent), m_devicePath(devicePath)
-{}
+{
+}
 
 void KeyCaptureThread::cancel()
 {
@@ -146,7 +165,8 @@ void KeyCaptureThread::run()
 
     std::vector<std::unique_ptr<EvdevDevice>> devices;
 
-    for (const QString &path : candidates) {
+    for (const QString& path : candidates)
+    {
         auto dev = std::make_unique<EvdevDevice>(path);
         if (!dev->isOpen()) continue;
         if (dev->grab())
@@ -156,14 +176,17 @@ void KeyCaptureThread::run()
         devices.push_back(std::move(dev));
     }
 
-    if (devices.empty()) {
+    if (devices.empty())
+    {
         emit cancelled();
         return;
     }
 
     int epfd = epoll_create1(0);
-    if (epfd >= 0) {
-        for (auto &dev : devices) {
+    if (epfd >= 0)
+    {
+        for (auto& dev : devices)
+        {
             epoll_event evnt{};
             evnt.events = EPOLLIN;
             evnt.data.ptr = dev.get();
@@ -171,21 +194,30 @@ void KeyCaptureThread::run()
         }
     }
 
-    while (m_running) {
-        if (epfd < 0) { m_running = false; break; }
+    while (m_running)
+    {
+        if (epfd < 0)
+        {
+            m_running = false;
+            break;
+        }
         epoll_event events[16];
         int n = epoll_wait(epfd, events, 16, 50);
-        if (n < 0) {
+        if (n < 0)
+        {
             if (errno == EINTR) continue;
-            m_running = false; break;
+            m_running = false;
+            break;
         }
         if (n == 0) continue;
 
-        for (int i = 0; i < n; ++i) {
-            auto *e = static_cast<EvdevDevice *>(events[i].data.ptr);
+        for (int i = 0; i < n; ++i)
+        {
+            auto* e = static_cast<EvdevDevice*>(events[i].data.ptr);
             input_event ev{};
             int rc;
-            while ((rc = libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
+            while ((rc = libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0)
+            {
                 if (rc == LIBEVDEV_READ_STATUS_SYNC) continue;
                 if (ev.type != EV_KEY) continue;
                 if (ev.value != 1) continue;
@@ -200,12 +232,11 @@ void KeyCaptureThread::run()
     }
 done:
     if (epfd >= 0) ::close(epfd);
-    for (auto &dev : devices)
-        qDebug() << "[CaptureThread] Released device";
+    if (!devices.empty()) qDebug() << "[CaptureThread] Released" << devices.size() << "devices";
 }
 
 // ─── Shared helpers ────────────────────────────────────────────────────────────
-static inline void forwardUinputEvent(EvdevDevice *dev, const input_event &ev)
+static inline void forwardUinputEvent(EvdevDevice* dev, const input_event& ev)
 {
     if (dev->isGrabbed() && dev->uinput())
         libevdev_uinput_write_event(dev->uinput(), ev.type, ev.code, ev.value);
@@ -214,62 +245,88 @@ static inline void forwardUinputEvent(EvdevDevice *dev, const input_event &ev)
 // ─── Profile resolution helpers ───────────────────────────────────────────────
 bool isTrackedModifierCode(int code)
 {
-    return code == KEY_LEFTCTRL  || code == KEY_RIGHTCTRL
-        || code == KEY_LEFTSHIFT || code == KEY_RIGHTSHIFT;
+    return code == KEY_LEFTCTRL || code == KEY_RIGHTCTRL || code == KEY_LEFTSHIFT ||
+           code == KEY_RIGHTSHIFT;
 }
 
-QSet<Modifier> normalizeHeldModifiers(const QSet<int> &heldRaw)
+QSet<Modifier> normalizeHeldModifiers(const QSet<int>& heldRaw)
 {
     QSet<Modifier> out;
-    for (int c : heldRaw) {
-        if (c == KEY_LEFTCTRL  || c == KEY_RIGHTCTRL)  out.insert(Modifier::Ctrl);
+    for (int c : heldRaw)
+    {
+        if (c == KEY_LEFTCTRL || c == KEY_RIGHTCTRL) out.insert(Modifier::Ctrl);
         if (c == KEY_LEFTSHIFT || c == KEY_RIGHTSHIFT) out.insert(Modifier::Shift);
     }
     return out;
 }
 
-QString resolveProfile(int code,
-                       const QSet<Modifier> &held,
-                       const QList<Profile> &profiles)
+namespace
 {
-    QString bestId;
+
+ProfileHotkeyAction actionForCode(const Profile& profile, int code)
+{
+    if (profile.hotkeys.volumeUp == code) return ProfileHotkeyAction::VolumeUp;
+    if (profile.hotkeys.volumeDown == code) return ProfileHotkeyAction::VolumeDown;
+    if (profile.hotkeys.mute == code) return ProfileHotkeyAction::Mute;
+    if (profile.ducking.enabled && profile.ducking.hotkey > 0 && profile.ducking.hotkey == code)
+    {
+        return ProfileHotkeyAction::DuckingToggle;
+    }
+    return ProfileHotkeyAction::None;
+}
+
+} // namespace
+
+ProfileHotkeyMatch resolveProfileHotkey(int code, const QSet<Modifier>& held,
+                                        const QList<Profile>& profiles)
+{
+    ProfileHotkeyMatch best;
     int bestSpec = -1;
-    for (const Profile &p : profiles) {
-        const bool codeMatches =
-               p.hotkeys.volumeUp   == code
-            || p.hotkeys.volumeDown == code
-            || p.hotkeys.mute       == code;
-        if (!codeMatches) continue;
+    for (const Profile& p : profiles)
+    {
+        const ProfileHotkeyAction action = actionForCode(p, code);
+        if (action == ProfileHotkeyAction::None) continue;
 
         // profile.modifiers must be a subset of held modifiers
         bool subset = true;
-        for (Modifier m : p.modifiers) {
-            if (!held.contains(m)) { subset = false; break; }
+        for (Modifier m : p.modifiers)
+        {
+            if (!held.contains(m))
+            {
+                subset = false;
+                break;
+            }
         }
         if (!subset) continue;
 
         const int spec = p.modifiers.size();
-        if (spec > bestSpec) {
+        if (spec > bestSpec)
+        {
             bestSpec = spec;
-            bestId   = p.id;
+            best.profileId = p.id;
+            best.action = action;
         }
     }
-    return bestId;
+    return best;
+}
+
+QString resolveProfile(int code, const QSet<Modifier>& held, const QList<Profile>& profiles)
+{
+    return resolveProfileHotkey(code, held, profiles).profileId;
 }
 
 // ─── InputHandler ─────────────────────────────────────────────────────────────
-InputHandler::InputHandler(QObject *parent)
-    : QThread(parent)
+InputHandler::InputHandler(QObject* parent) : QThread(parent)
 {
     // Seed with one default profile so a fresh InputHandler is usable
     // even before the App calls setProfiles().
     Profile def;
-    def.id   = QStringLiteral("default");
+    def.id = QStringLiteral("default");
     def.name = QStringLiteral("Default");
-    m_profiles = { def };
+    m_profiles = {def};
 }
 
-void InputHandler::setProfiles(const QList<Profile> &profiles)
+void InputHandler::setProfiles(const QList<Profile>& profiles)
 {
     QMutexLocker lock(&m_profilesMutex);
     m_profiles = profiles;
@@ -281,18 +338,17 @@ QList<Profile> InputHandler::currentProfiles() const
     return m_profiles;
 }
 
-void InputHandler::startDevice(const QString &newPath)
+void InputHandler::startDevice(const QString& newPath)
 {
     stop();
     m_devicePath = newPath;
-    m_running    = true;
+    m_running = true;
     start();
 }
 
 void InputHandler::restart()
 {
-    if (!m_devicePath.isEmpty())
-        startDevice(m_devicePath);
+    if (!m_devicePath.isEmpty()) startDevice(m_devicePath);
 }
 
 void InputHandler::stop()
@@ -313,12 +369,15 @@ void InputHandler::run()
 
     // Union of every hotkey code used by any profile.
     QSet<int> hotkeySet;
-    for (const Profile &p : profiles) {
+    for (const Profile& p : profiles)
+    {
         hotkeySet.insert(p.hotkeys.volumeUp);
         hotkeySet.insert(p.hotkeys.volumeDown);
         hotkeySet.insert(p.hotkeys.mute);
+        if (p.ducking.enabled && p.ducking.hotkey > 0) hotkeySet.insert(p.ducking.hotkey);
     }
-    if (hotkeySet.isEmpty()) {
+    if (hotkeySet.isEmpty())
+    {
         qWarning() << "[InputHandler] No hotkeys configured — nothing to grab";
         return;
     }
@@ -327,19 +386,24 @@ void InputHandler::run()
 
     std::vector<std::unique_ptr<EvdevDevice>> devices;
 
-    for (const auto &[path, exclusive] : candidates) {
+    for (const auto& [path, exclusive] : candidates)
+    {
         auto dev = std::make_unique<EvdevDevice>(path);
-        if (!dev->isOpen()) {
+        if (!dev->isOpen())
+        {
             qDebug() << "[InputHandler] Cannot open" << path;
             continue;
         }
 
-        if (exclusive) {
-            if (!dev->grab()) {
+        if (exclusive)
+        {
+            if (!dev->grab())
+            {
                 qDebug() << "[InputHandler] Cannot grab" << path << "— skipping";
                 continue;
             }
-            if (!dev->createUinput()) {
+            if (!dev->createUinput())
+            {
                 qDebug() << "[InputHandler] Cannot create uinput for" << path
                          << "— releasing grab and skipping";
                 continue;
@@ -354,8 +418,10 @@ void InputHandler::run()
     if (devices.empty()) return;
 
     int epfd = epoll_create1(0);
-    if (epfd >= 0) {
-        for (auto &dev : devices) {
+    if (epfd >= 0)
+    {
+        for (auto& dev : devices)
+        {
             epoll_event evnt{};
             evnt.events = EPOLLIN;
             evnt.data.ptr = dev.get();
@@ -366,60 +432,83 @@ void InputHandler::run()
     // Modifier state — observed only on grabbed devices (v1 limitation).
     QSet<int> heldModifiers;
 
-    while (m_running) {
-        if (epfd < 0) { m_running = false; break; }
+    while (m_running)
+    {
+        if (epfd < 0)
+        {
+            m_running = false;
+            break;
+        }
         epoll_event events[32];
         int n = epoll_wait(epfd, events, 32, 50);
-        if (n < 0) {
+        if (n < 0)
+        {
             if (errno == EINTR) continue;
-            m_running = false; break;
+            m_running = false;
+            break;
         }
         if (n == 0) continue;
 
-        for (int i = 0; i < n; ++i) {
-            auto *e = static_cast<EvdevDevice *>(events[i].data.ptr);
+        for (int i = 0; i < n; ++i)
+        {
+            auto* e = static_cast<EvdevDevice*>(events[i].data.ptr);
             input_event ev{};
             int rc;
-            while ((rc = libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0) {
-                if (rc == LIBEVDEV_READ_STATUS_SYNC) {
+            while ((rc = libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0)
+            {
+                if (rc == LIBEVDEV_READ_STATUS_SYNC)
+                {
                     while (libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_SYNC, &ev) >= 0)
                         forwardUinputEvent(e, ev);
                     continue;
                 }
 
-                if (ev.type == EV_KEY) {
+                if (ev.type == EV_KEY)
+                {
                     const int code = static_cast<int>(ev.code);
 
-                    if (isTrackedModifierCode(code)) {
+                    if (isTrackedModifierCode(code))
+                    {
                         // Update modifier state, then forward — the desktop
                         // must still see Ctrl/Shift presses for normal use.
-                        if (ev.value == 1)      heldModifiers.insert(code);
-                        else if (ev.value == 0) heldModifiers.remove(code);
+                        if (ev.value == 1)
+                            heldModifiers.insert(code);
+                        else if (ev.value == 0)
+                            heldModifiers.remove(code);
                         // value == 2 (repeat) leaves state unchanged
                         forwardUinputEvent(e, ev);
                         continue;
                     }
 
-                    if (hotkeySet.contains(code)) {
-                        if (ev.value == 1 || ev.value == 2) {  // press or repeat
-                            const QString profileId = resolveProfile(
+                    if (hotkeySet.contains(code))
+                    {
+                        if (ev.value == 1 || ev.value == 2)
+                        { // press or repeat
+                            const ProfileHotkeyMatch match = resolveProfileHotkey(
                                 code, normalizeHeldModifiers(heldModifiers), profiles);
-                            if (!profileId.isEmpty()) {
-                                const QPair<int, QString> key{code, profileId};
-                                qint64 now  = QDateTime::currentMSecsSinceEpoch();
+                            if (!match.profileId.isEmpty())
+                            {
+                                const QPair<int, QString> key{code, match.profileId};
+                                qint64 now = QDateTime::currentMSecsSinceEpoch();
                                 qint64 last = m_lastTriggerMs.value(key, 0LL);
-                                if (now - last >= 100) {
+                                if (now - last >= 100)
+                                {
                                     m_lastTriggerMs[key] = now;
-                                    // Look up which kind of hotkey this is
-                                    // for the matched profile.
-                                    for (const Profile &p : profiles) {
-                                        if (p.id != profileId) continue;
-                                        if (p.hotkeys.volumeUp == code)
-                                            emit volume_up(profileId);
-                                        else if (p.hotkeys.volumeDown == code)
-                                            emit volume_down(profileId);
-                                        else if (p.hotkeys.mute == code)
-                                            emit volume_mute(profileId);
+                                    switch (match.action)
+                                    {
+                                    case ProfileHotkeyAction::VolumeUp:
+                                        emit volume_up(match.profileId);
+                                        break;
+                                    case ProfileHotkeyAction::VolumeDown:
+                                        emit volume_down(match.profileId);
+                                        break;
+                                    case ProfileHotkeyAction::Mute:
+                                        emit volume_mute(match.profileId);
+                                        break;
+                                    case ProfileHotkeyAction::DuckingToggle:
+                                        emit ducking_toggle(match.profileId);
+                                        break;
+                                    case ProfileHotkeyAction::None:
                                         break;
                                     }
                                 }
@@ -436,16 +525,21 @@ void InputHandler::run()
                     }
 
                     forwardUinputEvent(e, ev);
-                } else {
+                }
+                else
+                {
                     forwardUinputEvent(e, ev);
                 }
             }
-            if (rc == -EIO) { m_running = false; break; }
+            if (rc == -EIO)
+            {
+                m_running = false;
+                break;
+            }
         }
     }
 
     if (epfd >= 0) ::close(epfd);
 
-    for (auto &dev : devices)
-        qDebug() << "[InputHandler] Released device";
+    if (!devices.empty()) qDebug() << "[InputHandler] Released" << devices.size() << "devices";
 }

@@ -9,54 +9,55 @@
 #include <algorithm>
 #include <cmath>
 
-DbusInterface::DbusInterface(Config *config,
-                             VolumeController *volumeCtrl,
-                             TrayApp *tray,
-                             QObject *parent)
-    : QObject(parent)
-    , m_config(config)
-    , m_volumeCtrl(volumeCtrl)
-    , m_tray(tray)
+DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, TrayApp* tray,
+                             QObject* parent)
+    : QObject(parent), m_config(config), m_volumeCtrl(volumeCtrl), m_tray(tray)
 {
-    m_activeApp    = m_tray->currentApp();
-    m_volumeStep   = m_config->volumeStep();
+    m_activeApp = m_tray->currentApp();
+    m_volumeStep = m_config->volumeStep();
     m_profilesProp = buildProfilesProp();
 
-    connect(m_volumeCtrl, &VolumeController::volumeChanged,
-            this, [this](const QString &app, double vol, bool muted) {
-        if (app != m_activeApp) return;
-        if (qAbs(m_volume - vol) > 0.0001) {
-            m_volume = vol;
-            emit volumeChanged(m_volume);
-        }
-        if (m_muted != muted) {
-            m_muted = muted;
-            emit mutedChanged(m_muted);
-        }
-    });
+    connect(m_volumeCtrl, &VolumeController::volumeChanged, this,
+            [this](const QString& app, double vol, bool muted)
+            {
+                if (app != m_activeApp) return;
+                if (qAbs(m_volume - vol) > 0.0001)
+                {
+                    m_volume = vol;
+                    emit volumeChanged(m_volume);
+                }
+                if (m_muted != muted)
+                {
+                    m_muted = muted;
+                    emit mutedChanged(m_muted);
+                }
+            });
 
-    connect(m_volumeCtrl, &VolumeController::appsReady,
-            this, [this](QList<AudioApp> apps) {
-        QStringList names;
-        names.reserve(apps.size());
-        for (const auto &a : apps)
-            names.append(a.name);
-        if (m_apps != names) {
-            m_apps = names;
-            emit appsUpdated();
-        }
-    });
+    connect(m_volumeCtrl, &VolumeController::appsReady, this,
+            [this](QList<AudioApp> apps)
+            {
+                QStringList names;
+                names.reserve(apps.size());
+                for (const auto& a : apps) names.append(a.name);
+                if (m_apps != names)
+                {
+                    m_apps = names;
+                    emit appsUpdated();
+                }
+            });
 
-    connect(m_tray, &TrayApp::appChanged,
-            this, [this](const QString &name) {
-        if (m_activeApp != name) {
-            m_activeApp = name;
-            m_volume = 0.0;
-            m_muted  = false;
-            emit activeAppChanged(m_activeApp);
-        }
-        reloadProfiles();
-    });
+    connect(m_tray, &TrayApp::appChanged, this,
+            [this](const QString& name)
+            {
+                if (m_activeApp != name)
+                {
+                    m_activeApp = name;
+                    m_volume = 0.0;
+                    m_muted = false;
+                    emit activeAppChanged(m_activeApp);
+                }
+                reloadProfiles();
+            });
 }
 
 void DbusInterface::setVolume(double vol)
@@ -75,17 +76,18 @@ void DbusInterface::setMuted(bool muted)
     m_volumeCtrl->toggleMute(m_activeApp);
 }
 
-void DbusInterface::setActiveApp(const QString &name)
+void DbusInterface::setActiveApp(const QString& name)
 {
     if (m_activeApp == name) return;
-    if (!m_apps.contains(name) && !m_apps.isEmpty()) {
+    if (!m_apps.contains(name) && !m_apps.isEmpty())
+    {
         qDebug() << "[DbusInterface] unknown app:" << name;
         return;
     }
     m_config->setSelectedApp(name);
     m_activeApp = name;
     m_volume = 0.0;
-    m_muted  = false;
+    m_muted = false;
     emit activeAppChanged(m_activeApp);
     reloadProfiles();
 }
@@ -125,30 +127,38 @@ void DbusInterface::RefreshApps()
 QVariantList DbusInterface::buildProfilesProp() const
 {
     QVariantList out;
-    for (const Profile &p : m_config->profiles()) {
+    for (const Profile& p : m_config->profiles())
+    {
         QStringList mods;
-        if (p.modifiers.contains(Modifier::Ctrl))  mods << QStringLiteral("ctrl");
+        if (p.modifiers.contains(Modifier::Ctrl)) mods << QStringLiteral("ctrl");
         if (p.modifiers.contains(Modifier::Shift)) mods << QStringLiteral("shift");
 
         QVariantMap hk;
-        hk[QStringLiteral("volume_up")]   = p.hotkeys.volumeUp;
+        hk[QStringLiteral("volume_up")] = p.hotkeys.volumeUp;
         hk[QStringLiteral("volume_down")] = p.hotkeys.volumeDown;
-        hk[QStringLiteral("mute")]        = p.hotkeys.mute;
+        hk[QStringLiteral("mute")] = p.hotkeys.mute;
+
+        QVariantMap ducking;
+        ducking[QStringLiteral("enabled")] = p.ducking.enabled;
+        ducking[QStringLiteral("volume")] = p.ducking.volume;
+        ducking[QStringLiteral("hotkey")] = p.ducking.hotkey;
 
         QVariantMap m;
-        m[QStringLiteral("id")]        = p.id;
-        m[QStringLiteral("name")]      = p.name;
-        m[QStringLiteral("app")]       = p.app;
+        m[QStringLiteral("id")] = p.id;
+        m[QStringLiteral("name")] = p.name;
+        m[QStringLiteral("app")] = p.app;
         m[QStringLiteral("modifiers")] = mods;
-        m[QStringLiteral("hotkeys")]   = hk;
+        m[QStringLiteral("hotkeys")] = hk;
+        m[QStringLiteral("ducking")] = ducking;
         out.append(m);
     }
     return out;
 }
 
-Profile DbusInterface::findProfile(const QString &id) const
+Profile DbusInterface::findProfile(const QString& id) const
 {
-    for (const Profile &p : m_config->profiles()) {
+    for (const Profile& p : m_config->profiles())
+    {
         if (p.id == id) return p;
     }
     return Profile{};
@@ -162,7 +172,7 @@ void DbusInterface::reloadProfiles()
     emit profilesChanged(m_profilesProp);
 }
 
-void DbusInterface::VolumeUpProfile(const QString &profileId)
+void DbusInterface::VolumeUpProfile(const QString& profileId)
 {
     Profile p = findProfile(profileId);
     if (p.app.isEmpty()) return;
@@ -170,7 +180,7 @@ void DbusInterface::VolumeUpProfile(const QString &profileId)
     m_volumeCtrl->changeVolume(p.app, step);
 }
 
-void DbusInterface::VolumeDownProfile(const QString &profileId)
+void DbusInterface::VolumeDownProfile(const QString& profileId)
 {
     Profile p = findProfile(profileId);
     if (p.app.isEmpty()) return;
@@ -178,9 +188,16 @@ void DbusInterface::VolumeDownProfile(const QString &profileId)
     m_volumeCtrl->changeVolume(p.app, -step);
 }
 
-void DbusInterface::ToggleMuteProfile(const QString &profileId)
+void DbusInterface::ToggleMuteProfile(const QString& profileId)
 {
     Profile p = findProfile(profileId);
     if (p.app.isEmpty()) return;
     m_volumeCtrl->toggleMute(p.app);
+}
+
+void DbusInterface::ToggleDuckingProfile(const QString& profileId)
+{
+    Profile p = findProfile(profileId);
+    if (p.app.isEmpty() || !p.ducking.enabled) return;
+    m_volumeCtrl->toggleDucking(p.app, p.ducking.volume / 100.0);
 }

@@ -24,67 +24,64 @@
 #include <QHeaderView>
 #include <QStringList>
 
-#include <linux/input.h>    // KEY_* constants
+#include <linux/input.h> // KEY_* constants
 
 // ─── ColorButton ──────────────────────────────────────────────────────────────
-ColorButton::ColorButton(const QString &hexColor, QWidget *parent)
-    : QPushButton(parent)
+ColorButton::ColorButton(const QString& hexColor, QWidget* parent) : QPushButton(parent)
 {
     setFixedWidth(80);
     setColor(hexColor);
     connect(this, &QPushButton::clicked, this, &ColorButton::pick);
 }
 
-void ColorButton::setColor(const QString &hexColor)
+void ColorButton::setColor(const QString& hexColor)
 {
     m_color = hexColor;
-    setStyleSheet(QStringLiteral(
-        "background-color: %1; border: 1px solid #888; border-radius: 3px;")
-        .arg(hexColor));
+    setStyleSheet(
+        QStringLiteral("background-color: %1; border: 1px solid #888; border-radius: 3px;")
+            .arg(hexColor));
     setText(hexColor);
 }
 
 void ColorButton::pick()
 {
     QColor chosen = QColorDialog::getColor(QColor(m_color), window(), QString{});
-    if (chosen.isValid()) {
+    if (chosen.isValid())
+    {
         setColor(chosen.name());
         emit colorChanged(chosen.name());
     }
 }
 
 // ─── KeyCaptureDialog ─────────────────────────────────────────────────────────
-KeyCaptureDialog::KeyCaptureDialog(const QString &devicePath, QWidget *parent)
-    : QDialog(parent)
+KeyCaptureDialog::KeyCaptureDialog(const QString& devicePath, QWidget* parent) : QDialog(parent)
 {
     setWindowTitle(::tr(QStringLiteral("settings.hotkey.capture_title")));
     setWindowModality(Qt::ApplicationModal);
     setMinimumWidth(300);
 
-    QVBoxLayout *layout = new QVBoxLayout(this);
-    QLabel *label = new QLabel(::tr(QStringLiteral("settings.hotkey.capture_prompt")), this);
+    QVBoxLayout* layout = new QVBoxLayout(this);
+    QLabel* label = new QLabel(::tr(QStringLiteral("settings.hotkey.capture_prompt")), this);
     label->setAlignment(Qt::AlignCenter);
     layout->addWidget(label);
 
-    QPushButton *cancelBtn =
+    QPushButton* cancelBtn =
         new QPushButton(::tr(QStringLiteral("settings.hotkey.capture_cancel")), this);
     connect(cancelBtn, &QPushButton::clicked, this, &KeyCaptureDialog::doCancel);
     layout->addWidget(cancelBtn);
 
-    if (!devicePath.isEmpty()) {
+    if (!devicePath.isEmpty())
+    {
         m_thread = new KeyCaptureThread(devicePath, this);
-        connect(m_thread, &KeyCaptureThread::key_captured,
-                this, &KeyCaptureDialog::onCaptured);
-        connect(m_thread, &KeyCaptureThread::cancelled,
-                this, &KeyCaptureDialog::doCancel);
+        connect(m_thread, &KeyCaptureThread::key_captured, this, &KeyCaptureDialog::onCaptured);
+        connect(m_thread, &KeyCaptureThread::cancelled, this, &KeyCaptureDialog::doCancel);
         m_thread->start();
     }
 }
 
 KeyCaptureDialog::~KeyCaptureDialog()
 {
-    if (m_thread && m_thread->isRunning())
-        m_thread->cancel();
+    if (m_thread && m_thread->isRunning()) m_thread->cancel();
 }
 
 void KeyCaptureDialog::onCaptured(int code)
@@ -92,8 +89,7 @@ void KeyCaptureDialog::onCaptured(int code)
     if (m_done) return;
     m_done = true;
     m_code = code;
-    if (m_thread && m_thread->isRunning())
-        m_thread->cancel();
+    if (m_thread && m_thread->isRunning()) m_thread->cancel();
     accept();
 }
 
@@ -101,22 +97,31 @@ void KeyCaptureDialog::doCancel()
 {
     if (m_done) return;
     m_done = true;
-    if (m_thread && m_thread->isRunning())
-        m_thread->cancel();
+    if (m_thread && m_thread->isRunning()) m_thread->cancel();
     reject();
 }
 
-void KeyCaptureDialog::keyPressEvent(QKeyEvent *event)
+void KeyCaptureDialog::keyPressEvent(QKeyEvent* event)
 {
-    if (m_done) { event->accept(); return; }
-    if (event->key() == Qt::Key_Escape) { doCancel(); return; }
+    if (m_done)
+    {
+        event->accept();
+        return;
+    }
+    if (event->key() == Qt::Key_Escape)
+    {
+        doCancel();
+        return;
+    }
 
     // nativeScanCode() is the X11 keycode; evdev code = X11 keycode - 8
     quint32 x11 = event->nativeScanCode();
-    if (x11 > 8) {
+    if (x11 > 8)
+    {
         int evdevCode = static_cast<int>(x11 - 8);
         // Validate: the code must be a known KEY_* value (≤ KEY_MAX=767)
-        if (evdevCode > 0 && evdevCode <= 767) {
+        if (evdevCode > 0 && evdevCode <= 767)
+        {
             onCaptured(evdevCode);
             return;
         }
@@ -124,47 +129,51 @@ void KeyCaptureDialog::keyPressEvent(QKeyEvent *event)
     event->accept();
 }
 
-void KeyCaptureDialog::closeEvent(QCloseEvent *event)
+void KeyCaptureDialog::closeEvent(QCloseEvent* event)
 {
-    if (m_thread && m_thread->isRunning())
-        m_thread->cancel();
+    if (m_thread && m_thread->isRunning()) m_thread->cancel();
     QDialog::closeEvent(event);
 }
 
 // ─── HotkeyCapture ────────────────────────────────────────────────────────────
 // Map of evdev KEY_* codes → display names (minimal subset used for hotkeys)
-static const QMap<int, QString> &keyNames()
+static const QMap<int, QString>& keyNames()
 {
-    static const QMap<int, QString> m {
-        { KEY_VOLUMEUP,   QStringLiteral("VOLUMEUP") },
-        { KEY_VOLUMEDOWN, QStringLiteral("VOLUMEDOWN") },
-        { KEY_MUTE,       QStringLiteral("MUTE") },
-        { KEY_MEDIA,      QStringLiteral("MEDIA") },
-        { KEY_PLAYPAUSE,  QStringLiteral("PLAYPAUSE") },
-        { KEY_STOPCD,     QStringLiteral("STOPCD") },
-        { KEY_NEXTSONG,   QStringLiteral("NEXTSONG") },
-        { KEY_PREVIOUSSONG, QStringLiteral("PREVIOUSSONG") },
-        { KEY_F1,  QStringLiteral("F1")  }, { KEY_F2,  QStringLiteral("F2")  },
-        { KEY_F3,  QStringLiteral("F3")  }, { KEY_F4,  QStringLiteral("F4")  },
-        { KEY_F5,  QStringLiteral("F5")  }, { KEY_F6,  QStringLiteral("F6")  },
-        { KEY_F7,  QStringLiteral("F7")  }, { KEY_F8,  QStringLiteral("F8")  },
-        { KEY_F9,  QStringLiteral("F9")  }, { KEY_F10, QStringLiteral("F10") },
-        { KEY_F11, QStringLiteral("F11") }, { KEY_F12, QStringLiteral("F12") },
+    static const QMap<int, QString> m{
+        {KEY_VOLUMEUP, QStringLiteral("VOLUMEUP")},
+        {KEY_VOLUMEDOWN, QStringLiteral("VOLUMEDOWN")},
+        {KEY_MUTE, QStringLiteral("MUTE")},
+        {KEY_MEDIA, QStringLiteral("MEDIA")},
+        {KEY_PLAYPAUSE, QStringLiteral("PLAYPAUSE")},
+        {KEY_STOPCD, QStringLiteral("STOPCD")},
+        {KEY_NEXTSONG, QStringLiteral("NEXTSONG")},
+        {KEY_PREVIOUSSONG, QStringLiteral("PREVIOUSSONG")},
+        {KEY_F1, QStringLiteral("F1")},
+        {KEY_F2, QStringLiteral("F2")},
+        {KEY_F3, QStringLiteral("F3")},
+        {KEY_F4, QStringLiteral("F4")},
+        {KEY_F5, QStringLiteral("F5")},
+        {KEY_F6, QStringLiteral("F6")},
+        {KEY_F7, QStringLiteral("F7")},
+        {KEY_F8, QStringLiteral("F8")},
+        {KEY_F9, QStringLiteral("F9")},
+        {KEY_F10, QStringLiteral("F10")},
+        {KEY_F11, QStringLiteral("F11")},
+        {KEY_F12, QStringLiteral("F12")},
     };
     return m;
 }
 
 QString HotkeyCapture::keyDisplayName(int code)
 {
+    if (code <= 0) return QStringLiteral("-");
     auto it = keyNames().find(code);
     if (it != keyNames().end()) return it.value();
     return QString::number(code);
 }
 
-HotkeyCapture::HotkeyCapture(int evdevCode, InputHandler *inputHandler, QWidget *parent)
-    : QPushButton(parent)
-    , m_code(evdevCode)
-    , m_inputHandler(inputHandler)
+HotkeyCapture::HotkeyCapture(int evdevCode, InputHandler* inputHandler, QWidget* parent)
+    : QPushButton(parent), m_code(evdevCode), m_inputHandler(inputHandler)
 {
     setMinimumWidth(120);
     updateDisplay();
@@ -179,24 +188,26 @@ void HotkeyCapture::updateDisplay()
 void HotkeyCapture::capture()
 {
     if (m_inputHandler) m_inputHandler->stop();
-    try {
+    try
+    {
         QString devPath = m_inputHandler ? m_inputHandler->devicePath() : QString{};
         KeyCaptureDialog dlg(devPath, this);
-        if (dlg.exec() == QDialog::Accepted && dlg.capturedCode() >= 0) {
+        if (dlg.exec() == QDialog::Accepted && dlg.capturedCode() >= 0)
+        {
             m_code = dlg.capturedCode();
             updateDisplay();
         }
-    } catch (...) {
+    }
+    catch (...)
+    {
         qWarning() << "[HotkeyCapture] Exception during key capture";
     }
     if (m_inputHandler) m_inputHandler->restart();
 }
 
 // ─── SettingsDialog ───────────────────────────────────────────────────────────
-SettingsDialog::SettingsDialog(Config *config, InputHandler *inputHandler, QWidget *parent)
-    : QDialog(parent)
-    , m_config(config)
-    , m_inputHandler(inputHandler)
+SettingsDialog::SettingsDialog(Config* config, InputHandler* inputHandler, QWidget* parent)
+    : QDialog(parent), m_config(config), m_inputHandler(inputHandler)
 {
     setWindowTitle(::tr(QStringLiteral("settings.title")));
     setMinimumWidth(360);
@@ -206,13 +217,13 @@ SettingsDialog::SettingsDialog(Config *config, InputHandler *inputHandler, QWidg
 
 void SettingsDialog::buildUi()
 {
-    QVBoxLayout  *layout = new QVBoxLayout(this);
-    QFormLayout  *form   = new QFormLayout;
+    QVBoxLayout* layout = new QVBoxLayout(this);
+    QFormLayout* form = new QFormLayout;
     form->setLabelAlignment(Qt::AlignRight);
     form->setSpacing(10);
 
     OsdConfig osd = m_config->osd();
-    m_profiles    = m_config->profiles();
+    m_profiles = m_config->profiles();
 
     // Language
     m_lang = new QComboBox(this);
@@ -220,8 +231,13 @@ void SettingsDialog::buildUi()
         m_lang->addItem(it.value(), it.key());
     {
         int idx = 0;
-        for (int i = 0; i < m_lang->count(); ++i) {
-            if (m_lang->itemData(i).toString() == m_config->language()) { idx = i; break; }
+        for (int i = 0; i < m_lang->count(); ++i)
+        {
+            if (m_lang->itemData(i).toString() == m_config->language())
+            {
+                idx = i;
+                break;
+            }
         }
         m_lang->setCurrentIndex(idx);
     }
@@ -230,17 +246,17 @@ void SettingsDialog::buildUi()
     // OSD screen
     m_screen = new QComboBox(this);
     const auto screens = QApplication::screens();
-    QScreen *primary   = QApplication::primaryScreen();
-    for (int i = 0; i < screens.size(); ++i) {
+    QScreen* primary = QApplication::primaryScreen();
+    for (int i = 0; i < screens.size(); ++i)
+    {
         QRect geo = screens[i]->geometry();
-        QString label = QStringLiteral("%1:  %2\xD7%3")
-            .arg(i + 1).arg(geo.width()).arg(geo.height());
+        QString label =
+            QStringLiteral("%1:  %2\xD7%3").arg(i + 1).arg(geo.width()).arg(geo.height());
         if (screens[i] == primary)
             label += QStringLiteral("  (%1)").arg(::tr(QStringLiteral("settings.screen_primary")));
         m_screen->addItem(label, i);
     }
-    if (osd.screen < m_screen->count())
-        m_screen->setCurrentIndex(osd.screen);
+    if (osd.screen < m_screen->count()) m_screen->setCurrentIndex(osd.screen);
     form->addRow(::tr(QStringLiteral("settings.osd_screen")), m_screen);
 
     // OSD timeout
@@ -260,7 +276,7 @@ void SettingsDialog::buildUi()
     m_osdY->setRange(0, 4320);
     m_osdY->setValue(osd.y);
     m_osdY->setPrefix(QStringLiteral("Y: "));
-    QHBoxLayout *posRow = new QHBoxLayout;
+    QHBoxLayout* posRow = new QHBoxLayout;
     posRow->addWidget(m_osdX);
     posRow->addWidget(m_osdY);
     form->addRow(::tr(QStringLiteral("settings.osd_position")), posRow);
@@ -293,13 +309,12 @@ void SettingsDialog::buildUi()
     layout->addLayout(form);
 
     // ── Profiles section ────────────────────────────────────────────────
-    QLabel *profilesHeader = new QLabel(
-        ::tr(QStringLiteral("settings.profiles.section")), this);
+    QLabel* profilesHeader = new QLabel(::tr(QStringLiteral("settings.profiles.section")), this);
     profilesHeader->setStyleSheet(QStringLiteral("font-weight: bold; margin-top: 8px;"));
     layout->addWidget(profilesHeader);
 
     m_profilesTable = new QTableWidget(this);
-    m_profilesTable->setColumnCount(6);
+    m_profilesTable->setColumnCount(7);
     m_profilesTable->setHorizontalHeaderLabels(QStringList{
         ::tr(QStringLiteral("settings.profiles.col_name")),
         ::tr(QStringLiteral("settings.profiles.col_app")),
@@ -307,6 +322,7 @@ void SettingsDialog::buildUi()
         ::tr(QStringLiteral("settings.profiles.col_volume_up")),
         ::tr(QStringLiteral("settings.profiles.col_volume_down")),
         ::tr(QStringLiteral("settings.profiles.col_mute")),
+        ::tr(QStringLiteral("settings.profiles.col_ducking")),
     });
     m_profilesTable->verticalHeader()->setVisible(false);
     m_profilesTable->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -318,10 +334,10 @@ void SettingsDialog::buildUi()
     m_profilesTable->setMinimumHeight(120);
     layout->addWidget(m_profilesTable);
 
-    auto *profileBtns = new QHBoxLayout;
-    m_btnAdd        = new QPushButton(::tr(QStringLiteral("settings.profiles.add")), this);
-    m_btnEdit       = new QPushButton(::tr(QStringLiteral("settings.profiles.edit")), this);
-    m_btnRemove     = new QPushButton(::tr(QStringLiteral("settings.profiles.remove")), this);
+    auto* profileBtns = new QHBoxLayout;
+    m_btnAdd = new QPushButton(::tr(QStringLiteral("settings.profiles.add")), this);
+    m_btnEdit = new QPushButton(::tr(QStringLiteral("settings.profiles.edit")), this);
+    m_btnRemove = new QPushButton(::tr(QStringLiteral("settings.profiles.remove")), this);
     m_btnSetDefault = new QPushButton(::tr(QStringLiteral("settings.profiles.set_default")), this);
     profileBtns->addWidget(m_btnAdd);
     profileBtns->addWidget(m_btnEdit);
@@ -330,49 +346,51 @@ void SettingsDialog::buildUi()
     profileBtns->addStretch();
     layout->addLayout(profileBtns);
 
-    connect(m_btnAdd,        &QPushButton::clicked, this, &SettingsDialog::onAddProfile);
-    connect(m_btnEdit,       &QPushButton::clicked, this, &SettingsDialog::onEditProfile);
-    connect(m_btnRemove,     &QPushButton::clicked, this, &SettingsDialog::onRemoveProfile);
+    connect(m_btnAdd, &QPushButton::clicked, this, &SettingsDialog::onAddProfile);
+    connect(m_btnEdit, &QPushButton::clicked, this, &SettingsDialog::onEditProfile);
+    connect(m_btnRemove, &QPushButton::clicked, this, &SettingsDialog::onRemoveProfile);
     connect(m_btnSetDefault, &QPushButton::clicked, this, &SettingsDialog::onSetDefaultProfile);
-    connect(m_profilesTable, &QTableWidget::doubleClicked,
-            this, [this](const QModelIndex &){ onEditProfile(); });
+    connect(m_profilesTable, &QTableWidget::doubleClicked, this,
+            [this](const QModelIndex&) { onEditProfile(); });
 
     refreshProfilesTable();
 
     // Preview button
-    QPushButton *previewBtn = new QPushButton(::tr(QStringLiteral("settings.preview_btn")), this);
-    connect(previewBtn, &QPushButton::pressed,  this, &SettingsDialog::onPreviewPressed);
+    QPushButton* previewBtn = new QPushButton(::tr(QStringLiteral("settings.preview_btn")), this);
+    connect(previewBtn, &QPushButton::pressed, this, &SettingsDialog::onPreviewPressed);
     connect(previewBtn, &QPushButton::released, this, &SettingsDialog::onPreviewReleased);
     layout->addWidget(previewBtn);
 
     // OK / Cancel
-    QDialogButtonBox *buttons = new QDialogButtonBox(
-        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    QDialogButtonBox* buttons =
+        new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(buttons, &QDialogButtonBox::accepted, this, &SettingsDialog::saveAndAccept);
     connect(buttons, &QDialogButtonBox::rejected, this, &SettingsDialog::reject);
     layout->addWidget(buttons);
 
     // Live position preview
-    connect(m_screen, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &SettingsDialog::emitPositionPreview);
-    connect(m_osdX, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &SettingsDialog::emitPositionPreview);
-    connect(m_osdY, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &SettingsDialog::emitPositionPreview);
+    connect(m_screen, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &SettingsDialog::emitPositionPreview);
+    connect(m_osdX, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            &SettingsDialog::emitPositionPreview);
+    connect(m_osdY, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            &SettingsDialog::emitPositionPreview);
 
     // Live style preview
-    connect(m_colorBg,   &ColorButton::colorChanged, this, [this](const QString &) { emitStylePreview(); });
-    connect(m_colorText, &ColorButton::colorChanged, this, [this](const QString &) { emitStylePreview(); });
-    connect(m_colorBar,  &ColorButton::colorChanged, this, [this](const QString &) { emitStylePreview(); });
-    connect(m_opacity, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, [this](int) { emitStylePreview(); });
+    connect(m_colorBg, &ColorButton::colorChanged, this,
+            [this](const QString&) { emitStylePreview(); });
+    connect(m_colorText, &ColorButton::colorChanged, this,
+            [this](const QString&) { emitStylePreview(); });
+    connect(m_colorBar, &ColorButton::colorChanged, this,
+            [this](const QString&) { emitStylePreview(); });
+    connect(m_opacity, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int) { emitStylePreview(); });
 }
 
 void SettingsDialog::onPreviewPressed()
 {
     emitStylePreview();
-    emit previewHeldRequested(m_screen->currentData().toInt(),
-                              m_osdX->value(), m_osdY->value());
+    emit previewHeldRequested(m_screen->currentData().toInt(), m_osdX->value(), m_osdY->value());
 }
 
 void SettingsDialog::onPreviewReleased()
@@ -382,14 +400,13 @@ void SettingsDialog::onPreviewReleased()
 
 void SettingsDialog::emitPositionPreview()
 {
-    emit positionPreview(m_screen->currentData().toInt(),
-                         m_osdX->value(), m_osdY->value());
+    emit positionPreview(m_screen->currentData().toInt(), m_osdX->value(), m_osdY->value());
 }
 
 void SettingsDialog::emitStylePreview()
 {
-    emit stylePreview(m_colorBg->color(), m_colorText->color(),
-                      m_colorBar->color(), m_opacity->value());
+    emit stylePreview(m_colorBg->color(), m_colorText->color(), m_colorBar->color(),
+                      m_opacity->value());
     emitPositionPreview();
 }
 
@@ -399,19 +416,11 @@ void SettingsDialog::saveAndAccept()
     m_config->setLanguage(langCode);
     setLanguage(langCode);
 
-    m_config->updateOsd(
-        m_screen->currentData().toInt(),
-        m_timeout->value(),
-        m_osdX->value(),
-        m_osdY->value(),
-        m_opacity->value(),
-        m_colorBg->color(),
-        m_colorText->color(),
-        m_colorBar->color()
-    );
+    m_config->updateOsd(m_screen->currentData().toInt(), m_timeout->value(), m_osdX->value(),
+                        m_osdY->value(), m_opacity->value(), m_colorBg->color(),
+                        m_colorText->color(), m_colorBar->color());
     m_config->setVolumeStep(m_step->value());
-    if (!m_profiles.isEmpty())
-        m_config->setProfiles(m_profiles);
+    if (!m_profiles.isEmpty()) m_config->setProfiles(m_profiles);
     accept();
 }
 
@@ -426,22 +435,23 @@ int SettingsDialog::selectedProfileRow() const
 void SettingsDialog::refreshProfilesTable()
 {
     m_profilesTable->setRowCount(m_profiles.size());
-    for (int row = 0; row < m_profiles.size(); ++row) {
-        const Profile &p = m_profiles[row];
+    for (int row = 0; row < m_profiles.size(); ++row)
+    {
+        const Profile& p = m_profiles[row];
 
         QString nameDisplay = p.name;
-        if (row == 0)
-            nameDisplay += QStringLiteral(" (default)");
+        if (row == 0) nameDisplay += QStringLiteral(" (default)");
 
         QStringList mods;
-        if (p.modifiers.contains(Modifier::Ctrl))  mods << QStringLiteral("Ctrl");
+        if (p.modifiers.contains(Modifier::Ctrl)) mods << QStringLiteral("Ctrl");
         if (p.modifiers.contains(Modifier::Shift)) mods << QStringLiteral("Shift");
         QString modsDisplay = mods.isEmpty()
-            ? ::tr(QStringLiteral("settings.profiles.modifier_none"))
-            : mods.join(QStringLiteral("+"));
+                                  ? ::tr(QStringLiteral("settings.profiles.modifier_none"))
+                                  : mods.join(QStringLiteral("+"));
 
-        auto setCell = [&](int col, const QString &text) {
-            auto *item = new QTableWidgetItem(text);
+        auto setCell = [&](int col, const QString& text)
+        {
+            auto* item = new QTableWidgetItem(text);
             item->setFlags(item->flags() & ~Qt::ItemIsEditable);
             m_profilesTable->setItem(row, col, item);
         };
@@ -451,6 +461,10 @@ void SettingsDialog::refreshProfilesTable()
         setCell(3, QString::number(p.hotkeys.volumeUp));
         setCell(4, QString::number(p.hotkeys.volumeDown));
         setCell(5, QString::number(p.hotkeys.mute));
+        setCell(6, p.ducking.enabled ? QStringLiteral("%1% / %2")
+                                           .arg(p.ducking.volume)
+                                           .arg(HotkeyCapture::keyDisplayName(p.ducking.hotkey))
+                                     : ::tr(QStringLiteral("settings.profiles.modifier_none")));
     }
 
     m_btnRemove->setEnabled(m_profiles.size() > 1);
@@ -459,16 +473,17 @@ void SettingsDialog::refreshProfilesTable()
 void SettingsDialog::onAddProfile()
 {
     Profile blank;
-    blank.id   = QStringLiteral("profile-") + QString::number(m_profiles.size() + 1);
+    blank.id = QStringLiteral("profile-") + QString::number(m_profiles.size() + 1);
     blank.name = QStringLiteral("Profile ") + QString::number(m_profiles.size() + 1);
-    blank.hotkeys.volumeUp   = 115;
+    blank.hotkeys.volumeUp = 115;
     blank.hotkeys.volumeDown = 114;
-    blank.hotkeys.mute       = 113;
+    blank.hotkeys.mute = 113;
 
     const QPoint anchor = QCursor::pos();
     ProfileEditDialog dlg(blank, m_config, m_inputHandler, this);
     centerDialogOnScreenAt(&dlg, anchor);
-    if (dlg.exec() == QDialog::Accepted) {
+    if (dlg.exec() == QDialog::Accepted)
+    {
         m_profiles.append(dlg.result());
         refreshProfilesTable();
         m_profilesTable->selectRow(m_profiles.size() - 1);
@@ -483,7 +498,8 @@ void SettingsDialog::onEditProfile()
     const QPoint anchor = QCursor::pos();
     ProfileEditDialog dlg(m_profiles[row], m_config, m_inputHandler, this);
     centerDialogOnScreenAt(&dlg, anchor);
-    if (dlg.exec() == QDialog::Accepted) {
+    if (dlg.exec() == QDialog::Accepted)
+    {
         m_profiles[row] = dlg.result();
         refreshProfilesTable();
         m_profilesTable->selectRow(row);
@@ -494,18 +510,17 @@ void SettingsDialog::onRemoveProfile()
 {
     int row = selectedProfileRow();
     if (row < 0 || row >= m_profiles.size()) return;
-    if (m_profiles.size() <= 1) return;  // safeguard — UI also disables button
+    if (m_profiles.size() <= 1) return; // safeguard — UI also disables button
 
     m_profiles.removeAt(row);
     refreshProfilesTable();
-    if (!m_profiles.isEmpty())
-        m_profilesTable->selectRow(qMin(row, m_profiles.size() - 1));
+    if (!m_profiles.isEmpty()) m_profilesTable->selectRow(qMin(row, m_profiles.size() - 1));
 }
 
 void SettingsDialog::onSetDefaultProfile()
 {
     int row = selectedProfileRow();
-    if (row <= 0 || row >= m_profiles.size()) return;  // already default or invalid
+    if (row <= 0 || row >= m_profiles.size()) return; // already default or invalid
     m_profiles.move(row, 0);
     refreshProfilesTable();
     m_profilesTable->selectRow(0);

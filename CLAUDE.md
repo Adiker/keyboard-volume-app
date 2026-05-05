@@ -117,10 +117,12 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
       "modifiers": [],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } },
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 } },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 } }
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 } }
   ]
 }
 ```
@@ -128,7 +130,8 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113).
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
-- `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; }`
+- `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; }`
+- `struct DuckingConfig { bool enabled; int volume; int hotkey; }` — manual per-profile Focus Audio. `volume` is clamped to `0..100`; `hotkey == 0` means unassigned.
 - `enum class Modifier { Ctrl, Shift }` — left/right collapsed to canonical (Ctrl/Shift only in v1; Alt/Meta out of scope)
 - API: `profiles()`, `setProfiles(QList<Profile>)` (validates non-empty + uniqueifies ids with numeric suffix on collision), `defaultProfile()` (= `profiles().first()`), `setDefaultProfileApp(QString)`
 - `Modifier` ↔ string helpers: `modifierToString(Modifier)`, `modifierFromString(QString)`
@@ -182,7 +185,9 @@ inline void centerDialogOnScreenAt(QWidget *window, const QPoint &globalPos)
 
 ### `cpp/src/volumecontroller.h/cpp` — `VolumeController`, `PaWorker`, `AudioApp`
 
-All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved via `moveToThread`). The public API is **async**: `changeVolume`/`toggleMute` post work via `QMetaObject::invokeMethod`; results come back as signals.
+All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved via `moveToThread`). The public API is **async**: `changeVolume`/`toggleMute`/`toggleDucking` post work via `QMetaObject::invokeMethod`; results come back as signals.
+
+`toggleDucking(keepApp, duckVolume)` is manual per-profile Focus Audio: first call snapshots all known apps except `keepApp` and lowers them to `duckVolume`; the next call restores the saved volumes. v1 changes only volume, not mute.
 
 4-level fallback strategy (in hot-path order):
 
@@ -208,12 +213,14 @@ API: `setProfiles(QList<Profile>)` / `currentProfiles()`. Signals carry the reso
 void volume_up(const QString &profileId);
 void volume_down(const QString &profileId);
 void volume_mute(const QString &profileId);
+void ducking_toggle(const QString &profileId);
 ```
 
 **Modifier tracking.** `m_heldModifiers` holds raw evdev modifier codes (`KEY_LEFTCTRL`, `KEY_RIGHTCTRL`, `KEY_LEFTSHIFT`, `KEY_RIGHTSHIFT`) updated on press/release events from grabbed devices. Modifier press/release events are **forwarded to uinput** so the rest of the desktop sees them. Free helpers (testable, no Qt event loop required):
 - `bool isTrackedModifierCode(int code)`
 - `QSet<Modifier> normalizeHeldModifiers(const QSet<int> &raw)` — collapses L/R variants
 - `QString resolveProfile(int code, const QSet<Modifier> &held, const QList<Profile> &profiles)` — picks the profile whose `modifiers` set is a subset of `held` and whose code matches; tie-broken by **specificity** (most required modifiers wins), then first-in-list. Returns empty string when no profile matches.
+- `ProfileHotkeyMatch resolveProfileHotkey(...)` — returns both profile id and action (`VolumeUp`, `VolumeDown`, `Mute`, `DuckingToggle`) for runtime dispatch.
 
 **Debounce** is keyed per `(code, profileId)` so `Ctrl+VolUp` and bare `VolUp` don't block each other (100ms window).
 
@@ -270,14 +277,15 @@ Caches volume/mute/app state by listening to `VolumeController::volumeChanged`, 
 
 D-Bus methods:
 - `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `RefreshApps()` — bare methods target `m_activeApp` (= default profile's app), kept for backwards compat.
-- `VolumeUpProfile(QString id)`, `VolumeDownProfile(QString id)`, `ToggleMuteProfile(QString id)` — per-profile methods, route directly to the profile's app via `m_volumeCtrl`.
+- `VolumeUpProfile(QString id)`, `VolumeDownProfile(QString id)`, `ToggleMuteProfile(QString id)`, `ToggleDuckingProfile(QString id)` — per-profile methods, route directly to the profile's app via `m_volumeCtrl`.
 
-`Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute})}`. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
+`Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute}), ducking ({enabled, volume, hotkey})}`. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
 
 ### `cpp/src/kvctl.cpp`, `cpp/src/kvctlcommand.h/cpp` — `kv-ctl`
 
 `kv-ctl` is a small CLI client for scripts and tiling WM keybinds. Commands:
 - `kv-ctl up|down|mute [--profile id]` maps to bare D-Bus methods or `VolumeUpProfile` / `VolumeDownProfile` / `ToggleMuteProfile`.
+- `kv-ctl duck [--profile id]` maps to `ToggleDuckingProfile`; without `--profile`, it targets the `default` profile.
 - `kv-ctl refresh` maps to `RefreshApps`.
 - `kv-ctl get volume|muted|active-app|apps|step|profiles` reads D-Bus properties through `org.freedesktop.DBus.Properties.Get`.
 - `kv-ctl set volume|muted|active-app|step VALUE` writes properties through `org.freedesktop.DBus.Properties.Set`; volume is given as `0..100` percent and mapped to `0.0..1.0`.
@@ -293,7 +301,7 @@ Exit codes: `0` success, `1` usage, `2` daemon unavailable, `3` D-Bus error, `4`
 
 Enables integration with KDE Connect, Plasma widgets, and other MPRIS-aware tools.
 
-Settings dialog with live OSD position and color preview, plus a **Profiles** section: `QTableWidget` (`Name | App | Modifiers | VolUp | VolDown | Mute`) with Add / Edit / Remove / Set as default buttons. The default profile is row 0 and rendered with a `(default)` suffix; Remove is disabled when only one profile remains. `saveAndAccept()` calls `Config::setProfiles(...)`; the existing `settingsChanged` signal triggers `App::onHotkeysMaybeChanged` which restarts `InputHandler` with the new profile set.
+Settings dialog with live OSD position and color preview, plus a **Profiles** section: `QTableWidget` (`Name | App | Modifiers | VolUp | VolDown | Mute | Ducking`) with Add / Edit / Remove / Set as default buttons. The default profile is row 0 and rendered with a `(default)` suffix; Remove is disabled when only one profile remains. `saveAndAccept()` calls `Config::setProfiles(...)`; the existing `settingsChanged` signal triggers `App::onHotkeysMaybeChanged` which restarts `InputHandler` with the new profile set.
 
 `HotkeyCapture` stops `InputHandler` during capture (releases the grabbed device) and restarts it after.
 
@@ -308,6 +316,7 @@ Sub-dialog launched from the Settings → Profiles section to add or edit a sing
 - `AppListWidget` — picker for the audio app (reused from tray/first-run wizard)
 - 2× `QCheckBox` — Ctrl, Shift required modifiers
 - 3× `HotkeyCapture` — VolUp / VolDown / Mute evdev codes
+- Ducking controls — enable checkbox, other-apps volume slider/spinbox, and Focus Audio `HotkeyCapture`
 
 `result()` builds a `Profile` from the widgets and preserves the original `id` when editing (a fresh Add gets the empty id and `Config::setProfiles()` slugifies/uniqueifies it).
 
@@ -323,8 +332,8 @@ Static string tables for `en` and `pl`. `tr(key)` falls back to English if a key
 Keyboard keypress (evdev)
     └─► InputHandler::run() [QThread]
             ├─ modifier key (Ctrl/Shift L/R) → update m_heldModifiers; forward to uinput
-            ├─ hotkey → resolveProfile(code, normalizeHeldModifiers(held), profiles)
-            │           ├─ matched → emit volume_up/down/mute(profileId); swallow
+            ├─ hotkey → resolveProfileHotkey(code, normalizeHeldModifiers(held), profiles)
+            │           ├─ matched → emit volume_up/down/mute/ducking_toggle(profileId); swallow
             │           └─ no match → forward to uinput (don't block typing)
             └─ other keys → UInput re-injection
 
@@ -341,6 +350,11 @@ volume_mute(profileId)
             └─► findProfile(profileId) → Profile.app
             └─► VolumeController::toggleMute(app) [async → PaWorker]
                     └─► emit volumeChanged(app, vol, muted=true/false)
+
+ducking_toggle(profileId)
+    └─► App::onDuckingToggle(profileId)
+            └─► findProfile(profileId) → Profile.app + DuckingConfig
+            └─► VolumeController::toggleDucking(app, ducking.volume / 100.0)
 
 D-Bus external call (e.g. qdbus or kv-ctl)
     └─► DbusInterface::VolumeUp/Down/ToggleMute
@@ -452,12 +466,12 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 23 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / id uniqueification)
+- `test_config` — 25 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / id uniqueification)
 - `test_i18n` — 7 tests (lookup, fallback)
 - `test_kvctlcommand` — 6 tests (subcommand parser, profile option, get/set fields, invalid input)
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
-- `test_inputhandler` — 15 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity)
+- `test_inputhandler` — 18 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action specificity)
 
 Run locally: `cd cpp/build && ctest --output-on-failure`.
 
