@@ -92,6 +92,20 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** `cpp/src/pwutils.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/CMakeLists.txt`
 **Status:** Zrealizowane. `pwutils` używa libpipewire do snapshotu registry, listowania klientów PipeWire oraz odczytu/zapisu `SPA_PARAM_Props` na node'ach streamów. `VolumeController` zachowuje libpulse jako szybki primary backend, ale fallback dla idle/paused node'ów nie uruchamia już `pw-dump` ani `pw-cli`. Dodano zależność CMake `libpipewire-0.3` i testy filtrowania/deduplikacji klientów.
 
+### 7a. Normalizacja nazw aplikacji audio PipeWire/PulseAudio ✓
+
+**Problem:** Niektóre aplikacje pokazują użytkownikowi jedną nazwę, ale sterowalny stream audio ma inną nazwę techniczną. Przykład: Harmonoid wystawia klienta PipeWire `harmonoid`, ale odtwarza przez stream/node `mpv`; z kolei YouTube Music potrafi występować jako `Chromium` z generycznym `media.name=Playback`.
+**Rekomendacja:** Rozdzielić nazwę widoczną w UI od targetu sterowania. Mapować stream node'y do właścicieli po `client.id`, ignorować generyczne etykiety typu `Playback`, a tray i wybór profilu zasilać tą samą mapą nazw.
+**Pliki:** `cpp/src/pwutils.{h,cpp}`, `cpp/src/volumecontroller.cpp`, `cpp/src/applistwidget.cpp`, `cpp/src/trayapp.cpp`, `cpp/tests/test_pwutils.cpp`
+**Status:** Zrealizowane. `PipeWireClient` niesie teraz `name` (etykieta UI), `binary` (target sterowania) i `id` (global id klienta PipeWire). `pwutils` mapuje `Stream/Output/Audio` do właściciela przez `client.id`, więc Harmonoid jest pokazywany jako `harmonoid`, ale sterowany przez `mpv`. `VolumeController` dopasowuje aktywne sink-inputy także po `media.name`, a `listApps()` normalizuje nazwy aktywnych streamów przez tę samą mapę co picker profilu. Dodano testy dla Harmonoid/mpv oraz YouTube Music/Playback.
+
+### 7b. Aliasowanie i ręczne nazwy aplikacji audio
+
+**Problem:** Heurystyki PipeWire/PulseAudio pokrywają znane przypadki, ale power user może chcieć nadać własne nazwy lub wymusić mapowanie dla nietypowych aplikacji, gier, wrapperów Electron/Chromium albo Wine/Proton.
+**Rekomendacja:** Dodać opcjonalną sekcję aliasów w configu, np. mapowanie `{ "display": "YouTube Music", "target": "youtube-music" }` albo override dla wykrytego `client.id`/binary/node name. UI powinno pokazywać alias, a hot path nadal używać targetu.
+**Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/pwutils.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/settingsdialog.cpp`
+**Status:** Planowane.
+
 ---
 
 ## Priorytet 3 — Dobre mieć
