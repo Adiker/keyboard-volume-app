@@ -659,10 +659,13 @@ class PaWorker : public QObject
         const auto pwClients = ::listPipeWireClients();
         QMap<QString, QString> displayByTarget;
         QMap<QString, QString> displayByClientId;
+        QMap<QString, QString> targetByClientId;
         for (const PipeWireClient& client : pwClients)
         {
             if (!client.binary.isEmpty()) displayByTarget[client.binary.toLower()] = client.name;
             if (!client.id.isEmpty()) displayByClientId[client.id] = client.name;
+            if (!client.id.isEmpty() && !client.binary.isEmpty())
+                targetByClientId[client.id] = client.binary;
         }
 
         QMap<QString, AudioApp> apps;
@@ -682,16 +685,17 @@ class PaWorker : public QObject
                 QString mappedDisplay = displayByClientId.value(si.clientId);
                 if (mappedDisplay.isEmpty())
                     mappedDisplay = displayByTarget.value(targetName.toLower(), displayName);
+                const QString mappedTarget = targetByClientId.value(si.clientId, targetName);
 
                 AudioApp app;
                 app.sinkInputIndex = si.index;
                 app.name = mappedDisplay;
-                app.binary = targetName;
+                app.binary = mappedTarget;
                 app.volume = si.volume;
                 app.muted = si.muted;
                 app.active = true;
                 apps[mappedDisplay] = app;
-                if (!targetName.isEmpty()) activeBinaries.insert(targetName);
+                if (!mappedTarget.isEmpty()) activeBinaries.insert(mappedTarget);
             }
         }
 

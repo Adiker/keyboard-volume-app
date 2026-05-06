@@ -84,11 +84,12 @@ void TrayApp::populateAppList()
 
     for (const AudioApp& app : apps)
     {
+        const QString target = app.binary.isEmpty() ? app.name : app.binary;
         QAction* act = new QAction(app.name, m_menu);
         act->setCheckable(true);
-        act->setData(app.name);
+        act->setData(target);
         m_appGroup->addAction(act);
-        m_appActions[app.name] = act;
+        m_appActions[target] = act;
 
         if (insertBefore)
             m_menu->insertAction(insertBefore, act);
@@ -99,7 +100,7 @@ void TrayApp::populateAppList()
             app.binary.compare(m_config->defaultProfile().app, Qt::CaseInsensitive) == 0)
             act->setChecked(true);
 
-        connect(act, &QAction::triggered, this, [this, name = app.name]() { onAppSelected(name); });
+        connect(act, &QAction::triggered, this, [this, target]() { onAppSelected(target); });
     }
 
     // Keep the user's configured app even if a transient refresh/reconnect
