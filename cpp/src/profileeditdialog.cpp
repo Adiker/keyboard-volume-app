@@ -84,6 +84,11 @@ ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
     m_hkDucking = new HotkeyCapture(initial.ducking.hotkey, m_inputHandler, this);
     form->addRow(::tr(QStringLiteral("settings.profiles.ducking_hotkey")), m_hkDucking);
 
+    // Auto-switch participation
+    m_autoSwitch = new QCheckBox(::tr(QStringLiteral("settings.profiles.auto_switch")), this);
+    m_autoSwitch->setChecked(initial.autoSwitch);
+    form->addRow(QString(), m_autoSwitch);
+
     layout->addLayout(form);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
@@ -110,6 +115,7 @@ Profile ProfileEditDialog::result() const
     p.ducking.enabled = m_duckingEnabled->isChecked();
     p.ducking.volume = m_duckingSpin->value();
     p.ducking.hotkey = m_hkDucking->evdevCode();
+    p.autoSwitch = m_autoSwitch->isChecked();
 
     return p;
 }

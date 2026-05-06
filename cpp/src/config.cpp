@@ -69,6 +69,7 @@ QJsonObject Config::defaultJson()
          }},
         {QStringLiteral("profiles"), QJsonArray{defaultProfile}},
         {QStringLiteral("scenes"), QJsonArray{}},
+        {QStringLiteral("auto_profile_switch"), false},
     };
 }
 
@@ -138,6 +139,7 @@ QJsonObject Config::profileToJson(const Profile& p)
              {QStringLiteral("volume"), std::clamp(p.ducking.volume, 0, 100)},
              {QStringLiteral("hotkey"), std::max(0, p.ducking.hotkey)},
          }},
+        {QStringLiteral("auto_switch"), p.autoSwitch},
     };
 }
 
@@ -164,6 +166,7 @@ Profile Config::profileFromJson(const QJsonObject& o)
     p.ducking.enabled = duck[QStringLiteral("enabled")].toBool(false);
     p.ducking.volume = std::clamp(duck[QStringLiteral("volume")].toInt(25), 0, 100);
     p.ducking.hotkey = std::max(0, duck[QStringLiteral("hotkey")].toInt(0));
+    p.autoSwitch = o[QStringLiteral("auto_switch")].toBool(true);
     return p;
 }
 
@@ -291,6 +294,7 @@ void Config::migrateLegacyToProfilesUnlocked()
              {QStringLiteral("volume"), 25},
              {QStringLiteral("hotkey"), 0},
          }},
+        {QStringLiteral("auto_switch"), true},
     };
     m_data[QStringLiteral("profiles")] = QJsonArray{defaultProfile};
 }
@@ -649,4 +653,29 @@ void Config::setDefaultProfileApp(const QString& app)
     m_data[QStringLiteral("selected_app")] =
         app.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(app);
     saveUnlocked();
+}
+
+bool Config::autoProfileSwitch() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_data[QStringLiteral("auto_profile_switch")].toBool(false);
+}
+
+void Config::setAutoProfileSwitch(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_data[QStringLiteral("auto_profile_switch")] = enabled;
+    saveUnlocked();
+}
+
+Profile Config::findProfileByApp(const QString& appName) const
+{
+    if (appName.isEmpty()) return Profile{};
+    const QString lower = appName.toLower();
+    for (const Profile& p : profiles())
+    {
+        if (!p.autoSwitch || p.app.isEmpty()) continue;
+        if (p.app.toLower().contains(lower) || lower.contains(p.app.toLower())) return p;
+    }
+    return Profile{};
 }

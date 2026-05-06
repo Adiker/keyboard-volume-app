@@ -6,6 +6,7 @@
 
 class QSpinBox;
 class QComboBox;
+class QCheckBox;
 class QTableWidget;
 class Config;
 class InputHandler;
@@ -146,6 +147,7 @@ class SettingsDialog : public QDialog
     ColorButton* m_colorText = nullptr;
     ColorButton* m_colorBar = nullptr;
     QSpinBox* m_opacity = nullptr;
+    QCheckBox* m_autoProfile = nullptr;
 
     // Profiles section
     QTableWidget* m_profilesTable = nullptr;

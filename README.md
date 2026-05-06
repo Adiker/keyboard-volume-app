@@ -22,6 +22,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Per-app volume control** — changes the volume of only the selected application, not the system master
 - **Multiple audio profiles** — define several profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, and target audio app. Bare `VolUp` controls Spotify, `Ctrl+VolUp` controls Firefox, `F11` controls VLC — all from the same keyboard
 - **Focus audio / ducking** — each profile can bind a manual ducking hotkey that lowers every other known audio app to a configured percentage, then restores the previous levels on the next press
+- **Auto-switch by window focus** — when enabled, the active (focused) window determines which profile's audio app receives volume keys; switch from Spotify to Firefox and volume keys follow automatically
 - **Audio scenes / mixer presets** — define named presets in `config.json` that set volume and/or mute for several apps at once, then apply them from scripts with `kv-ctl scene ID`
 - **Global key capture** — reads directly from an evdev input device, works regardless of which window is focused
 - **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising volume keys from any profile, so the desktop never intercepts them
@@ -48,6 +49,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 | libevdev + uinput access | Global keyboard input capture and re-injection |
 | libpulse | Per-app volume control via PipeWire/PulseAudio socket |
 | libpipewire | Listing and controlling idle PipeWire audio apps without subprocesses |
+| libxcb | X11 protocol for active-window detection (auto-switch feature) |
 | GTest | Unit tests (optional, `BUILD_TESTING=ON`) |
 | CMake 3.20+ | Build system |
 | C++20 compiler | GCC 11+ or Clang 13+ |
@@ -75,12 +77,12 @@ cd keyboard-volume-app
 
 Arch / Manjaro:
 ```bash
-sudo pacman -S qt6-base libevdev libpulse pipewire cmake gcc gtest
+sudo pacman -S qt6-base libevdev libpulse libxcb pipewire cmake gcc gtest
 ```
 
 Ubuntu / Debian:
 ```bash
-sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev cmake g++ libgtest-dev
+sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libxcb-dev cmake g++ libgtest-dev
 ```
 
 **Build**
@@ -215,15 +217,18 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
     "volume_down": 114,
     "mute": 113
   },
+  "auto_profile_switch": false,
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
       "modifiers": [],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
-      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 } },
+      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
+      "auto_switch": true },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
-      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 } }
+      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
+      "auto_switch": true }
   ],
   "scenes": [
     { "id": "meeting", "name": "Meeting",
@@ -237,6 +242,8 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
 ```
 
 Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113). The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch. Scene target `match` values use the same app/binary names as `kv-ctl get apps`; `volume` is a `0..100` percent value, and omitted `volume` or `muted` fields leave that part unchanged.
+
+`auto_profile_switch` (default `false`) globally enables auto-profile switching by focused window. Per-profile `auto_switch` (default `true`) controls whether a given profile participates in auto-switching.
 
 ### Project structure
 
@@ -321,6 +328,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Wiele profili audio** — definiuj kilka profili, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją. `VolUp` steruje Spotify, `Ctrl+VolUp` steruje Firefoxem, `F11` steruje VLC — wszystko z tej samej klawiatury
 - **Tryb skupienia audio / ducking** — każdy profil może mieć ręczny skrót, który ścisza wszystkie inne znane aplikacje audio do ustawionego procentu, a kolejne naciśnięcie przywraca poprzednie poziomy
 - **Sceny audio / presety miksera** — definiuj nazwane presety w `config.json`, które ustawiają głośność i/lub wyciszenie kilku aplikacji naraz, a potem odpalaj je ze skryptów przez `kv-ctl scene ID`
+- **Auto-przełączanie profilu wg aktywnego okna** — po włączeniu aktywne okno (np. Firefox, Spotify) automatycznie wybiera odpowiedni profil audio; klawisze głośności zawsze sterują aplikacją na wierzchu
 - **Globalne przechwytywanie klawiszy** — odczytuje zdarzenia bezpośrednio z urządzenia evdev, działa niezależnie od tego, które okno jest aktywne
 - **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające klawisze użyte w którymkolwiek profilu, aby system nie przechwytywał ich
 - **Konfigurowalne skróty** — Głośność w górę, Głośność w dół, Wyciszenie i tryb skupienia każdego profilu można przypisać do dowolnego klawisza przez Ustawienia → Profile; domyślnie są to dedykowane klawisze multimedialne
@@ -346,6 +354,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 | libevdev + dostęp do uinput | Globalne przechwytywanie klawiszy i reinjekcja zdarzeń |
 | libpulse | Sterowanie głośnością per aplikacja przez gniazdo PipeWire/PulseAudio |
 | libpipewire | Listowanie i sterowanie nieaktywnymi aplikacjami PipeWire bez procesów pomocniczych |
+| libxcb | Protokół X11 do wykrywania aktywnego okna (funkcja auto-przełączania) |
 | GTest | Testy jednostkowe (opcjonalne, `BUILD_TESTING=ON`) |
 | CMake 3.20+ | System budowania |
 | Kompilator C++20 | GCC 11+ lub Clang 13+ |
@@ -373,12 +382,12 @@ cd keyboard-volume-app
 
 Arch / Manjaro:
 ```bash
-sudo pacman -S qt6-base libevdev libpulse pipewire cmake gcc gtest
+sudo pacman -S qt6-base libevdev libpulse libxcb pipewire cmake gcc gtest
 ```
 
 Ubuntu / Debian:
 ```bash
-sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev cmake g++ libgtest-dev
+sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libxcb-dev cmake g++ libgtest-dev
 ```
 
 **Kompilacja**
@@ -513,15 +522,18 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
     "volume_down": 114,
     "mute": 113
   },
+  "auto_profile_switch": false,
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
       "modifiers": [],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
-      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 } },
+      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
+      "auto_switch": true },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
-      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 } }
+      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
+      "auto_switch": true }
   ],
   "scenes": [
     { "id": "meeting", "name": "Meeting",
@@ -535,6 +547,8 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
 ```
 
 Wartości skrótów to kody klawiszy evdev (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113). Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu. `match` w targetach scen używa tych samych nazw aplikacji/binarek co `kv-ctl get apps`; `volume` to procent `0..100`, a pominięte pola `volume` lub `muted` pozostawiają daną część stanu bez zmian.
+
+`auto_profile_switch` (domyślnie `false`) globalnie włącza auto-przełączanie profilu wg aktywnego okna. Per-profilowe `auto_switch` (domyślnie `true`) kontroluje, czy dany profil bierze udział w auto-przełączaniu.
 
 ### Struktura projektu
 
@@ -563,6 +577,7 @@ keyboard-volume-app/
 │       ├── pwutils.h/cpp         # Narzędzie do listowania klientów PipeWire
 │       ├── applistwidget.h/cpp   # Reusable widget listy aplikacji PW
 │       ├── appselectordialog.h/cpp  # Dialog zmiany domyślnej aplikacji audio
+│       ├── windowtracker.h/cpp    # Monitor aktywnego okna X11 dla auto-przełączania profili
 │       ├── screenutils.h         # Header-only centrowanie dialogów na właściwym monitorze
 │       └── audioapp.h           # Struct AudioApp
 │   └── tests/

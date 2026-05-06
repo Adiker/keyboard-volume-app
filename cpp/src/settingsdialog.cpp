@@ -10,6 +10,7 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QSpinBox>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
 #include <QDialogButtonBox>
@@ -306,6 +307,11 @@ void SettingsDialog::buildUi()
     m_opacity->setValue(osd.opacity);
     form->addRow(::tr(QStringLiteral("settings.opacity")), m_opacity);
 
+    // Auto-switch profile
+    m_autoProfile = new QCheckBox(::tr(QStringLiteral("settings.auto_profile_switch")), this);
+    m_autoProfile->setChecked(m_config->autoProfileSwitch());
+    form->addRow(QString(), m_autoProfile);
+
     layout->addLayout(form);
 
     // ── Profiles section ────────────────────────────────────────────────
@@ -420,6 +426,7 @@ void SettingsDialog::saveAndAccept()
                         m_osdY->value(), m_opacity->value(), m_colorBg->color(),
                         m_colorText->color(), m_colorBar->color());
     m_config->setVolumeStep(m_step->value());
+    m_config->setAutoProfileSwitch(m_autoProfile->isChecked());
     if (!m_profiles.isEmpty()) m_config->setProfiles(m_profiles);
     accept();
 }

@@ -49,6 +49,7 @@ keyboard-volume-app/
 │       ├── kvctl.cpp            # kv-ctl command-line D-Bus client
 │       ├── kvctlcommand.h/cpp   # kv-ctl parser shared with tests
 │       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (fd, libevdev*, uinput)
+│       ├── windowtracker.h/cpp  # XCB window-focus monitor for auto-profile switching
 │       ├── screenutils.h        # Header-only: centerDialogOnScreenAt() for multi-monitor XWayland
 │       └── audioapp.h           # AudioApp struct (display name, PA index, muted, volume)
 ├── pkg/
@@ -114,15 +115,18 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
   },
   "volume_step": 5,
   "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+  "auto_profile_switch": false,
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
       "modifiers": [],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
-      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 } },
+      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
+      "auto_switch": true },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
-      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 } }
+      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
+      "auto_switch": true }
   ],
   "scenes": [
     { "id": "meeting", "name": "Meeting",
@@ -138,10 +142,12 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113).
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
-- `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; }`
+- `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; }`
 - `struct DuckingConfig { bool enabled; int volume; int hotkey; }` — manual per-profile Focus Audio. `volume` is clamped to `0..100`; `hotkey == 0` means unassigned.
 - `enum class Modifier { Ctrl, Shift }` — left/right collapsed to canonical (Ctrl/Shift only in v1; Alt/Meta out of scope)
-- API: `profiles()`, `setProfiles(QList<Profile>)` (validates non-empty + uniqueifies ids with numeric suffix on collision), `defaultProfile()` (= `profiles().first()`), `setDefaultProfileApp(QString)`
+- API: `profiles()`, `setProfiles(QList<Profile>)` (validates non-empty + uniqueifies ids with numeric suffix on collision), `defaultProfile()` (= `profiles().first()`), `setDefaultProfileApp(QString)`, `findProfileByApp(QString)` (case-insensitive contains match among auto_switch-enabled profiles)
+- `autoSwitch` (default `true`) — whether this profile participates in auto-profile switching by focused window
+- `autoProfileSwitch()` / `setAutoProfileSwitch(bool)` — global on/off (default `false`)
 - `Modifier` ↔ string helpers: `modifierToString(Modifier)`, `modifierFromString(QString)`
 
 **Audio scenes** (named mixer presets). Each scene:
@@ -337,6 +343,16 @@ Sub-dialog launched from the Settings → Profiles section to add or edit a sing
 
 `result()` builds a `Profile` from the widgets and preserves the original `id` when editing (a fresh Add gets the empty id and `Config::setProfiles()` slugifies/uniqueifies it).
 
+An `auto_switch` checkbox (per-profile) controls whether the profile participates in auto-switching.
+
+### `cpp/src/windowtracker.h/cpp` — `WindowTracker`
+
+Runs in a dedicated `QThread`, polling XCB every 500ms for the active window via `_NET_ACTIVE_WINDOW`. Reads `_NET_WM_PID` from the focused window, then resolves the PID to a binary name via `/proc/PID/comm`. Emits `focusedBinaryChanged(QString)` when the binary changes.
+
+`App` receives the signal, matches the binary name against the PipeWire app cache (case-insensitive `contains`), checks for an `auto_switch=true` profile whose `app` field matches, and overrides the volume target via `effectiveApp()`. When the focus moves to a window with no matching audio app, the fallback profile-resolved app is used instead.
+
+**Limitation:** XCB requires X11/XWayland. On pure Wayland without XWayland the tracker fails gracefully with an error log — the app continues to work normally, just without auto-switching.
+
 ### `cpp/src/i18n.h/cpp`
 
 Static string tables for `en` and `pl`. `tr(key)` falls back to English if a key is missing in the current language.
@@ -356,7 +372,8 @@ Keyboard keypress (evdev)
 
 volume_up/volume_down(profileId)
     └─► App::changeVolume(profileId, direction)
-            └─► findProfile(profileId) → Profile.app
+            └─► effectiveApp(profileId) — return m_autoActiveApp when auto-switch active
+            └─► (fallback) findProfile(profileId) → Profile.app
             └─► VolumeController::changeVolume(app, delta) [async → PaWorker]
                     └─► emit volumeChanged(app, newVol, muted)
                             ├─► OSDWindow::showVolume(app, vol, muted)
@@ -381,6 +398,16 @@ D-Bus external call (e.g. qdbus or kv-ctl)
 MPRIS external call
     └─► MprisPlayerAdaptor::setVolume() / MprisRootAdaptor::Quit()
             └─► DbusInterface / qApp->quit()
+
+Window focus change (X11/XWayland)
+    └─► WindowTracker::run() [QThread — 500ms poll]
+            ├─ _NET_ACTIVE_WINDOW → window PID via _NET_WM_PID
+            ├─ /proc/PID/comm → binary name
+            └─► emit focusedBinaryChanged(binary)
+                    └─► App::onFocusedBinaryChanged(binary)
+                            ├─ matchBinaryToApp(binary) → PipeWire app name
+                            ├─ Config::findProfileByApp(app) → auto_switch profile
+                            └─► effectiveApp() overrides volume target until focus changes
 ```
 
 ---
@@ -388,10 +415,11 @@ MPRIS external call
 ## Threading Model
 
 | Thread | Type | Purpose |
-|---|---|---|
+|---|---|---|---|
 | Main | Qt event loop | UI, signals, OSD updates, D-Bus dispatch |
 | `InputHandler` | `QThread` | evdev polling with `epoll()` (50ms timeout) |
 | `KeyCaptureThread` | `QThread` | One-shot key capture for hotkey rebinding |
+| `WindowTracker` | `QThread` | XCB active-window polling (500ms interval) for auto-profile switching |
 | `PaWorker` | `QThread` (via `moveToThread`) | All PulseAudio/libpipewire operations |
 
 D-Bus calls arrive on the main thread and are forwarded to `VolumeController` (which posts to `PaWorker`). `DbusInterface` property reads are served from main-thread caches — no blocking.

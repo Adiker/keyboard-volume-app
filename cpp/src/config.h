@@ -74,6 +74,7 @@ struct Profile
     HotkeyConfig hotkeys;     // evdev codes for volume up/down/mute
     QSet<Modifier> modifiers; // required held modifiers (empty = bare key)
     DuckingConfig ducking;    // manual per-profile audio ducking
+    bool autoSwitch = true;   // participate in auto-profile switching by window focus
 };
 
 inline bool operator==(const HotkeyConfig& a, const HotkeyConfig& b)
@@ -115,7 +116,7 @@ inline bool operator!=(const AudioScene& a, const AudioScene& b)
 inline bool operator==(const Profile& a, const Profile& b)
 {
     return a.id == b.id && a.name == b.name && a.app == b.app && a.hotkeys == b.hotkeys &&
-           a.modifiers == b.modifiers && a.ducking == b.ducking;
+           a.modifiers == b.modifiers && a.ducking == b.ducking && a.autoSwitch == b.autoSwitch;
 }
 inline bool operator!=(const Profile& a, const Profile& b)
 {
@@ -180,6 +181,16 @@ class Config
     // Audio scenes: named mixer presets applied through D-Bus / kv-ctl.
     QList<AudioScene> scenes() const;
     void setScenes(const QList<AudioScene>& scenes);
+
+    // Auto-profile switching: when enabled, focused window determines the active
+    // audio target. Disabled by default (off).
+    bool autoProfileSwitch() const;
+    void setAutoProfileSwitch(bool enabled);
+
+    // Find the first profile whose app field matches `appName` (case-insensitive
+    // contains match) and has autoSwitch == true. Returns default-constructed
+    // Profile when nothing matches.
+    Profile findProfileByApp(const QString& appName) const;
 
     // Modifier serialization helpers (kanoniczne nazwy: "ctrl", "shift")
     static QString modifierToString(Modifier m);
