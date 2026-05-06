@@ -28,6 +28,12 @@ void WindowTracker::stop()
     }
 }
 
+void WindowTracker::start()
+{
+    m_running = true;
+    QThread::start();
+}
+
 QString WindowTracker::windowToBinary(xcb_connection_t* conn, xcb_window_t win,
                                       xcb_atom_t pidAtom) const
 {
@@ -112,7 +118,6 @@ void WindowTracker::run()
     xcb_window_t lastWindow = 0;
     QString lastBinary;
 
-    m_running = true;
     while (m_running)
     {
         auto propCookie =

@@ -15,6 +15,7 @@ class WindowTracker : public QThread
     ~WindowTracker() override;
 
     void stop();
+    void start();
 
   signals:
     void focusedBinaryChanged(const QString& binaryName);
