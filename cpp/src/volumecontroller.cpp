@@ -8,6 +8,7 @@
 #include <QMutexLocker>
 #include <QEventLoop>
 #include <QElapsedTimer>
+#include <QStringList>
 #include <algorithm>
 #include <atomic>
 #include <utility>
@@ -1125,71 +1126,117 @@ class PaWorker : public QObject
         }
     }
 
+    QStringList streamRestoreAppCandidates(const QString& app) const
+    {
+        QStringList candidates;
+        auto add = [&](const QString& candidate)
+        {
+            if (candidate.trimmed().isEmpty()) return;
+            for (const QString& existing : std::as_const(candidates))
+            {
+                if (existing.compare(candidate, Qt::CaseInsensitive) == 0) return;
+            }
+            candidates.append(candidate);
+        };
+
+        add(app);
+        for (const PipeWireClient& client : ::listPipeWireClients())
+        {
+            if (client.binary.compare(app, Qt::CaseInsensitive) == 0 ||
+                client.name.compare(app, Qt::CaseInsensitive) == 0)
+            {
+                add(client.binary);
+                add(client.name);
+            }
+        }
+        return candidates;
+    }
+
     std::optional<double> streamRestoreChangeVolume(const QString& app, double delta)
     {
         if (!contextReady()) return std::nullopt;
-        std::optional<double> result;
-        StreamRestoreCbData d{this,   QStringLiteral("sink-input-by-application-name:") + app,
-                              delta,  0.0,
-                              false,  false,
-                              false,  &result,
-                              nullptr};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
-                         "read stream restore volume");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        return result;
+        for (const QString& candidate : streamRestoreAppCandidates(app))
+        {
+            std::optional<double> result;
+            StreamRestoreCbData d{
+                this,   QStringLiteral("sink-input-by-application-name:") + candidate,
+                delta,  0.0,
+                false,  false,
+                false,  &result,
+                nullptr};
+            pa_threaded_mainloop_lock(m_mainloop);
+            waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
+                             "read stream restore volume");
+            pa_threaded_mainloop_unlock(m_mainloop);
+            if (result) return result;
+        }
+        return std::nullopt;
     }
 
     std::optional<double> streamRestoreSetVolume(const QString& app, double targetVolume)
     {
         if (!contextReady()) return std::nullopt;
         targetVolume = std::clamp(targetVolume, 0.0, 1.0);
-        std::optional<double> result;
-        StreamRestoreCbData d{this,   QStringLiteral("sink-input-by-application-name:") + app,
-                              0.0,    targetVolume,
-                              true,   false,
-                              false,  &result,
-                              nullptr};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
-                         "read stream restore absolute volume");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        return result;
+        for (const QString& candidate : streamRestoreAppCandidates(app))
+        {
+            std::optional<double> result;
+            StreamRestoreCbData d{
+                this,   QStringLiteral("sink-input-by-application-name:") + candidate,
+                0.0,    targetVolume,
+                true,   false,
+                false,  &result,
+                nullptr};
+            pa_threaded_mainloop_lock(m_mainloop);
+            waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
+                             "read stream restore absolute volume");
+            pa_threaded_mainloop_unlock(m_mainloop);
+            if (result) return result;
+        }
+        return std::nullopt;
     }
 
     std::optional<std::pair<bool, double>> streamRestoreToggleMute(const QString& app)
     {
         if (!contextReady()) return std::nullopt;
-        std::optional<std::pair<bool, double>> result;
         const bool targetMuted = false;
-        StreamRestoreCbData d{this,        QStringLiteral("sink-input-by-application-name:") + app,
-                              0.0,         0.0,
-                              false,       true,
-                              targetMuted, nullptr,
-                              &result};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
-                         "read stream restore mute");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        return result;
+        for (const QString& candidate : streamRestoreAppCandidates(app))
+        {
+            std::optional<std::pair<bool, double>> result;
+            StreamRestoreCbData d{
+                this,        QStringLiteral("sink-input-by-application-name:") + candidate,
+                0.0,         0.0,
+                false,       true,
+                targetMuted, nullptr,
+                &result};
+            pa_threaded_mainloop_lock(m_mainloop);
+            waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
+                             "read stream restore mute");
+            pa_threaded_mainloop_unlock(m_mainloop);
+            if (result) return result;
+        }
+        return std::nullopt;
     }
 
     std::optional<std::pair<bool, double>> streamRestoreSetMute(const QString& app,
                                                                 bool targetMuted)
     {
         if (!contextReady()) return std::nullopt;
-        std::optional<std::pair<bool, double>> result;
-        StreamRestoreCbData d{this,        QStringLiteral("sink-input-by-application-name:") + app,
-                              0.0,         0.0,
-                              true,        true,
-                              targetMuted, nullptr,
-                              &result};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
-                         "read stream restore absolute mute");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        return result;
+        for (const QString& candidate : streamRestoreAppCandidates(app))
+        {
+            std::optional<std::pair<bool, double>> result;
+            StreamRestoreCbData d{
+                this,        QStringLiteral("sink-input-by-application-name:") + candidate,
+                0.0,         0.0,
+                true,        true,
+                targetMuted, nullptr,
+                &result};
+            pa_threaded_mainloop_lock(m_mainloop);
+            waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
+                             "read stream restore absolute mute");
+            pa_threaded_mainloop_unlock(m_mainloop);
+            if (result) return result;
+        }
+        return std::nullopt;
     }
 
     void removePending(const QString& app)
