@@ -29,6 +29,24 @@ int nextReconnectBackoff(int currentMs)
     if (currentMs <= 0) return 500;
     return std::min(currentMs * 2, RECONNECT_BACKOFF_MAX_MS);
 }
+
+bool isGenericAppName(const QString& name)
+{
+    const QString lower = name.trimmed().toLower();
+    return lower == QStringLiteral("chromium") || lower == QStringLiteral("chrome") ||
+           lower == QStringLiteral("brave");
+}
+
+bool containsAppKey(const QMap<QString, AudioApp>& apps, const QString& name)
+{
+    for (auto it = apps.constBegin(); it != apps.constEnd(); ++it)
+    {
+        if (it.key().compare(name, Qt::CaseInsensitive) == 0 ||
+            it.value().binary.compare(name, Qt::CaseInsensitive) == 0)
+            return true;
+    }
+    return false;
+}
 } // namespace
 
 // ─── PaWatcherThread ──────────────────────────────────────────────────────────
@@ -300,7 +318,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (si.name != appName && si.binary != appName) continue;
+                if (!si.matches(appName)) continue;
 
                 double newVol = std::clamp(si.volume + delta, 0.0, 1.0);
                 pa_cvolume cv;
@@ -369,7 +387,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (si.name != appName && si.binary != appName) continue;
+                if (!si.matches(appName)) continue;
 
                 int newMute = si.muted ? 0 : 1;
                 pa_operation* op = pa_context_set_sink_input_mute(m_ctx, si.index, newMute,
@@ -443,7 +461,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (si.name != appName && si.binary != appName) continue;
+                if (!si.matches(appName)) continue;
 
                 if (si.muted == targetMuted)
                 {
@@ -528,7 +546,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (si.name != appName && si.binary != appName) continue;
+                if (!si.matches(appName)) continue;
 
                 pa_cvolume cv;
                 pa_cvolume_set(&cv, 2, static_cast<pa_volume_t>(targetVolume * PA_VOLUME_NORM));
@@ -638,6 +656,15 @@ class PaWorker : public QObject
         if (!forceRefresh && (now - m_listCacheTs) < LIST_CACHE_TTL_MS)
             return; // cache still fresh — caller already has it
 
+        const auto pwClients = ::listPipeWireClients();
+        QMap<QString, QString> displayByTarget;
+        QMap<QString, QString> displayByClientId;
+        for (const PipeWireClient& client : pwClients)
+        {
+            if (!client.binary.isEmpty()) displayByTarget[client.binary.toLower()] = client.name;
+            if (!client.id.isEmpty()) displayByClientId[client.id] = client.name;
+        }
+
         QMap<QString, AudioApp> apps;
         QSet<QString> activeBinaries;
 
@@ -650,24 +677,31 @@ class PaWorker : public QObject
 
             for (const auto& si : inputs)
             {
+                const QString displayName = si.displayName();
+                const QString targetName = si.targetName();
+                QString mappedDisplay = displayByClientId.value(si.clientId);
+                if (mappedDisplay.isEmpty())
+                    mappedDisplay = displayByTarget.value(targetName.toLower(), displayName);
+
                 AudioApp app;
                 app.sinkInputIndex = si.index;
-                app.name = si.name;
-                app.binary = si.binary;
+                app.name = mappedDisplay;
+                app.binary = targetName;
                 app.volume = si.volume;
                 app.muted = si.muted;
                 app.active = true;
-                apps[si.name] = app;
-                if (!si.binary.isEmpty()) activeBinaries.insert(si.binary);
+                apps[mappedDisplay] = app;
+                if (!targetName.isEmpty()) activeBinaries.insert(targetName);
             }
         }
 
         // 2. Idle PW clients (libpipewire — runs here in PA thread, not main thread)
-        for (const PipeWireClient& client : ::listPipeWireClients())
+        for (const PipeWireClient& client : pwClients)
         {
             if (SKIP_APP_NAMES.contains(client.name)) continue;
             if (activeBinaries.contains(client.binary)) continue;
-            if (apps.contains(client.name)) continue;
+            if (containsAppKey(apps, client.name)) continue;
+            if (containsAppKey(apps, client.binary)) continue;
 
             AudioApp app;
             app.name = client.name;
@@ -714,7 +748,7 @@ class PaWorker : public QObject
             for (auto it = pendVols.begin(); it != pendVols.end(); ++it)
             {
                 const QString& app = it.key();
-                if (si.name != app && si.binary != app) continue;
+                if (!si.matches(app)) continue;
 
                 pa_cvolume cv;
                 pa_cvolume_set(&cv, 2, static_cast<pa_volume_t>(it.value() * PA_VOLUME_NORM));
@@ -743,7 +777,7 @@ class PaWorker : public QObject
             {
                 const QString& app = it.key();
                 if (pendVols.contains(app)) continue; // already handled above
-                if (si.name != app && si.binary != app) continue;
+                if (!si.matches(app)) continue;
 
                 bool muteApplied = waitForOperation(
                     pa_context_set_sink_input_mute(m_ctx, si.index, it.value() ? 1 : 0,
@@ -976,9 +1010,30 @@ class PaWorker : public QObject
     struct SinkInputInfo
     {
         uint32_t index;
-        QString name, binary;
+        QString name, binary, mediaName, clientId;
         double volume;
         bool muted;
+
+        bool matches(const QString& appName) const
+        {
+            return name.compare(appName, Qt::CaseInsensitive) == 0 ||
+                   binary.compare(appName, Qt::CaseInsensitive) == 0 ||
+                   mediaName.compare(appName, Qt::CaseInsensitive) == 0;
+        }
+
+        QString displayName() const
+        {
+            if (isGenericAppName(name) && !binary.isEmpty() &&
+                binary.compare(name, Qt::CaseInsensitive) != 0)
+                return binary;
+            return name;
+        }
+
+        QString targetName() const
+        {
+            if (!binary.isEmpty()) return binary;
+            return name;
+        }
     };
 
     struct SinkInputListCbData
@@ -998,9 +1053,12 @@ class PaWorker : public QObject
         const char* mediaName = pa_proplist_gets(info->proplist, PA_PROP_MEDIA_NAME);
         const char* processBinary =
             pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_PROCESS_BINARY);
+        const char* clientId = pa_proplist_gets(info->proplist, "client.id");
 
         si.name = QString::fromUtf8(appName ? appName : (mediaName ? mediaName : "Unknown"));
         si.binary = QString::fromUtf8(processBinary ? processBinary : "");
+        si.mediaName = QString::fromUtf8(mediaName ? mediaName : "");
+        si.clientId = QString::fromUtf8(clientId ? clientId : "");
         si.volume = static_cast<double>(pa_cvolume_avg(&info->volume)) / PA_VOLUME_NORM;
         si.muted = info->mute != 0;
         d->result->append(si);

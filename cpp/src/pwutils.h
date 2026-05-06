@@ -6,17 +6,21 @@
 
 struct PipeWireClient
 {
-    QString name;   // application.name or binary
-    QString binary; // application.process.binary
+    QString name;   // Display name: application.name or binary
+    QString binary; // Stable control target: app binary or stream node name
+    QString id;     // PipeWire global id for Client entries when known
 };
 
 struct PipeWireGlobalProps
 {
-    QString type;
-    QString name;
-    QString binary;
-    QString mediaClass;
-    QString nodeName;
+    QString type{};
+    QString name{};
+    QString binary{};
+    QString mediaClass{};
+    QString nodeName{};
+    QString objectId{};
+    QString clientId{};
+    QString mediaName{};
 };
 
 struct PipeWireNode

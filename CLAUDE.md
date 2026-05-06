@@ -162,10 +162,13 @@ Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=11
 
 Shared utility for listing idle PipeWire audio clients and controlling PipeWire stream nodes via libpipewire. Used by both `VolumeController` (via `PaWorker`) and the first-run wizard (`AppPage`).
 
-- **`PipeWireClient` struct** — `{ QString name; QString binary; }`
+- **`PipeWireClient` struct** — `{ QString name; QString binary; QString id; }`
 - **`PipeWireNode` struct** — `{ uint32_t id; double volume; bool muted; }`
 - **`SYSTEM_BINARIES` / `SKIP_APP_NAMES`** — `QSet<QString>` filter constants shared between `pwutils` and `VolumeController`
 - **`listPipeWireClients()`** — snapshots the PipeWire registry through libpipewire, filters system binaries, renames skipped app names to their binary, and returns a deduplicated list. Returns empty list on connection failure or timeout.
+- **Display name vs control target** — `PipeWireClient::name` is the UI label, `PipeWireClient::binary` is the stable control target, and `PipeWireClient::id` is the PipeWire client global id when known. Some apps expose a friendly client (`harmonoid`) but play through a technical stream node (`mpv`). In that case the UI should show the client name and store/control the stream target.
+- **Stream node ownership** — when a `PipeWire:Interface:Node` has `client.id`, map it back to the owning `PipeWire:Interface:Client` by object/global id. Do not infer ownership from `application.process.binary` alone; Harmonoid exposes a node with `application.name=mpv`, `application.process.binary=mpv`, `node.name=mpv`, `media.name=Harmonoid`, and `client.id` pointing to the `harmonoid` client.
+- **Generic names** — `media.name=Playback` is not an app name. For browser wrappers (for example YouTube Music using Chromium), prefer the process binary (`youtube-music`) over generic `application.name=Chromium` / `media.name=Playback`.
 - **`findPipeWireNodeForApp()` / `setPipeWireNodeVolume()` / `setPipeWireNodeMute()`** — bind PipeWire stream nodes and read/write `SPA_PARAM_Props` without spawning `pw-cli`.
 
 ### `cpp/src/applistwidget.h/cpp` — `AppListWidget`
@@ -173,8 +176,8 @@ Shared utility for listing idle PipeWire audio clients and controlling PipeWire 
 Reusable `QWidget` containing a `QListWidget` + Refresh button for PipeWire audio client selection. Shared between `AppPage` (first-run wizard) and `AppSelectorDialog` (tray).
 
 - **`populate(Config *)`** — calls `listPipeWireClients()`, adds "No default application" (enabled, first), adds "No audio applications found" (disabled) if empty, otherwise lists each client; pre-selects the current `Config::selectedApp()`.
-- **`selectedAppName()`** — returns the `Qt::UserRole` data of the selected item.
-- **`setSelectedApp(name)`** — selects the item with matching data.
+- **`selectedAppName()`** — returns the `Qt::UserRole` data of the selected item. This is the control target (`PipeWireClient::binary`), not necessarily the visible label.
+- **`setSelectedApp(name)`** — selects the item with matching data or visible text, case-insensitively, so older configs using display labels still preselect correctly.
 - Uses `app_selector.*` translation keys (`app_selector.no_default`, `app_selector.no_apps`, `app_selector.refresh`).
 
 ### `cpp/src/appselectordialog.h/cpp` — `AppSelectorDialog`
@@ -217,6 +220,8 @@ All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved v
 4. **Pending watcher** — stores desired volume/mute in `PaWorker`; applies when app reconnects
 
 `listApps()` returns cached data immediately and posts a background refresh that emits `appsReady(list)`. The background watcher listens for new sink-input events and applies pending volumes.
+
+Active sink inputs are matched case-insensitively against `application.name`, `application.process.binary`, and `media.name`, because some pipewire-pulse streams expose the controllable target and the user-facing app name in different fields. `listApps()` normalizes active stream display labels through `listPipeWireClients()` using `client.id` where possible, so tray names match the profile picker while the internal target remains controllable (for example tray/profile display `harmonoid`, target `mpv`).
 
 `PaWorker` detects `PA_CONTEXT_FAILED` / `PA_CONTEXT_TERMINATED`, tears down the stale libpulse context, and reconnects with exponential backoff (500ms up to 30s). PA hot paths first check `contextReady()`; if PA is down, they skip libpulse, try the PipeWire libpipewire fallback, and otherwise park pending volume/mute until the app reconnects.
 
