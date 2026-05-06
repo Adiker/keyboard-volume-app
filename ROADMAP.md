@@ -160,8 +160,8 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 
 **Problem:** Konieczność ręcznej zmiany profili lub zapamiętywania wielu skrótów klawiszowych dla poszczególnych aplikacji.
 **Rekomendacja:** Dodanie profilu `Focus`, który poprzez zapytania do systemu (X11 / D-Bus / KDE / Sway) śledzi PID/nazwę aktywnego okna na pulpicie i dynamicznie łączy go z odpowiednim węzłem w PipeWire. Sterowanie głośnością zawsze wpływa na okno będące na wierzchu.
-**Pliki:** Do określenia (np. nowy moduł integracji WM, modyfikacja `config` i `volumecontroller`).
-**Status:** Planowane.
+**Pliki:** Nowy `cpp/src/windowtracker.h/cpp`, zmiany w `cpp/src/main.cpp`, `cpp/src/config.{h,cpp}`, `cpp/src/settingsdialog.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/CMakeLists.txt`.
+**Status:** Częściowo zrealizowane (etap 1). `WindowTracker` (QThread, XCB) odczytuje `_NET_ACTIVE_WINDOW`, pobiera PID przez `_NET_WM_PID`, mapuje na nazwę binarną z `/proc/PID/comm`. Dopasowanie case-insensitive do aplikacji audio PipeWire, zmiana celu głośności gdy okno pasuje do profilu z `auto_switch=true`. Globalne włączanie/wyłączanie w Ustawieniach; per-profilowa flaga `auto_switch` w edycji profilu. Ograniczenie: działa tylko na X11/XWayland; na czystym Waylandzie bez XWayland tracker kończy pracę z błędem, a aplikacja działa normalnie bez auto-przełączania.
 
 ### 17. Zaawansowane dopasowywanie aplikacji (Regex)
 

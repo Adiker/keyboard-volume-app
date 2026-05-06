@@ -70,6 +70,11 @@ static const QMap<QString, QMap<QString, QString>>& strings()
               QStringLiteral("Focus audio hotkey:")},
              {QStringLiteral("settings.profiles.cannot_remove_last"),
               QStringLiteral("At least one profile must remain.")},
+             {QStringLiteral("settings.profiles.auto_switch"),
+              QStringLiteral("Auto-switch: participate in window-focus switching")},
+             // auto profile switch
+             {QStringLiteral("settings.auto_profile_switch"),
+              QStringLiteral("Auto-switch profile by focused window")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("OSD Preview")},
              // app selector
@@ -180,6 +185,11 @@ static const QMap<QString, QMap<QString, QString>>& strings()
               QStringLiteral("Skr\u00f3t trybu skupienia:")},
              {QStringLiteral("settings.profiles.cannot_remove_last"),
               QStringLiteral("Musi pozosta\u0107 co najmniej jeden profil.")},
+             {QStringLiteral("settings.profiles.auto_switch"),
+              QStringLiteral("Auto-prze\u0142\u0105czanie: reaguj na zmian\u0119 aktywnego okna")},
+             // auto profile switch
+             {QStringLiteral("settings.auto_profile_switch"),
+              QStringLiteral("Auto-prze\u0142\u0105czanie profilu wg aktywnego okna")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("Podgl\u0105d OSD")},
              // app selector
