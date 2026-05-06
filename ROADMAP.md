@@ -177,7 +177,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/inputhandler.{h,cpp}`, `cpp/src/volumecontroller.{h,cpp}`, `cpp/src/main.cpp`, `cpp/src/profileeditdialog.{h,cpp}`, `cpp/src/settingsdialog.{h,cpp}`, `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/kvctl*.{h,cpp}`, `cpp/src/i18n.cpp`, testy i dokumentacja.
 **Status:** Zrealizowane jako ręczny Focus Audio per profil. Profil ma `ducking.enabled`, `ducking.volume` i `ducking.hotkey`; `InputHandler` emituje `ducking_toggle(profileId)`, `PaWorker` zapisuje snapshot głośności innych aplikacji i przywraca go przy kolejnym toggle. D-Bus ma `ToggleDuckingProfile(id)`, a CLI `kv-ctl duck [--profile id]`. Ryzyko/rollback: zmiana dotyka evdev, D-Bus i libpulse/PipeWire hot path; rollback to wyłączenie duckingu w profilach lub revert PR.
 
-### 19. Wbudowane CLI (Sub-komendy dla skryptów / Tiling WM)
+### 19. Wbudowane CLI (Sub-komendy dla skryptów / Tiling WM) ✓
 
 **Problem:** Używanie `qdbus` w konfiguracjach takich środowisk jak Sway, Hyprland czy i3 jest uciążliwe ze względu na bardzo długie komendy.
 **Rekomendacja:** Osobna binarka `kv-ctl` jako lekki klient QtDBus bez zależności od zewnętrznego programu `qdbus`, np. `kv-ctl up`, `kv-ctl down --profile firefox`, `kv-ctl set volume 35`.
