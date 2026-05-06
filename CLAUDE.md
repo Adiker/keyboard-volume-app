@@ -349,7 +349,9 @@ An `auto_switch` checkbox (per-profile) controls whether the profile participate
 
 Runs in a dedicated `QThread`, polling XCB every 500ms for the active window via `_NET_ACTIVE_WINDOW`. Reads `_NET_WM_PID` from the focused window, then resolves the PID to a binary name via `/proc/PID/comm`. Emits `focusedBinaryChanged(QString)` when the binary changes.
 
-`App` receives the signal, matches the binary name against the PipeWire app cache (case-insensitive `contains`), checks for an `auto_switch=true` profile whose `app` field matches, and overrides the volume target via `effectiveApp()`. When the focus moves to a window with no matching audio app, the fallback profile-resolved app is used instead.
+`App` receives the signal, matches the binary name against the PipeWire app cache (case-insensitive `contains` check against both `AudioApp::name` and `AudioApp::binary`), checks for an `auto_switch=true` profile whose `app` field matches, and overrides the volume target via `effectiveApp()`. When the focus moves to a window with no matching audio app, the fallback profile-resolved app is used instead.
+
+Thread-safety: `WindowTracker::start()` sets `m_running = true` (atomic) before calling `QThread::start()`, avoiding a race where `stop()`'s `m_running = false` could be overwritten if `run()` hadn't yet entered its polling loop.
 
 **Limitation:** XCB requires X11/XWayland. On pure Wayland without XWayland the tracker fails gracefully with an error log — the app continues to work normally, just without auto-switching.
 

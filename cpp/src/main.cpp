@@ -287,7 +287,8 @@ class App : public QObject
         const QString lower = binary.toLower();
         for (const AudioApp& app : m_appCache)
         {
-            if (app.name.toLower().contains(lower) || lower.contains(app.name.toLower()))
+            if (app.name.toLower().contains(lower) || lower.contains(app.name.toLower()) ||
+                app.binary.toLower().contains(lower) || lower.contains(app.binary.toLower()))
                 return app.name;
         }
         return {};
