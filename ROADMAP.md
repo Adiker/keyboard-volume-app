@@ -85,7 +85,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** Nowy `cpp/resources.qrc`, zmiany w `trayapp.cpp` i `osdwindow.cpp`
 **Status:** Zrealizowane. `resources.qrc` w SOURCES, ikona `:/icon.png` przez QRC, usunięto POST_BUILD kopiowanie.
 
-### 7. Wsparcie dla PipeWire przez API libpipewire
+### 7. Wsparcie dla PipeWire przez API libpipewire ✓
 
 **Problem:** `pw-dump` i `pw-cli` subprocesy są wolne (~30ms) i wymagają obecności tych binarek.
 **Rekomendacja:** Rozważyć libpipewire bezpośrednio zamiast subprocesów. Alternatywnie: PulseAudio API działa przez pipewire-pulse.
