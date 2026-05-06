@@ -103,6 +103,11 @@ Run locally: `cd cpp/build && ctest --output-on-failure`.
 GitHub Actions CI is enabled in `.github/workflows/ci.yml` for PRs and pushes to
 `main`. It builds and runs CTest in both Debug and Release, and checks
 `clang-format` only for changed C++ files under `cpp/src` and `cpp/tests`.
+All C++ changes in `cpp/src` and `cpp/tests` must be `clang-format` compliant.
+Before opening a PR that touches those paths, check the changed files with:
+`clang-format --dry-run --Werror <changed-cpp-files>`. If the check fails, run
+`clang-format -i` only on the changed C++ files rather than formatting the whole
+repo unnecessarily.
 The CI workflow is path-filtered: docs-only changes such as Markdown updates do
 not run CI, while changes under `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake
 files, or `.github/workflows/ci.yml` do.
