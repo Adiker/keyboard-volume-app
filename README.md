@@ -30,6 +30,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists non-system PipeWire audio clients, including apps that are connected but not currently playing
+- **Friendly audio app names** — normalizes PipeWire/PulseAudio streams where the visible app and controllable stream differ, so wrappers such as Harmonoid can appear as the real app while still controlling the underlying stream
 - **Audio backend recovery** — reconnects to PulseAudio/pipewire-pulse after daemon restarts while keeping the configured selected app
 - **Mute toggle** — press the mute key to toggle mute on the selected app only; OSD shows current level with a 🔇 indicator
 - **Persistent config** — all settings saved atomically to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)

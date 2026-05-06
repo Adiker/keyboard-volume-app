@@ -61,6 +61,21 @@ QString dictValue(const spa_dict* dict, const char* key)
     return value ? QString::fromUtf8(value) : QString{};
 }
 
+bool isGenericAppName(const QString& name)
+{
+    const QString lower = name.trimmed().toLower();
+    return lower == QStringLiteral("chromium") || lower == QStringLiteral("chrome") ||
+           lower == QStringLiteral("brave");
+}
+
+QString displayNameForClient(const QString& name, const QString& binary)
+{
+    if (isGenericAppName(name) && !binary.isEmpty() &&
+        binary.compare(name, Qt::CaseInsensitive) != 0)
+        return binary;
+    return name;
+}
+
 struct RegistryGlobal
 {
     uint32_t id = SPA_ID_INVALID;
@@ -69,6 +84,8 @@ struct RegistryGlobal
     QString binary;
     QString mediaClass;
     QString nodeName;
+    QString clientId;
+    QString mediaName;
 };
 
 struct PipeWireSession
@@ -242,6 +259,8 @@ struct PipeWireSession
         global.name = dictValue(props, "application.name");
         global.binary = dictValue(props, "application.process.binary");
         global.mediaClass = dictValue(props, "media.class");
+        global.clientId = dictValue(props, "client.id");
+        global.mediaName = dictValue(props, "media.name");
         self->globals.append(global);
     }
 };
@@ -304,6 +323,8 @@ struct NodeInfoReader
         self->global->binary = dictValue(info->props, "application.process.binary");
         self->global->mediaClass = dictValue(info->props, "media.class");
         self->global->nodeName = dictValue(info->props, "node.name");
+        self->global->clientId = dictValue(info->props, "client.id");
+        self->global->mediaName = dictValue(info->props, "media.name");
     }
 
     static void onNodeParam(void*, int, uint32_t, uint32_t, uint32_t, const spa_pod*) {}
@@ -365,7 +386,11 @@ void refreshObjectInfo(PipeWireSession& session)
 bool nodeMatchesApp(const RegistryGlobal& global, const QString& appName)
 {
     if (global.type != QString::fromUtf8(PW_TYPE_INTERFACE_Node)) return false;
-    if (global.name != appName && global.binary != appName) return false;
+    if (global.name.compare(appName, Qt::CaseInsensitive) != 0 &&
+        global.binary.compare(appName, Qt::CaseInsensitive) != 0 &&
+        global.nodeName.compare(appName, Qt::CaseInsensitive) != 0 &&
+        global.mediaName.compare(appName, Qt::CaseInsensitive) != 0)
+        return false;
     return global.mediaClass.startsWith(QStringLiteral("Stream/"));
 }
 
@@ -453,32 +478,73 @@ bool setNodeProp(uint32_t nodeId, std::optional<double> volume, std::optional<bo
 // ─── Pure client filtering ────────────────────────────────────────────────────
 QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps>& globals)
 {
-    QMap<QString, QString> seen;
+    QMap<QString, PipeWireClient> seen;
+    QSet<QString> clientNames;
+    QSet<QString> clientBinaries;
+    QMap<QString, QString> clientNameByBinary;
+    QMap<QString, QString> clientNameById;
     for (const PipeWireGlobalProps& global : globals)
     {
-        const bool isClient = global.type.contains(QStringLiteral("Client"));
-        const bool isStreamNode = global.type.contains(QStringLiteral("Node")) &&
-                                  global.mediaClass.startsWith(QStringLiteral("Stream/"));
-        if (!isClient && !isStreamNode) continue;
+        if (!global.type.contains(QStringLiteral("Client"))) continue;
 
         QString binary = global.binary;
         if (binary.isEmpty() || SYSTEM_BINARIES.contains(binary)) continue;
 
         QString name = global.name;
-        if (isStreamNode && !global.nodeName.isEmpty() && global.nodeName != global.name)
-        {
-            name = global.nodeName;
-        }
         if (name.isEmpty()) name = binary;
         if (SKIP_APP_NAMES.contains(name) || name.toLower().contains(QStringLiteral("input")))
             name = binary;
         if (name.trimmed().isEmpty()) continue;
 
-        seen[name] = binary;
+        const QString displayName = displayNameForClient(name, binary);
+        seen[displayName] = PipeWireClient{displayName, binary, global.objectId};
+        clientNames.insert(displayName);
+        clientBinaries.insert(binary);
+        clientNameByBinary[binary] = displayName;
+        if (!global.objectId.isEmpty()) clientNameById[global.objectId] = displayName;
+    }
+
+    for (const PipeWireGlobalProps& global : globals)
+    {
+        const bool isStreamNode = global.type.contains(QStringLiteral("Node")) &&
+                                  global.mediaClass.startsWith(QStringLiteral("Stream/"));
+        if (!isStreamNode) continue;
+
+        const QString ownerBinary = global.binary;
+        if (ownerBinary.isEmpty() || SYSTEM_BINARIES.contains(ownerBinary)) continue;
+
+        QString target = global.nodeName;
+        if (target.isEmpty()) target = global.name;
+        if (target.isEmpty()) target = ownerBinary;
+        if (target.compare(global.name, Qt::CaseInsensitive) == 0 &&
+            isGenericAppName(global.name) && !ownerBinary.isEmpty())
+            target = ownerBinary;
+        if (SKIP_APP_NAMES.contains(target) || target.toLower().contains(QStringLiteral("input")))
+            target = ownerBinary;
+        if (target.trimmed().isEmpty()) continue;
+
+        QString ownerDisplay = clientNameById.value(global.clientId);
+        if (ownerDisplay.isEmpty()) ownerDisplay = clientNameByBinary.value(ownerBinary);
+        if (!ownerDisplay.isEmpty())
+        {
+            const QString ownerId = global.clientId;
+            seen[ownerDisplay] = PipeWireClient{ownerDisplay, target, ownerId};
+            continue;
+        }
+
+        QString displayName = global.name;
+        if (displayName.isEmpty()) displayName = target;
+        if (SKIP_APP_NAMES.contains(displayName) ||
+            displayName.toLower().contains(QStringLiteral("input")))
+            displayName = target;
+        if (displayName.trimmed().isEmpty()) continue;
+        if (clientNames.contains(displayName) || seen.contains(displayName)) continue;
+
+        seen[displayName] = PipeWireClient{displayName, target, global.clientId};
     }
 
     QList<PipeWireClient> result;
-    for (auto it = seen.begin(); it != seen.end(); ++it) result.append({it.key(), it.value()});
+    for (auto it = seen.begin(); it != seen.end(); ++it) result.append(it.value());
     return result;
 }
 
@@ -498,6 +564,9 @@ QList<PipeWireClient> listPipeWireClients()
             global.binary,
             global.mediaClass,
             global.nodeName,
+            QString::number(global.id),
+            global.clientId,
+            global.mediaName,
         });
     }
     return clientsFromPipeWireGlobals(globals);
