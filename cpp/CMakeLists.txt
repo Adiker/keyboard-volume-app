@@ -71,14 +71,16 @@ else()
     message(STATUS "wayland-client: NOT found — XCB fallback always used on Wayland sessions")
 endif()
 
-# Optional: LayerShellQt for native Wayland OSD positioning (wlr-layer-shell)
-find_package(LayerShellQt QUIET)
+# Optional: LayerShellQt for native Wayland OSD positioning (wlr-layer-shell).
+# Requires ≥6.6: setScreen() and setActivateOnShow() were added in that release
+# (setScreen() replaced the deprecated ScreenConfiguration API).
+find_package(LayerShellQt 6.6 QUIET)
 if(LayerShellQt_FOUND)
     target_compile_definitions(keyboard-volume-app PRIVATE HAVE_LAYER_SHELL_QT)
     target_link_libraries(keyboard-volume-app PRIVATE LayerShellQt::Interface)
-    message(STATUS "LayerShellQt: native Wayland OSD enabled")
+    message(STATUS "LayerShellQt ${LayerShellQt_VERSION}: native Wayland OSD enabled")
 else()
-    message(STATUS "LayerShellQt: NOT found — OSD will use XCB fallback on Wayland")
+    message(STATUS "LayerShellQt ≥6.6: NOT found — OSD will use XCB fallback on Wayland")
 endif()
 
 add_executable(kv-ctl
