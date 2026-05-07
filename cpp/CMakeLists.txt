@@ -61,6 +61,26 @@ target_link_libraries(keyboard-volume-app PRIVATE
     PkgConfig::XCB
 )
 
+# Optional: wayland-client for pre-QApplication zwlr_layer_shell_v1 probe
+pkg_check_modules(WAYLAND_CLIENT IMPORTED_TARGET wayland-client)
+if(WAYLAND_CLIENT_FOUND)
+    target_compile_definitions(keyboard-volume-app PRIVATE HAVE_WAYLAND_CLIENT)
+    target_link_libraries(keyboard-volume-app PRIVATE PkgConfig::WAYLAND_CLIENT)
+    message(STATUS "wayland-client: Wayland protocol probe enabled")
+else()
+    message(STATUS "wayland-client: NOT found — XCB fallback always used on Wayland sessions")
+endif()
+
+# Optional: LayerShellQt for native Wayland OSD positioning (wlr-layer-shell)
+find_package(LayerShellQt QUIET)
+if(LayerShellQt_FOUND)
+    target_compile_definitions(keyboard-volume-app PRIVATE HAVE_LAYER_SHELL_QT)
+    target_link_libraries(keyboard-volume-app PRIVATE LayerShellQt::Interface)
+    message(STATUS "LayerShellQt: native Wayland OSD enabled")
+else()
+    message(STATUS "LayerShellQt: NOT found — OSD will use XCB fallback on Wayland")
+endif()
+
 add_executable(kv-ctl
     src/kvctl.cpp
     src/kvctlcommand.cpp

@@ -11,6 +11,12 @@
 #include "screenutils.h"
 #include "windowtracker.h"
 #include "audioapp.h"
+#include "waylandstate.h"
+
+#ifdef HAVE_WAYLAND_CLIENT
+#include <wayland-client.h>
+#include <cstring>
+#endif
 
 #include <QApplication>
 #include <QCommandLineParser>
@@ -21,6 +27,40 @@
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <memory>
+
+// ─── Wayland state ───────────────────────────────────────────────────────────
+// Defined here; declared extern in waylandstate.h.
+// Set before QApplication, read-only afterwards (no mutex needed).
+bool g_nativeWayland = false;
+
+#ifdef HAVE_WAYLAND_CLIENT
+// Probe Wayland registry for zwlr_layer_shell_v1 before QApplication is created.
+// Opens a temporary wl_display connection, does one roundtrip, then disconnects.
+static bool probeLayerShell()
+{
+    wl_display* dpy = wl_display_connect(nullptr);
+    if (!dpy) return false;
+
+    wl_registry* reg = wl_display_get_registry(dpy);
+    bool found = false;
+
+    static const wl_registry_listener lst = {
+        // global announce
+        [](void* d, wl_registry*, uint32_t, const char* iface, uint32_t)
+        {
+            if (strcmp(iface, "zwlr_layer_shell_v1") == 0) *static_cast<bool*>(d) = true;
+        },
+        // global remove — not needed
+        [](void*, wl_registry*, uint32_t) {},
+    };
+
+    wl_registry_add_listener(reg, &lst, &found);
+    wl_display_roundtrip(dpy); // synchronous: receives all current globals
+    wl_registry_destroy(reg);
+    wl_display_disconnect(dpy);
+    return found;
+}
+#endif
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 // Root coordinator — wires all modules via Qt signals, mirrors App in main.py.
@@ -46,6 +86,7 @@ class App : public QObject
 
         m_volumeCtrl = new VolumeController(this);
         m_osd = new OSDWindow(m_config.get());
+        m_osd->initLayerShell(); // no-op unless g_nativeWayland && HAVE_LAYER_SHELL_QT
         m_input = new InputHandler(this);
         m_tray = new TrayApp(m_config.get(), m_volumeCtrl, m_input, this);
 
@@ -322,17 +363,44 @@ class App : public QObject
 
 int main(int argc, char* argv[])
 {
-    // On Wayland, Qt cannot position windows via move() — the compositor ignores it.
-    // Force XWayland so the OSD overlay appears at the user-configured coordinates.
-    // Only applied automatically; user can override with QT_QPA_PLATFORM=wayland.
-    const char* waylandDisplay = qgetenv("WAYLAND_DISPLAY").constData();
-    const char* sessionType = qgetenv("XDG_SESSION_TYPE").constData();
-    const char* qtPlatform = qgetenv("QT_QPA_PLATFORM").constData();
-
-    if (waylandDisplay && waylandDisplay[0] && qstrcmp(sessionType, "wayland") == 0 &&
-        (!qtPlatform || !qtPlatform[0]))
+    // Wayland session detection and OSD positioning strategy:
+    //
+    //   If WAYLAND_DISPLAY is set, XDG_SESSION_TYPE=wayland, and the user has not
+    //   explicitly set QT_QPA_PLATFORM:
+    //
+    //   a) zwlr_layer_shell_v1 available (Sway, Hyprland, KDE Plasma ≥5.27):
+    //      → g_nativeWayland = true; let Qt auto-detect Wayland platform.
+    //        OSDWindow::initLayerShell() will configure the surface via LayerShellQt.
+    //
+    //   b) Protocol not available (GNOME, etc.) or LayerShellQt not compiled in:
+    //      → force QT_QPA_PLATFORM=xcb (existing XWayland fallback, unchanged behaviour).
     {
-        qputenv("QT_QPA_PLATFORM", "xcb");
+        const QByteArray waylandDisplay = qgetenv("WAYLAND_DISPLAY");
+        const QByteArray sessionType = qgetenv("XDG_SESSION_TYPE");
+        const QByteArray qtPlatform = qgetenv("QT_QPA_PLATFORM");
+
+        const bool onWayland =
+            !waylandDisplay.isEmpty() && sessionType == "wayland" && qtPlatform.isEmpty();
+
+        if (onWayland)
+        {
+#if defined(HAVE_WAYLAND_CLIENT) && defined(HAVE_LAYER_SHELL_QT)
+            if (probeLayerShell())
+            {
+                g_nativeWayland = true;
+                // Qt auto-detects the Wayland platform; no QT_QPA_PLATFORM override needed.
+                // We do NOT set QT_WAYLAND_SHELL_INTEGRATION=layer-shell globally —
+                // that would make ALL windows (dialogs etc.) layer surfaces.
+                // LayerShellQt::Window::get() handles this per-window in OSDWindow.
+            }
+            else
+            {
+                qputenv("QT_QPA_PLATFORM", "xcb");
+            }
+#else
+            qputenv("QT_QPA_PLATFORM", "xcb");
+#endif
+        }
     }
 
     QApplication qtApp(argc, argv);
