@@ -6,19 +6,19 @@
 **Audio backend:** PipeWire / PulseAudio (via libpulse IPC + libpipewire)
 **Input:** libevdev + libuinput  
 **Build system:** CMake 3.20+  
-**Platform:** Linux only (KDE Plasma primary target; XWayland required on Wayland sessions)
+**Platform:** Linux only (KDE Plasma primary target; native Wayland OSD on layer-shell compositors, XWayland fallback elsewhere)
 
 ---
 
 ## Required Environment Variables
 
-These are read at startup in `cpp/src/main.cpp` to decide whether to force XWayland:
+These are read at startup in `cpp/src/main.cpp` to decide whether to use native Wayland OSD positioning or force XWayland:
 
 - `WAYLAND_DISPLAY` — set by compositor when running under Wayland
 - `XDG_SESSION_TYPE` — `"wayland"` or `"x11"`
-- `QT_QPA_PLATFORM` — if unset and Wayland is detected, the app forces `xcb` (XWayland) so `QWidget::move()` works for OSD positioning
+- `QT_QPA_PLATFORM` — if unset and Wayland is detected without usable layer-shell support, the app forces `xcb` (XWayland) so `QWidget::move()` works for OSD positioning
 
-> On Wayland, Qt cannot position windows via `move()` — the compositor ignores it. The app auto-sets `QT_QPA_PLATFORM=xcb` unless the user explicitly overrides it.
+> On native Wayland, Qt cannot position regular top-level windows via `move()` — the compositor ignores it. When built with `wayland-client` and `LayerShellQt >= 6.6`, the app probes `zwlr_layer_shell_v1` before `QApplication`; wlroots/KDE sessions use a per-window LayerShellQt OSD surface, while GNOME/unsupported compositors keep the `QT_QPA_PLATFORM=xcb` fallback unless the user explicitly overrides Qt's platform.
 
 ---
 
@@ -436,8 +436,8 @@ D-Bus calls arrive on the main thread and are forwarded to `VolumeController` (w
 `keyboard-volume-app-git` package for Arch Linux / AUR. Builds from the `main` branch via `git clone`.
 
 - `pkgver()` uses `git describe --tags --long` to generate a version like `r0.1.0.24.gc2cd813`
-- `depends`: `qt6-base libevdev libpulse libpipewire pipewire`
-- `makedepends`: `cmake gcc pkg-config git`
+- `depends`: `qt6-base libevdev libpulse libpipewire pipewire layer-shell-qt`
+- `makedepends`: `cmake gcc pkg-config git wayland layer-shell-qt`
 - CMake Release build with `BUILD_TESTING=OFF` and `DESTDIR` install
 - Installs: binary → `/usr/bin/`, `.desktop` → `/usr/share/applications/`, icon → `/usr/share/pixmaps/`, systemd user service → `/usr/lib/systemd/user/`
 
