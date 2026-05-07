@@ -115,6 +115,18 @@ void OSDWindow::initLayerShell()
 #ifdef HAVE_LAYER_SHELL_QT
     if (!g_nativeWayland) return;
 
+    // Guard against Qt falling back from a "wayland;xcb" platform list to xcb
+    // (e.g. if the Wayland plugin fails to initialise after a successful probe).
+    // LayerShellQt::Window::get() would return a non-null wrapper even for an
+    // XCB QWindow, so without this check m_layerShellActive would be set and
+    // positionWindow() would skip move()/setPosition(), leaving the OSD unpositioned.
+    if (QGuiApplication::platformName() != QLatin1String("wayland"))
+    {
+        qDebug() << "[OSDWindow] initLayerShell: Qt platform is" << QGuiApplication::platformName()
+                 << "— skipping layer-shell";
+        return;
+    }
+
     // Force native QWindow creation without showing the widget.
     // winId() on a hidden top-level QWidget creates the platform window.
     (void)winId();
