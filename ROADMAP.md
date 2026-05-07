@@ -208,12 +208,12 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** Nowy `cmake/cpack.cmake`, `cpp/CMakeLists.txt`, `.github/workflows/ci.yml`
 **Status:** Planowane.
 
-### 28. Natywne pozycjonowanie OSD na Waylandzie (wlr-layer-shell)
+### 28. Natywne pozycjonowanie OSD na Waylandzie (wlr-layer-shell) ✓
 
-**Problem:** Aplikacja wymusza `QT_QPA_PLATFORM=xcb` (XWayland) ponieważ `QWidget::move()` jest ignorowane przez natywne kompozytory Wayland. Na środowiskach bez XWayland OSD nie działa poprawnie. Obejście w `main.cpp` powoduje utratę korzyści z natywnego Wayland (prawidłowe skalowanie HiDPI per-output, HDR).
-**Rekomendacja:** Dodać alternatywną ścieżkę pozycjonowania OSD przez protokół `zwlr_layer_shell_v1` (dostępny w Sway, Hyprland, wlroots ≥ 0.15, KDE Plasma ≥ 5.27). Użyć `layer-shell-qt` (`qt6-layer-shell` na Arch) lub bindingów `wayland-scanner`. W `main.cpp` wykrywać środowisko runtime: jeśli `WAYLAND_DISPLAY` ustawione i `QT_QPA_PLATFORM` nie nadpisane przez użytkownika — sprawdzić dostępność protokołu i wybrać ścieżkę Wayland, w przeciwnym razie cofnąć się do XCB. Zmiana jest naturalnym uzupełnieniem kotwic OSD z punktu #20.
-**Pliki:** `cpp/src/osdwindow.h`, `cpp/src/osdwindow.cpp`, `cpp/src/main.cpp`, `cpp/CMakeLists.txt`
-**Status:** Planowane.
+**Problem:** Aplikacja wymuszała `QT_QPA_PLATFORM=xcb` (XWayland) ponieważ `QWidget::move()` jest ignorowane przez natywne kompozytory Wayland. Na środowiskach bez XWayland OSD nie działało poprawnie.
+**Rekomendacja:** Dodać alternatywną ścieżkę pozycjonowania OSD przez protokół `zwlr_layer_shell_v1` (dostępny w Sway, Hyprland, wlroots ≥ 0.15, KDE Plasma ≥ 5.27). Użyć `LayerShellQt` via `find_package`. W `main.cpp` wykrywać środowisko runtime przez `wayland-client` przed `QApplication`.
+**Pliki:** Nowy `cpp/src/waylandstate.h`, `cpp/src/osdwindow.h`, `cpp/src/osdwindow.cpp`, `cpp/src/main.cpp`, `cpp/CMakeLists.txt`, `pkg/arch/PKGBUILD`
+**Status:** Zrealizowane. Przed `QApplication` probujemy `zwlr_layer_shell_v1` przez `wayland-client`. Jeśli protokół dostępny: `g_nativeWayland=true`, `OSDWindow::initLayerShell()` ustawia `LayerShellQt::Window` (layer=Overlay, anchor=TopLeft, keyboardInteractivity=None). `positionWindow()` przelicza absolutne X/Y na marginesy layer-shell per-output przez `QApplication::screenAt()`. Jeśli protokół niedostępny (GNOME, etc.) — fallback do `xcb` jak dotychczas. Obie ścieżki są opcjonalne na etapie kompilacji (`HAVE_WAYLAND_CLIENT`, `HAVE_LAYER_SHELL_QT`). `PKGBUILD` ma `optdepends: layer-shell-qt`. Znane ograniczenia: multi-screen routing best-effort (pełne wsparcie kotwic → punkt #20); GNOME bez XWayland poza zakresem (brak `zwlr_layer_shell_v1`).
 
 ### 29. WindowTracker na czystym Waylandzie (wlr-foreign-toplevel)
 
