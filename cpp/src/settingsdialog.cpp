@@ -74,7 +74,7 @@ KeyCaptureDialog::KeyCaptureDialog(const QString& devicePath, QWidget* parent) :
     if (!devicePath.isEmpty())
     {
         m_thread = new KeyCaptureThread(devicePath, this);
-        connect(m_thread, &KeyCaptureThread::key_captured, this, &KeyCaptureDialog::onCaptured);
+        connect(m_thread, &KeyCaptureThread::hotkey_captured, this, &KeyCaptureDialog::onCaptured);
         connect(m_thread, &KeyCaptureThread::cancelled, this, &KeyCaptureDialog::doCancel);
         m_thread->start();
     }
@@ -85,11 +85,11 @@ KeyCaptureDialog::~KeyCaptureDialog()
     if (m_thread && m_thread->isRunning()) m_thread->cancel();
 }
 
-void KeyCaptureDialog::onCaptured(int code)
+void KeyCaptureDialog::onCaptured(HotkeyBinding binding)
 {
     if (m_done) return;
     m_done = true;
-    m_code = code;
+    m_binding = binding;
     if (m_thread && m_thread->isRunning()) m_thread->cancel();
     accept();
 }
@@ -123,7 +123,7 @@ void KeyCaptureDialog::keyPressEvent(QKeyEvent* event)
         // Validate: the code must be a known KEY_* value (≤ KEY_MAX=767)
         if (evdevCode > 0 && evdevCode <= 767)
         {
-            onCaptured(evdevCode);
+            onCaptured(HotkeyBinding::key(evdevCode));
             return;
         }
     }
@@ -165,16 +165,27 @@ static const QMap<int, QString>& keyNames()
     return m;
 }
 
-QString HotkeyCapture::keyDisplayName(int code)
+QString HotkeyCapture::keyDisplayName(const HotkeyBinding& binding)
 {
-    if (code <= 0) return QStringLiteral("-");
-    auto it = keyNames().find(code);
+    if (!binding.isAssigned()) return QStringLiteral("-");
+    if (binding.type == HotkeyBindingType::Relative)
+    {
+        if (binding.code == REL_WHEEL)
+            return binding.direction > 0 ? QStringLiteral("Wheel Up")
+                                         : QStringLiteral("Wheel Down");
+        if (binding.code == REL_HWHEEL)
+            return binding.direction > 0 ? QStringLiteral("Wheel Right")
+                                         : QStringLiteral("Wheel Left");
+        return QStringLiteral("REL %1 %2").arg(binding.code).arg(binding.direction > 0 ? 1 : -1);
+    }
+
+    auto it = keyNames().find(binding.code);
     if (it != keyNames().end()) return it.value();
-    return QString::number(code);
+    return QString::number(binding.code);
 }
 
-HotkeyCapture::HotkeyCapture(int evdevCode, InputHandler* inputHandler, QWidget* parent)
-    : QPushButton(parent), m_code(evdevCode), m_inputHandler(inputHandler)
+HotkeyCapture::HotkeyCapture(HotkeyBinding binding, InputHandler* inputHandler, QWidget* parent)
+    : QPushButton(parent), m_binding(binding), m_inputHandler(inputHandler)
 {
     setMinimumWidth(120);
     updateDisplay();
@@ -183,7 +194,7 @@ HotkeyCapture::HotkeyCapture(int evdevCode, InputHandler* inputHandler, QWidget*
 
 void HotkeyCapture::updateDisplay()
 {
-    setText(keyDisplayName(m_code));
+    setText(keyDisplayName(m_binding));
 }
 
 void HotkeyCapture::capture()
@@ -193,9 +204,9 @@ void HotkeyCapture::capture()
     {
         QString devPath = m_inputHandler ? m_inputHandler->devicePath() : QString{};
         KeyCaptureDialog dlg(devPath, this);
-        if (dlg.exec() == QDialog::Accepted && dlg.capturedCode() >= 0)
+        if (dlg.exec() == QDialog::Accepted && dlg.capturedBinding().isAssigned())
         {
-            m_code = dlg.capturedCode();
+            m_binding = dlg.capturedBinding();
             updateDisplay();
         }
     }
@@ -465,9 +476,9 @@ void SettingsDialog::refreshProfilesTable()
         setCell(0, nameDisplay);
         setCell(1, p.app);
         setCell(2, modsDisplay);
-        setCell(3, QString::number(p.hotkeys.volumeUp));
-        setCell(4, QString::number(p.hotkeys.volumeDown));
-        setCell(5, QString::number(p.hotkeys.mute));
+        setCell(3, HotkeyCapture::keyDisplayName(p.hotkeys.volumeUp));
+        setCell(4, HotkeyCapture::keyDisplayName(p.hotkeys.volumeDown));
+        setCell(5, HotkeyCapture::keyDisplayName(p.hotkeys.mute));
         setCell(6, p.ducking.enabled ? QStringLiteral("%1% / %2")
                                            .arg(p.ducking.volume)
                                            .arg(HotkeyCapture::keyDisplayName(p.ducking.hotkey))
@@ -482,9 +493,9 @@ void SettingsDialog::onAddProfile()
     Profile blank;
     blank.id = QStringLiteral("profile-") + QString::number(m_profiles.size() + 1);
     blank.name = QStringLiteral("Profile ") + QString::number(m_profiles.size() + 1);
-    blank.hotkeys.volumeUp = 115;
-    blank.hotkeys.volumeDown = 114;
-    blank.hotkeys.mute = 113;
+    blank.hotkeys.volumeUp = HotkeyBinding::key(115);
+    blank.hotkeys.volumeDown = HotkeyBinding::key(114);
+    blank.hotkeys.mute = HotkeyBinding::key(113);
 
     const QPoint anchor = QCursor::pos();
     ProfileEditDialog dlg(blank, m_config, m_inputHandler, this);

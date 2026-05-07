@@ -8,6 +8,7 @@
 
 #include <sys/stat.h>
 #include <unistd.h>
+#include <linux/input.h>
 
 #include "config.h"
 
@@ -221,6 +222,42 @@ TEST(Config, HotkeysRoundtrip)
     EXPECT_EQ(hk.volumeUp, 200);
     EXPECT_EQ(hk.volumeDown, 201);
     EXPECT_EQ(hk.mute, 202);
+}
+
+TEST(Config, ScrollHotkeyRoundtrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Profile p;
+    p.id = "default";
+    p.name = "Default";
+    p.hotkeys.volumeUp = HotkeyBinding::relative(REL_WHEEL, 1);
+    p.hotkeys.volumeDown = HotkeyBinding::relative(REL_WHEEL, -1);
+    p.hotkeys.mute = KEY_MUTE;
+    p.ducking.enabled = true;
+    p.ducking.hotkey = HotkeyBinding::relative(REL_HWHEEL, -1);
+
+    {
+        Config config(tmp.path());
+        config.setProfiles({p});
+    }
+
+    Config reloaded(tmp.path());
+    const auto profs = reloaded.profiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_EQ(profs[0].hotkeys.volumeUp, HotkeyBinding::relative(REL_WHEEL, 1));
+    EXPECT_EQ(profs[0].hotkeys.volumeDown, HotkeyBinding::relative(REL_WHEEL, -1));
+    EXPECT_EQ(profs[0].ducking.hotkey, HotkeyBinding::relative(REL_HWHEEL, -1));
+
+    QFile f(tmp.path() + "/config.json");
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    const QJsonObject profile = root["profiles"].toArray().first().toObject();
+    const QJsonObject volumeUp = profile["hotkeys"].toObject()["volume_up"].toObject();
+    EXPECT_EQ(volumeUp["type"].toString().toStdString(), "rel");
+    EXPECT_EQ(volumeUp["code"].toInt(), REL_WHEEL);
+    EXPECT_EQ(volumeUp["direction"].toInt(), 1);
 }
 
 TEST(Config, OsdRoundtrip)

@@ -105,16 +105,16 @@ Profile ProfileEditDialog::result() const
     if (p.name.isEmpty()) p.name = QStringLiteral("Profile");
     p.app = m_appList->selectedAppName();
 
-    p.hotkeys.volumeUp = m_hkUp->evdevCode();
-    p.hotkeys.volumeDown = m_hkDown->evdevCode();
-    p.hotkeys.mute = m_hkMute->evdevCode();
+    p.hotkeys.volumeUp = m_hkUp->binding();
+    p.hotkeys.volumeDown = m_hkDown->binding();
+    p.hotkeys.mute = m_hkMute->binding();
 
     if (m_modCtrl->isChecked()) p.modifiers.insert(Modifier::Ctrl);
     if (m_modShift->isChecked()) p.modifiers.insert(Modifier::Shift);
 
     p.ducking.enabled = m_duckingEnabled->isChecked();
     p.ducking.volume = m_duckingSpin->value();
-    p.ducking.hotkey = m_hkDucking->evdevCode();
+    p.ducking.hotkey = m_hkDucking->binding();
     p.autoSwitch = m_autoSwitch->isChecked();
 
     return p;

@@ -9,6 +9,23 @@
 #include <algorithm>
 #include <cmath>
 
+namespace
+{
+
+QVariant hotkeyBindingVariant(const HotkeyBinding& binding)
+{
+    if (!binding.isAssigned()) return 0;
+    if (binding.type == HotkeyBindingType::Key) return binding.code;
+
+    QVariantMap out;
+    out[QStringLiteral("type")] = QStringLiteral("rel");
+    out[QStringLiteral("code")] = binding.code;
+    out[QStringLiteral("direction")] = binding.direction < 0 ? -1 : 1;
+    return out;
+}
+
+} // namespace
+
 DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, TrayApp* tray,
                              QObject* parent)
     : QObject(parent), m_config(config), m_volumeCtrl(volumeCtrl), m_tray(tray)
@@ -142,14 +159,14 @@ QVariantList DbusInterface::buildProfilesProp() const
         if (p.modifiers.contains(Modifier::Shift)) mods << QStringLiteral("shift");
 
         QVariantMap hk;
-        hk[QStringLiteral("volume_up")] = p.hotkeys.volumeUp;
-        hk[QStringLiteral("volume_down")] = p.hotkeys.volumeDown;
-        hk[QStringLiteral("mute")] = p.hotkeys.mute;
+        hk[QStringLiteral("volume_up")] = hotkeyBindingVariant(p.hotkeys.volumeUp);
+        hk[QStringLiteral("volume_down")] = hotkeyBindingVariant(p.hotkeys.volumeDown);
+        hk[QStringLiteral("mute")] = hotkeyBindingVariant(p.hotkeys.mute);
 
         QVariantMap ducking;
         ducking[QStringLiteral("enabled")] = p.ducking.enabled;
         ducking[QStringLiteral("volume")] = p.ducking.volume;
-        ducking[QStringLiteral("hotkey")] = p.ducking.hotkey;
+        ducking[QStringLiteral("hotkey")] = hotkeyBindingVariant(p.ducking.hotkey);
 
         QVariantMap m;
         m[QStringLiteral("id")] = p.id;

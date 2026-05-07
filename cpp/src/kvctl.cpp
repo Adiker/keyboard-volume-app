@@ -119,6 +119,17 @@ QStringList listToText(const QVariantList& list)
     return lines;
 }
 
+QString hotkeyToText(const QVariant& value)
+{
+    const QVariantMap binding = value.toMap();
+    if (binding.isEmpty()) return value.toString();
+
+    const QString type = binding.value(QStringLiteral("type")).toString();
+    const int code = binding.value(QStringLiteral("code")).toInt();
+    const int direction = binding.value(QStringLiteral("direction")).toInt();
+    return QStringLiteral("%1:%2:%3").arg(type, QString::number(code), QString::number(direction));
+}
+
 QString mapToText(const QVariantMap& map)
 {
     const QString id = map.value(QStringLiteral("id")).toString();
@@ -156,9 +167,9 @@ QString mapToText(const QVariantMap& map)
         if (!hotkeyMap.isEmpty())
         {
             hotkeys = QStringLiteral("up=%1,down=%2,mute=%3")
-                          .arg(hotkeyMap.value(QStringLiteral("volume_up")).toString(),
-                               hotkeyMap.value(QStringLiteral("volume_down")).toString(),
-                               hotkeyMap.value(QStringLiteral("mute")).toString());
+                          .arg(hotkeyToText(hotkeyMap.value(QStringLiteral("volume_up"))),
+                               hotkeyToText(hotkeyMap.value(QStringLiteral("volume_down"))),
+                               hotkeyToText(hotkeyMap.value(QStringLiteral("mute"))));
         }
 
         return QStringLiteral("%1\t%2\t%3\t%4\t%5").arg(id, name, app, modifiers, hotkeys);

@@ -84,7 +84,7 @@ TEST(InputHandler, FindWithNonExistentPath)
 {
     findSiblingDevices("/dev/input/event99999");
     findCaptureDevices("/dev/input/event99999");
-    QSet<int> hotkeys{115, 114, 113};
+    QSet<HotkeyBinding> hotkeys{115, 114, 113};
     findHotkeyDevices("/dev/input/event99999", hotkeys);
     SUCCEED();
 }
@@ -233,6 +233,45 @@ TEST(ResolveProfileHotkey, DuckingUsesProfileModifiers)
     ProfileHotkeyMatch match = resolveProfileHotkey(88, {Modifier::Ctrl}, {p});
     EXPECT_EQ(match.profileId, QStringLiteral("ctrl"));
     EXPECT_EQ(match.action, ProfileHotkeyAction::DuckingToggle);
+}
+
+TEST(ResolveProfileHotkey, RelativeWheelMatchesDirection)
+{
+    Profile p = mkProfile("default", 115, 114, 113, {});
+    p.hotkeys.volumeUp = HotkeyBinding::relative(REL_WHEEL, 1);
+    p.hotkeys.volumeDown = HotkeyBinding::relative(REL_WHEEL, -1);
+
+    ProfileHotkeyMatch up = resolveProfileHotkey(HotkeyBinding::relative(REL_WHEEL, 1), {}, {p});
+    EXPECT_EQ(up.profileId, QStringLiteral("default"));
+    EXPECT_EQ(up.action, ProfileHotkeyAction::VolumeUp);
+
+    ProfileHotkeyMatch down = resolveProfileHotkey(HotkeyBinding::relative(REL_WHEEL, -1), {}, {p});
+    EXPECT_EQ(down.profileId, QStringLiteral("default"));
+    EXPECT_EQ(down.action, ProfileHotkeyAction::VolumeDown);
+}
+
+TEST(ResolveProfileHotkey, RelativeWheelDoesNotMatchOppositeDirection)
+{
+    Profile p = mkProfile("default", 115, 114, 113, {});
+    p.hotkeys.volumeUp = HotkeyBinding::relative(REL_WHEEL, 1);
+
+    EXPECT_TRUE(
+        resolveProfileHotkey(HotkeyBinding::relative(REL_WHEEL, -1), {}, {p}).profileId.isEmpty());
+}
+
+TEST(InputEventMatching, RelativeWheelComparesSign)
+{
+    input_event ev{};
+    ev.type = EV_REL;
+    ev.code = REL_WHEEL;
+    ev.value = 2;
+
+    EXPECT_TRUE(matchesInputEvent(HotkeyBinding::relative(REL_WHEEL, 1), ev));
+    EXPECT_FALSE(matchesInputEvent(HotkeyBinding::relative(REL_WHEEL, -1), ev));
+
+    ev.value = -1;
+    EXPECT_FALSE(matchesInputEvent(HotkeyBinding::relative(REL_WHEEL, 1), ev));
+    EXPECT_TRUE(matchesInputEvent(HotkeyBinding::relative(REL_WHEEL, -1), ev));
 }
 
 int main(int argc, char** argv)

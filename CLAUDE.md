@@ -139,11 +139,11 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 }
 ```
 
-Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113).
+Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113). Scroll bindings use object form such as `{ "type": "rel", "code": 8, "direction": 1 }` for `EV_REL / REL_WHEEL`.
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
 - `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; }`
-- `struct DuckingConfig { bool enabled; int volume; int hotkey; }` — manual per-profile Focus Audio. `volume` is clamped to `0..100`; `hotkey == 0` means unassigned.
+- `struct DuckingConfig { bool enabled; int volume; HotkeyBinding hotkey; }` — manual per-profile Focus Audio. `volume` is clamped to `0..100`; unassigned binding means no hotkey.
 - `enum class Modifier { Ctrl, Shift }` — left/right collapsed to canonical (Ctrl/Shift only in v1; Alt/Meta out of scope)
 - API: `profiles()`, `setProfiles(QList<Profile>)` (validates non-empty + uniqueifies ids with numeric suffix on collision), `defaultProfile()` (= `profiles().first()`), `setDefaultProfileApp(QString)`, `findProfileByApp(QString)` (case-insensitive contains match among auto_switch-enabled profiles)
 - `autoSwitch` (default `true`) — whether this profile participates in auto-profile switching by focused window
@@ -231,7 +231,7 @@ App/binary filter constants (`SYSTEM_BINARIES`, `SKIP_APP_NAMES`) live in `pwuti
 
 ### `cpp/src/inputhandler.h/cpp` — `InputHandler`, `KeyCaptureThread`
 
-**`InputHandler`** (extends `QThread`): reads evdev events from the selected device and all other devices advertising any hotkey code from any configured profile. All such devices are grabbed exclusively and mirrored via uinput so non-hotkey events pass through transparently. Hotkey events that resolve to a profile are swallowed (never re-injected); hotkey events with no matching profile are forwarded so typing isn't blocked.
+**`InputHandler`** (extends `QThread`): reads evdev events from the selected device and all other devices advertising any configured hotkey binding (`EV_KEY` keys or scroll `EV_REL` codes). All such devices are grabbed exclusively and mirrored via uinput so non-hotkey events pass through transparently. Hotkey events that resolve to a profile are swallowed (never re-injected); hotkey events with no matching profile are forwarded so typing/scrolling isn't blocked.
 
 API: `setProfiles(QList<Profile>)` / `currentProfiles()`. Signals carry the resolved `profileId` so `App` can route to the right audio app:
 ```cpp
@@ -244,13 +244,13 @@ void ducking_toggle(const QString &profileId);
 **Modifier tracking.** `m_heldModifiers` holds raw evdev modifier codes (`KEY_LEFTCTRL`, `KEY_RIGHTCTRL`, `KEY_LEFTSHIFT`, `KEY_RIGHTSHIFT`) updated on press/release events from grabbed devices. Modifier press/release events are **forwarded to uinput** so the rest of the desktop sees them. Free helpers (testable, no Qt event loop required):
 - `bool isTrackedModifierCode(int code)`
 - `QSet<Modifier> normalizeHeldModifiers(const QSet<int> &raw)` — collapses L/R variants
-- `QString resolveProfile(int code, const QSet<Modifier> &held, const QList<Profile> &profiles)` — picks the profile whose `modifiers` set is a subset of `held` and whose code matches; tie-broken by **specificity** (most required modifiers wins), then first-in-list. Returns empty string when no profile matches.
+- `QString resolveProfile(HotkeyBinding binding, const QSet<Modifier> &held, const QList<Profile> &profiles)` — picks the profile whose `modifiers` set is a subset of `held` and whose binding matches; tie-broken by **specificity** (most required modifiers wins), then first-in-list. Returns empty string when no profile matches. `int` overloads treat the value as an `EV_KEY` binding.
 - `ProfileHotkeyMatch resolveProfileHotkey(...)` — returns both profile id and action (`VolumeUp`, `VolumeDown`, `Mute`, `DuckingToggle`) for runtime dispatch.
 
-**Debounce** is keyed per `(code, profileId)` so `Ctrl+VolUp` and bare `VolUp` don't block each other (100ms window).
+**Debounce** is keyed per `(HotkeyBinding, profileId)` so key and scroll bindings with the same numeric code don't block each other (100ms window).
 
 **v1 limitations** (TODO comments in source):
-- A modifier key on a separate keyboard with no hotkey codes won't be observed (`findHotkeyDevices` only opens devices with at least one hotkey code).
+- A modifier key on a separate keyboard with no hotkey bindings won't be observed (`findHotkeyDevices` only opens devices with at least one hotkey binding).
 - `m_heldModifiers` can go stale on focus loss (rare with grabbed devices) — accepted in v1.
 
 Key repeat events (`ev.value == 2`) are handled alongside regular press events (`ev.value == 1`).
@@ -261,9 +261,9 @@ Key repeat events (`ev.value == 2`) are handled alongside regular press events (
 
 **Device selection logic:**
 - `findSiblingDevices(path)` — finds all nodes sharing the same `phys` prefix
-- `findHotkeyDevices(path, codes)` — siblings + every other device exposing at least one hotkey code; all marked exclusive (grabbed + uinput mirror)
+- `findHotkeyDevices(path, bindings)` — siblings + every other device exposing at least one hotkey binding; all marked exclusive (grabbed + uinput mirror)
 
-**`KeyCaptureThread`** (extends `QThread`): used in the settings dialog to capture a single keypress for hotkey rebinding. Grabs all candidate devices, emits `key_captured(code)` or `cancelled()`.
+**`KeyCaptureThread`** (extends `QThread`): used in the settings dialog to capture a single keypress or wheel scroll for hotkey rebinding. Grabs all candidate devices, emits `hotkey_captured(binding)` or `cancelled()`.
 
 ### `cpp/src/osdwindow.h/cpp` — `OSDWindow`
 
@@ -305,7 +305,7 @@ D-Bus methods:
 - `VolumeUpProfile(QString id)`, `VolumeDownProfile(QString id)`, `ToggleMuteProfile(QString id)`, `ToggleDuckingProfile(QString id)` — per-profile methods, route directly to the profile's app via `m_volumeCtrl`.
 - `ApplyScene(QString id)` — applies a configured audio scene by posting absolute volume/mute operations to `VolumeController`; unknown scene ids are a no-op.
 
-`Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute}), ducking ({enabled, volume, hotkey})}`. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
+`Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute}), ducking ({enabled, volume, hotkey})}`. Hotkey values are legacy ints for `EV_KEY` bindings or maps for scroll bindings. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
 `Scenes` property is `QVariantList` of `QVariantMap` entries — `{id, name, targets ([{match, volume?, muted?}])}`.
 
 ### `cpp/src/kvctl.cpp`, `cpp/src/kvctlcommand.h/cpp` — `kv-ctl`
@@ -372,7 +372,7 @@ Static string tables for `en` and `pl`. `tr(key)` falls back to English if a key
 Keyboard keypress (evdev)
     └─► InputHandler::run() [QThread]
             ├─ modifier key (Ctrl/Shift L/R) → update m_heldModifiers; forward to uinput
-            ├─ hotkey → resolveProfileHotkey(code, normalizeHeldModifiers(held), profiles)
+            ├─ hotkey → resolveProfileHotkey(binding, normalizeHeldModifiers(held), profiles)
             │           ├─ matched → emit volume_up/down/mute/ducking_toggle(profileId); swallow
             │           └─ no match → forward to uinput (don't block typing)
             └─ other keys → UInput re-injection
@@ -520,12 +520,12 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 25 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / id uniqueification)
+- `test_config` — 29 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / scroll hotkeys / id uniqueification)
 - `test_i18n` — 7 tests (lookup, fallback)
 - `test_kvctlcommand` — 6 tests (subcommand parser, profile option, get/set fields, invalid input)
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
-- `test_inputhandler` — 18 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action specificity)
+- `test_inputhandler` — 21 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action specificity / scroll binding matching)
 
 Run locally: `cd cpp/build && ctest --output-on-failure`.
 
@@ -543,11 +543,11 @@ temporarily disabled via `if: false` in `.github/workflows/claude-code-review.ym
 ## Key Conventions
 
 - **No global master volume changes** — all volume operations target a specific app's sink input
-- **Evdev key codes** in config/hotkeys, not Qt key codes. Conversion: evdev = X11 keycode − 8
+- **Evdev hotkey bindings** in config/hotkeys, not Qt key codes. Legacy integer values are `EV_KEY` codes; scroll is stored as `EV_REL` binding objects. Conversion from X11 keys: evdev = X11 keycode − 8
 - **Config saves on every setter** — no explicit "save all" step needed
 - **All PA/PipeWire operations on PaWorker thread** — never block the Qt event loop with libpulse or libpipewire calls
 - **PA reconnect is part of the audio contract** — on context failure/termination, reconnect in `PaWorker` with backoff; do not lose pending volume/mute or the configured `selected_app`.
-- **All hotkey devices grabbed exclusively** — siblings of the primary device AND every other device advertising the hotkey codes; non-hotkey events re-injected via uinput so typing is unaffected
+- **All hotkey devices grabbed exclusively** — siblings of the primary device AND every other device advertising the configured hotkey bindings; non-hotkey events re-injected via uinput so typing/scrolling is unaffected
 - **No PipeWire subprocess fallback** — idle-app lookup and PW-node fallback use libpipewire directly, so `pw-dump`/`pw-cli` do not need to be in `PATH`
 - **Wayland position workaround** — after every `widget.show()` that positions the OSD, also call `QWindow::setPosition()` on `windowHandle()`
 - **Dialog centering on multi-monitor** — use `centerDialogOnScreenAt(window, QCursor::pos())` from `screenutils.h` before `exec()` for parentless dialogs. Never use event filters, QTimer hacks, or `Qt::Dialog` flag changes for positioning.
@@ -557,4 +557,4 @@ temporarily disabled via `if: false` in `.github/workflows/claude-code-review.ym
 - **`ExportAdaptors` flag required** when registering objects that have `QDBusAbstractAdaptor` children (like the MPRIS endpoint). Without it, adaptor interfaces are not exported
 - **Profiles are the source of truth** for hotkey → app mapping. Legacy `selected_app` and top-level `hotkeys` are deprecated mirrors of `profiles[0]`, kept in sync on every write for one release cycle of backwards compat (D-Bus/MPRIS callers reading the old fields keep working).
 - **Scenes are additive mixer presets** — they do not change the active app/profile, and applying one only posts absolute per-app volume/mute operations to the existing audio worker.
-- **Modifiers tracked only from grabbed devices** — a modifier key on a separate keyboard with no hotkey codes won't be observed in v1. Documented limitation; v2 may add passive read-only opens for modifier-only devices.
+- **Modifiers tracked only from grabbed devices** — a modifier key on a separate keyboard with no hotkey bindings won't be observed in v1. Documented limitation; v2 may add passive read-only opens for modifier-only devices.

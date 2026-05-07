@@ -4,6 +4,8 @@
 #include <QList>
 #include <QSet>
 #include <QHashFunctions>
+#include <QMetaType>
+#include <algorithm>
 #include <mutex>
 #include <optional>
 
@@ -20,19 +22,52 @@ struct OsdConfig
     QString colorBar = QStringLiteral("#0078D7");
 };
 
-// ─── Hotkeys (raw evdev key codes) ────────────────────────────────────────────
+// ─── Hotkeys ──────────────────────────────────────────────────────────────────
+enum class HotkeyBindingType
+{
+    Key,
+    Relative,
+};
+
+struct HotkeyBinding
+{
+    HotkeyBindingType type = HotkeyBindingType::Key;
+    int code = 0;
+    int direction = 0; // 0 for keys, sign (+/-) for EV_REL bindings
+
+    HotkeyBinding() = default;
+    HotkeyBinding(int keyCode) : type(HotkeyBindingType::Key), code(std::max(0, keyCode)) {}
+
+    static HotkeyBinding key(int keyCode)
+    {
+        return HotkeyBinding(keyCode);
+    }
+    static HotkeyBinding relative(int relCode, int relDirection)
+    {
+        HotkeyBinding b;
+        b.type = HotkeyBindingType::Relative;
+        b.code = std::max(0, relCode);
+        b.direction = relDirection < 0 ? -1 : (relDirection > 0 ? 1 : 0);
+        return b;
+    }
+    bool isAssigned() const
+    {
+        return code > 0 && (type == HotkeyBindingType::Key || direction != 0);
+    }
+};
+
 struct HotkeyConfig
 {
-    int volumeUp = 115;   // KEY_VOLUMEUP
-    int volumeDown = 114; // KEY_VOLUMEDOWN
-    int mute = 113;       // KEY_MUTE
+    HotkeyBinding volumeUp = 115;   // KEY_VOLUMEUP
+    HotkeyBinding volumeDown = 114; // KEY_VOLUMEDOWN
+    HotkeyBinding mute = 113;       // KEY_MUTE
 };
 
 struct DuckingConfig
 {
     bool enabled = false;
-    int volume = 25; // Percent, 0-100
-    int hotkey = 0;  // 0 = unassigned
+    int volume = 25;      // Percent, 0-100
+    HotkeyBinding hotkey; // unassigned by default
 };
 
 struct SceneTarget
@@ -62,8 +97,29 @@ inline size_t qHash(Modifier m, size_t seed = 0) noexcept
     return ::qHash(static_cast<int>(m), seed);
 }
 
+inline bool operator==(const HotkeyBinding& a, const HotkeyBinding& b)
+{
+    return a.type == b.type && a.code == b.code && a.direction == b.direction;
+}
+inline bool operator!=(const HotkeyBinding& a, const HotkeyBinding& b)
+{
+    return !(a == b);
+}
+inline bool operator<(const HotkeyBinding& a, const HotkeyBinding& b)
+{
+    if (a.type != b.type) return static_cast<int>(a.type) < static_cast<int>(b.type);
+    if (a.code != b.code) return a.code < b.code;
+    return a.direction < b.direction;
+}
+
+inline size_t qHash(const HotkeyBinding& b, size_t seed = 0) noexcept
+{
+    return ::qHash(static_cast<int>(b.type), seed) ^ ::qHash(b.code, seed << 1) ^
+           ::qHash(b.direction, seed << 2);
+}
+
 // ─── Audio profile (point 8) ──────────────────────────────────────────────────
-// Each profile binds its own hotkey codes + optional modifier requirements
+// Each profile binds its own hotkey bindings + optional modifier requirements
 // to a target audio app. Multiple profiles allow controlling several apps from
 // the keyboard (e.g. Vol+ → spotify, Ctrl+Vol+ → firefox, F11 → vlc).
 struct Profile
@@ -229,3 +285,5 @@ class Config
     QString m_configDir; // empty → use XDG default
     bool m_firstRun = false;
 };
+
+Q_DECLARE_METATYPE(HotkeyBinding)
