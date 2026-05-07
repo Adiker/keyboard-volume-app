@@ -162,6 +162,7 @@ QVariantList DbusInterface::buildProfilesProp() const
         hk[QStringLiteral("volume_up")] = hotkeyBindingVariant(p.hotkeys.volumeUp);
         hk[QStringLiteral("volume_down")] = hotkeyBindingVariant(p.hotkeys.volumeDown);
         hk[QStringLiteral("mute")] = hotkeyBindingVariant(p.hotkeys.mute);
+        hk[QStringLiteral("show")] = hotkeyBindingVariant(p.hotkeys.show);
 
         QVariantMap ducking;
         ducking[QStringLiteral("enabled")] = p.ducking.enabled;
@@ -279,4 +280,17 @@ void DbusInterface::ApplyScene(const QString& sceneId)
         if (target.volume) m_volumeCtrl->setVolume(target.match, *target.volume / 100.0);
         if (target.muted) m_volumeCtrl->setMuted(target.match, *target.muted);
     }
+}
+
+void DbusInterface::ShowVolume()
+{
+    if (m_activeApp.isEmpty()) return;
+    m_volumeCtrl->queryVolume(m_activeApp);
+}
+
+void DbusInterface::ShowVolumeProfile(const QString& profileId)
+{
+    const Profile p = findProfile(profileId);
+    if (p.app.isEmpty()) return;
+    m_volumeCtrl->queryVolume(p.app);
 }

@@ -27,6 +27,10 @@ class VolumeController : public QObject
     void setMuted(const QString& appName, bool muted);
     void toggleDucking(const QString& keepApp, double duckVolume);
 
+    // Async read of the app's current volume — result arrives via volumeChanged().
+    // Does NOT modify any volume. Falls back to cached value when PA is unavailable.
+    void queryVolume(const QString& appName);
+
     void close();
 
   signals:

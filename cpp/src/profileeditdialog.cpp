@@ -53,9 +53,11 @@ ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
     m_hkUp = new HotkeyCapture(initial.hotkeys.volumeUp, m_inputHandler, this);
     m_hkDown = new HotkeyCapture(initial.hotkeys.volumeDown, m_inputHandler, this);
     m_hkMute = new HotkeyCapture(initial.hotkeys.mute, m_inputHandler, this);
+    m_hkShow = new HotkeyCapture(initial.hotkeys.show, m_inputHandler, this);
     form->addRow(::tr(QStringLiteral("settings.hotkey.volume_up")), m_hkUp);
     form->addRow(::tr(QStringLiteral("settings.hotkey.volume_down")), m_hkDown);
     form->addRow(::tr(QStringLiteral("settings.hotkey.mute")), m_hkMute);
+    form->addRow(::tr(QStringLiteral("settings.hotkey.show")), m_hkShow);
 
     // Audio ducking
     m_duckingEnabled =
@@ -108,6 +110,7 @@ Profile ProfileEditDialog::result() const
     p.hotkeys.volumeUp = m_hkUp->binding();
     p.hotkeys.volumeDown = m_hkDown->binding();
     p.hotkeys.mute = m_hkMute->binding();
+    p.hotkeys.show = m_hkShow->binding();
 
     if (m_modCtrl->isChecked()) p.modifiers.insert(Modifier::Ctrl);
     if (m_modShift->isChecked()) p.modifiers.insert(Modifier::Shift);

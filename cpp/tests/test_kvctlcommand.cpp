@@ -129,4 +129,22 @@ TEST(KvCtlCommand, RejectsBadCommands)
                      {QStringLiteral("scene"), QStringLiteral("meeting"), QStringLiteral("extra")},
                      {}, false)
                      .ok);
+    EXPECT_FALSE(
+        parseKvCtlCommand({QStringLiteral("show"), QStringLiteral("extra")}, {}, false).ok);
+}
+
+TEST(KvCtlCommand, ParsesBareShowCommand)
+{
+    auto result = parseKvCtlCommand({QStringLiteral("show")}, {}, false);
+    ASSERT_TRUE(result.ok) << result.error.toStdString();
+    EXPECT_EQ(result.command.action, KvCtlCommand::Action::Show);
+    EXPECT_TRUE(result.command.profile.isEmpty());
+}
+
+TEST(KvCtlCommand, ParsesShowWithProfile)
+{
+    auto result = parseKvCtlCommand({QStringLiteral("show")}, QStringLiteral("spotify"), true);
+    ASSERT_TRUE(result.ok) << result.error.toStdString();
+    EXPECT_EQ(result.command.action, KvCtlCommand::Action::Show);
+    EXPECT_EQ(result.command.profile.toStdString(), "spotify");
 }

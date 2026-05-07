@@ -126,6 +126,8 @@ class App : public QObject
                 [this](const QString& id) { onMute(id); });
         connect(m_input, &InputHandler::ducking_toggle, this,
                 [this](const QString& id) { onDuckingToggle(id); });
+        connect(m_input, &InputHandler::show_volume, this,
+                [this](const QString& id) { onShowVolume(id); });
 
         // Tray
         connect(m_tray, &TrayApp::deviceChangeRequested, this,
@@ -214,6 +216,13 @@ class App : public QObject
         const Profile p = findProfile(profileId);
         if (!p.ducking.enabled || !p.ducking.hotkey.isAssigned()) return;
         m_volumeCtrl->toggleDucking(app, p.ducking.volume / 100.0);
+    }
+
+    void onShowVolume(const QString& profileId)
+    {
+        const QString app = effectiveApp(profileId);
+        if (app.isEmpty()) return;
+        m_volumeCtrl->queryVolume(app); // async → volumeChanged → OSD
     }
 
     void onDeviceChangeRequested(bool startup)

@@ -44,6 +44,7 @@ enum class ProfileHotkeyAction
     VolumeDown,
     Mute,
     DuckingToggle,
+    ShowVolume,
 };
 
 struct ProfileHotkeyMatch
@@ -145,6 +146,7 @@ class InputHandler : public QThread
     void volume_down(const QString& profileId);
     void volume_mute(const QString& profileId);
     void ducking_toggle(const QString& profileId);
+    void show_volume(const QString& profileId);
 
   protected:
     void run() override;

@@ -296,6 +296,10 @@ ProfileHotkeyAction actionForBinding(const Profile& profile, const HotkeyBinding
     {
         return ProfileHotkeyAction::DuckingToggle;
     }
+    if (profile.hotkeys.show.isAssigned() && profile.hotkeys.show == binding)
+    {
+        return ProfileHotkeyAction::ShowVolume;
+    }
     return ProfileHotkeyAction::None;
 }
 
@@ -423,6 +427,7 @@ void InputHandler::run()
         if (p.hotkeys.volumeDown.isAssigned()) hotkeys.insert(p.hotkeys.volumeDown);
         if (p.hotkeys.mute.isAssigned()) hotkeys.insert(p.hotkeys.mute);
         if (p.ducking.enabled && p.ducking.hotkey.isAssigned()) hotkeys.insert(p.ducking.hotkey);
+        if (p.hotkeys.show.isAssigned()) hotkeys.insert(p.hotkeys.show);
     }
     if (hotkeys.isEmpty())
     {
@@ -557,6 +562,9 @@ void InputHandler::run()
                                     case ProfileHotkeyAction::DuckingToggle:
                                         emit ducking_toggle(match.profileId);
                                         break;
+                                    case ProfileHotkeyAction::ShowVolume:
+                                        emit show_volume(match.profileId);
+                                        break;
                                     case ProfileHotkeyAction::None:
                                         break;
                                     }
@@ -643,6 +651,9 @@ void InputHandler::run()
                                         break;
                                     case ProfileHotkeyAction::DuckingToggle:
                                         emit ducking_toggle(match.profileId);
+                                        break;
+                                    case ProfileHotkeyAction::ShowVolume:
+                                        emit show_volume(match.profileId);
                                         break;
                                     case ProfileHotkeyAction::None:
                                         break;

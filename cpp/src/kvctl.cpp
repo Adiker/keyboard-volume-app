@@ -266,6 +266,8 @@ QString methodName(const KvCtlCommand& cmd)
         return profile ? QStringLiteral("ToggleDuckingProfile") : QStringLiteral("ToggleDucking");
     case KvCtlCommand::Action::ApplyScene:
         return QStringLiteral("ApplyScene");
+    case KvCtlCommand::Action::Show:
+        return profile ? QStringLiteral("ShowVolumeProfile") : QStringLiteral("ShowVolume");
     case KvCtlCommand::Action::Refresh:
         return QStringLiteral("RefreshApps");
     case KvCtlCommand::Action::Get:

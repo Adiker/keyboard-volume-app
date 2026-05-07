@@ -311,6 +311,51 @@ TEST(InputEventMatching, HiResWheelCompanionSuppression)
     EXPECT_TRUE(matchesInputEvent(hWheelDown, companionH));
 }
 
+TEST(ResolveProfileHotkey, ShowVolumeActionMatches)
+{
+    Profile p = mkProfile("sp", 115, 114, 113, {});
+    p.hotkeys.show = 99;
+
+    ProfileHotkeyMatch m = resolveProfileHotkey(99, {}, {p});
+    EXPECT_EQ(m.profileId, QStringLiteral("sp"));
+    EXPECT_EQ(m.action, ProfileHotkeyAction::ShowVolume);
+}
+
+TEST(ResolveProfileHotkey, ShowVolumeNotFiredWhenZero)
+{
+    // show = 0 (unassigned) must never match — code 0 is a null/synthetic evdev event.
+    Profile p = mkProfile("sp", 115, 114, 113, {});
+    p.hotkeys.show = {};
+
+    ProfileHotkeyMatch m = resolveProfileHotkey(0, {}, {p});
+    EXPECT_EQ(m.action, ProfileHotkeyAction::None);
+}
+
+TEST(ResolveProfileHotkey, ShowVolumeUsesProfileModifiers)
+{
+    Profile p = mkProfile("ctrl", 115, 114, 113, {Modifier::Ctrl});
+    p.hotkeys.show = 99;
+
+    EXPECT_TRUE(resolveProfileHotkey(99, {}, {p}).profileId.isEmpty());
+
+    ProfileHotkeyMatch match = resolveProfileHotkey(99, {Modifier::Ctrl}, {p});
+    EXPECT_EQ(match.profileId, QStringLiteral("ctrl"));
+    EXPECT_EQ(match.action, ProfileHotkeyAction::ShowVolume);
+}
+
+TEST(ResolveProfileHotkey, ShowVolumeRelativeWheelMatchesDirection)
+{
+    Profile p = mkProfile("wheel", 115, 114, 113, {});
+    p.hotkeys.show = HotkeyBinding::relative(REL_WHEEL, 1);
+
+    ProfileHotkeyMatch up = resolveProfileHotkey(HotkeyBinding::relative(REL_WHEEL, 1), {}, {p});
+    EXPECT_EQ(up.profileId, QStringLiteral("wheel"));
+    EXPECT_EQ(up.action, ProfileHotkeyAction::ShowVolume);
+
+    EXPECT_TRUE(
+        resolveProfileHotkey(HotkeyBinding::relative(REL_WHEEL, -1), {}, {p}).profileId.isEmpty());
+}
+
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);

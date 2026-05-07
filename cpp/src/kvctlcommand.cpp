@@ -38,7 +38,8 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
     const QString action = positionalArgs[0];
 
     if (action == QStringLiteral("up") || action == QStringLiteral("down") ||
-        action == QStringLiteral("mute") || action == QStringLiteral("duck"))
+        action == QStringLiteral("mute") || action == QStringLiteral("duck") ||
+        action == QStringLiteral("show"))
     {
         if (positionalArgs.size() != 1)
             return fail(
@@ -50,8 +51,10 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
             cmd.action = KvCtlCommand::Action::VolumeDown;
         else if (action == QStringLiteral("mute"))
             cmd.action = KvCtlCommand::Action::ToggleMute;
-        else
+        else if (action == QStringLiteral("duck"))
             cmd.action = KvCtlCommand::Action::ToggleDucking;
+        else
+            cmd.action = KvCtlCommand::Action::Show;
 
         return {true, cmd, QString()};
     }
@@ -123,6 +126,7 @@ QString kvCtlUsageText()
                           "  kv-ctl down [--profile ID]\n"
                           "  kv-ctl mute [--profile ID]\n"
                           "  kv-ctl duck [--profile ID]\n"
+                          "  kv-ctl show [--profile ID]\n"
                           "  kv-ctl scene ID\n"
                           "  kv-ctl refresh\n"
                           "  kv-ctl get volume|muted|active-app|apps|step|profiles|scenes\n"
