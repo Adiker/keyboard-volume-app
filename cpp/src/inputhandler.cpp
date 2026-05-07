@@ -19,8 +19,8 @@
 // Hi-res wheel companion codes — added in Linux 4.19; define fallbacks for
 // older kernel headers so the build works everywhere.
 #ifndef REL_WHEEL_HI_RES
-#  define REL_WHEEL_HI_RES  0x0b
-#  define REL_HWHEEL_HI_RES 0x0c
+#define REL_WHEEL_HI_RES 0x0b
+#define REL_HWHEEL_HI_RES 0x0c
 #endif
 
 // ─── Device enumeration ───────────────────────────────────────────────────────
@@ -593,9 +593,9 @@ void InputHandler::run()
                             for (const HotkeyBinding& binding : std::as_const(hotkeys))
                             {
                                 if (!matchesInputEvent(binding, companion)) continue;
-                                if (!resolveProfileHotkey(binding,
-                                                          normalizeHeldModifiers(heldModifiers),
-                                                          profiles).profileId.isEmpty())
+                                if (!resolveProfileHotkey(
+                                         binding, normalizeHeldModifiers(heldModifiers), profiles)
+                                         .profileId.isEmpty())
                                 {
                                     suppress = true;
                                     break;
