@@ -35,7 +35,12 @@ User must be in the `input` group for evdev access (`sudo usermod -aG input $USE
 
 ## Environment — Wayland
 
-The app reads `WAYLAND_DISPLAY` / `XDG_SESSION_TYPE` at startup. If a Wayland session is detected and `QT_QPA_PLATFORM` is unset, it forces `xcb` (XWayland). Without this, `QWidget::move()` is ignored by the compositor and the OSD lands at (0,0). Do not remove this logic from `main.cpp`.
+The app reads `WAYLAND_DISPLAY` / `XDG_SESSION_TYPE` at startup. On Wayland, regular `QWidget::move()` is ignored by compositors, so OSD positioning must use one of two guarded paths:
+
+- If built with `wayland-client` + `LayerShellQt >= 6.6` and the compositor advertises `zwlr_layer_shell_v1`, keep Qt on native Wayland and position only the OSD through `LayerShellQt::Window::get()`.
+- Otherwise, when `QT_QPA_PLATFORM` is unset, force `xcb` (XWayland) so the existing `move()` / `QWindow::setPosition()` fallback still works.
+
+Do not remove this startup decision logic from `main.cpp`, and do not set `QT_WAYLAND_SHELL_INTEGRATION=layer-shell` globally; that would turn dialogs and other windows into layer-shell surfaces too.
 
 ## Key codes are evdev, not Qt
 
@@ -66,7 +71,7 @@ If the PulseAudio context fails or terminates, `PaWorker` reconnects with backof
 
 Qt skips stylesheet background painting for translucent top-level windows (`WA_TranslucentBackground`). The OSD background is drawn manually in `OSDWindow::paintEvent()` via `QPainter::drawRoundedRect()`. Do not try to set OSD background via stylesheet — it won't render.
 
-After `show()`, position is also set via `QWindow::setPosition()` on `windowHandle()` for XWayland compatibility.
+After `show()`, the X11/XWayland path also sets position via `QWindow::setPosition()` on `windowHandle()`. The native Wayland path updates layer-shell margins instead of calling `move()`.
 
 ## D-Bus / MPRIS
 
