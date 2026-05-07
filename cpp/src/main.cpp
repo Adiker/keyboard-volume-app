@@ -365,40 +365,51 @@ int main(int argc, char* argv[])
 {
     // Wayland session detection and OSD positioning strategy:
     //
-    //   If WAYLAND_DISPLAY is set, XDG_SESSION_TYPE=wayland, and the user has not
-    //   explicitly set QT_QPA_PLATFORM:
+    //   Eligible when WAYLAND_DISPLAY is set, XDG_SESSION_TYPE=wayland, and
+    //   QT_QPA_PLATFORM is either unset or explicitly "wayland":
     //
     //   a) zwlr_layer_shell_v1 available (Sway, Hyprland, KDE Plasma ≥5.27):
-    //      → g_nativeWayland = true; let Qt auto-detect Wayland platform.
-    //        OSDWindow::initLayerShell() will configure the surface via LayerShellQt.
+    //      → g_nativeWayland = true; Qt uses the Wayland platform (auto-detected
+    //        or already set by the user). OSDWindow::initLayerShell() configures
+    //        the surface via LayerShellQt. Do NOT set
+    //        QT_WAYLAND_SHELL_INTEGRATION=layer-shell globally — that would make
+    //        ALL windows (dialogs etc.) layer surfaces.
     //
     //   b) Protocol not available (GNOME, etc.) or LayerShellQt not compiled in:
-    //      → force QT_QPA_PLATFORM=xcb (existing XWayland fallback, unchanged behaviour).
+    //      → If QT_QPA_PLATFORM was unset, force xcb (XWayland fallback).
+    //        If the user explicitly set QT_QPA_PLATFORM=wayland, leave it alone —
+    //        overriding the user's explicit choice would be unexpected.
     {
         const QByteArray waylandDisplay = qgetenv("WAYLAND_DISPLAY");
         const QByteArray sessionType = qgetenv("XDG_SESSION_TYPE");
         const QByteArray qtPlatform = qgetenv("QT_QPA_PLATFORM");
 
-        const bool onWayland =
-            !waylandDisplay.isEmpty() && sessionType == "wayland" && qtPlatform.isEmpty();
+        const bool onWaylandSession = !waylandDisplay.isEmpty() && sessionType == "wayland";
+        const bool qtPlatformUnset = qtPlatform.isEmpty();
+        const bool qtPlatformWayland = qtPlatform == "wayland";
 
-        if (onWayland)
+        // Probe when the session is Wayland and Qt will (or already does) use the
+        // Wayland platform. Skip when the user pinned QT_QPA_PLATFORM to something
+        // else (e.g. "xcb") — that is an intentional override we must respect.
+        if (onWaylandSession && (qtPlatformUnset || qtPlatformWayland))
         {
 #if defined(HAVE_WAYLAND_CLIENT) && defined(HAVE_LAYER_SHELL_QT)
             if (probeLayerShell())
             {
                 g_nativeWayland = true;
-                // Qt auto-detects the Wayland platform; no QT_QPA_PLATFORM override needed.
-                // We do NOT set QT_WAYLAND_SHELL_INTEGRATION=layer-shell globally —
-                // that would make ALL windows (dialogs etc.) layer surfaces.
-                // LayerShellQt::Window::get() handles this per-window in OSDWindow.
             }
-            else
+            else if (qtPlatformUnset)
+            {
+                // Layer-shell unavailable and no explicit platform set: fall back to
+                // XWayland so QWidget::move() works for OSD positioning.
+                qputenv("QT_QPA_PLATFORM", "xcb");
+            }
+            // qtPlatformWayland + no layer-shell: leave the user's setting intact.
+#else
+            if (qtPlatformUnset)
             {
                 qputenv("QT_QPA_PLATFORM", "xcb");
             }
-#else
-            qputenv("QT_QPA_PLATFORM", "xcb");
 #endif
         }
     }
