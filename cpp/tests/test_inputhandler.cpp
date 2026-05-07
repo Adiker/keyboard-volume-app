@@ -274,6 +274,43 @@ TEST(InputEventMatching, RelativeWheelComparesSign)
     EXPECT_TRUE(matchesInputEvent(HotkeyBinding::relative(REL_WHEEL, -1), ev));
 }
 
+TEST(InputEventMatching, HiResWheelCompanionSuppression)
+{
+    // Verify the logic used to suppress REL_WHEEL_HI_RES when a REL_WHEEL
+    // binding is configured: build a synthetic companion event with the standard
+    // code and confirm matchesInputEvent sees the binding.
+    constexpr unsigned short REL_WHEEL_HI_RES_CODE = 0x0b;
+    constexpr unsigned short REL_HWHEEL_HI_RES_CODE = 0x0c;
+
+    input_event hiRes{};
+    hiRes.type = EV_REL;
+    hiRes.code = REL_WHEEL_HI_RES_CODE;
+    hiRes.value = 120; // high-res ticks per notch
+
+    // The hi-res event itself must NOT match a REL_WHEEL binding.
+    HotkeyBinding wheelUp = HotkeyBinding::relative(REL_WHEEL, 1);
+    EXPECT_FALSE(matchesInputEvent(wheelUp, hiRes));
+
+    // A companion with the standard code MUST match — this is what the suppress
+    // check in InputHandler::run() uses to decide whether to swallow the hi-res.
+    input_event companion = hiRes;
+    companion.code = REL_WHEEL;
+    EXPECT_TRUE(matchesInputEvent(wheelUp, companion));
+
+    // Same for HWHEEL.
+    input_event hiResH{};
+    hiResH.type = EV_REL;
+    hiResH.code = REL_HWHEEL_HI_RES_CODE;
+    hiResH.value = -120;
+
+    HotkeyBinding hWheelDown = HotkeyBinding::relative(REL_HWHEEL, -1);
+    EXPECT_FALSE(matchesInputEvent(hWheelDown, hiResH));
+
+    input_event companionH = hiResH;
+    companionH.code = REL_HWHEEL;
+    EXPECT_TRUE(matchesInputEvent(hWheelDown, companionH));
+}
+
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
