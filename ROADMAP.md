@@ -106,6 +106,27 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/pwutils.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/settingsdialog.cpp`
 **Status:** Planowane.
 
+### 22. clang-tidy w CI
+
+**Problem:** Lint formatowania (clang-format) jest już w CI, ale analiza statyczna (clang-tidy) nie jest uruchamiana automatycznie — błędy takie jak niezainicjowane zmienne, podejrzane rzutowania czy naruszenia wytycznych C++ Core Guidelines mogą trafiać do `main` bez ostrzeżenia. `CMakeLists.txt` już generuje `compile_commands.json` (`CMAKE_EXPORT_COMPILE_COMMANDS ON`), więc infrastruktura jest gotowa.
+**Rekomendacja:** Dodać job `clang-tidy` w `.github/workflows/ci.yml`, uruchamiany na zmienionych plikach `.cpp`/`.h` (analogicznie do istniejącego joba `format`). Dodać plik `.clang-tidy` w katalogu głównym repozytorium z zestawem checkerów: `clang-diagnostic-*`, `cppcoreguidelines-*`, `readability-*`, `performance-*`, `modernize-*`. Na start tryb ostrzegawczy (warnings nie blokują CI), docelowo — błędy blokujące merge.
+**Pliki:** `.github/workflows/ci.yml`, nowy `.clang-tidy`
+**Status:** Planowane.
+
+### 23. Pasywne śledzenie modyfikatorów z niezależnych klawiatur (v2)
+
+**Problem:** `InputHandler` śledzi stan modyfikatorów (Ctrl, Shift) wyłącznie na urządzeniach, które sam grabuje. Użytkownik z osobną klawiaturą multimedialną i osobną klawiaturą alfanumeryczną nie może kwalifikować profili modyfikatorami z tej drugiej. Ograniczenie udokumentowane jako `TODO(v2)` w `inputhandler.h:109`.
+**Rekomendacja:** Rozszerzyć `findHotkeyDevices()` o trzecią kategorię: urządzenia EV_KEY bez skonfigurowanych hotkeyów, lecz posiadające `KEY_LEFTCTRL`/`KEY_RIGHTCTRL`/`KEY_LEFTSHIFT`/`KEY_RIGHTSHIFT`. Otwierać je w trybie nieekskluzywnym (bez `EVIOCGRAB`, bez uinput) — wyłącznie do odczytu modyfikatorów. W pętli epoll odczytywać zdarzenia EV_KEY dla tych kodów i aktualizować `heldModifiers`, nie przechwytując ani nie przekierowując innych zdarzeń.
+**Pliki:** `cpp/src/inputhandler.h`, `cpp/src/inputhandler.cpp`, `cpp/tests/test_inputhandler.cpp`
+**Status:** Planowane.
+
+### 24. Hotkey „Pokaż głośność" (OSD bez zmiany głośności)
+
+**Problem:** Nie ma możliwości podejrzenia aktualnej głośności bez jej zmieniania. Użytkownik musi uruchomić `kv-ctl get volume` w terminalu lub chwilowo zmienić i cofnąć głośność, żeby zobaczyć bieżący poziom na OSD.
+**Rekomendacja:** Dodać opcjonalny hotkey `show` w konfiguracji profilu (obok `volume_up`/`volume_down`/`mute`/`ducking`). Po wciśnięciu: zapytać `VolumeController` o aktualną głośność aplikacji profilu (nowa metoda `queryVolume(app)` → async sygnał `volumeChanged` bez zmiany wartości) i wyświetlić OSD. Wystawić metodę D-Bus `ShowVolume()` / `ShowVolumeProfile(id)` oraz komendę `kv-ctl show [--profile id]`.
+**Pliki:** `cpp/src/config.h`, `cpp/src/config.cpp`, `cpp/src/inputhandler.h`, `cpp/src/inputhandler.cpp`, `cpp/src/volumecontroller.h`, `cpp/src/volumecontroller.cpp`, `cpp/src/dbusinterface.h`, `cpp/src/dbusinterface.cpp`, `cpp/src/kvctlcommand.h`, `cpp/src/kvctl.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`
+**Status:** Planowane.
+
 ---
 
 ## Priorytet 3 — Dobre mieć
@@ -165,6 +186,41 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Rekomendacja:** API `centerDialogOnScreenAt(window, QCursor::pos())` przed `exec()` — robi `ensurePolished`, `adjustSize`, wylicza rozmiar z `sizeHint/minimumSizeHint/minimumSize`, centruje w `screen->availableGeometry()` z clampem do granic.
 **Pliki:** Nowy `cpp/src/screenutils.h`, zmiany w `cpp/src/trayapp.cpp`, `cpp/src/main.cpp`
 **Status:** Zrealizowane. Header-only utility `centerDialogOnScreenAt(QWidget*, QPoint)` z fallbackiem do `primaryScreen()`. Bez event filterów, QTimer ani zmian flag Qt::Dialog. 4/4 testów OK.
+
+### 25. Limity głośności per profil (minimalny / maksymalny poziom)
+
+**Problem:** Niektóre aplikacje (np. alerty systemowe, asystent głosowy) nie powinny być całkowicie wyciszone przez hotkeys; inne (np. muzyka w tle) nie powinny przekraczać określonego progu. Brak mechanizmu ograniczenia zakresu zmian głośności dla konkretnego profilu.
+**Rekomendacja:** Dodać pola `vol_min` i `vol_max` (0–100, domyślnie 0 i 100) do struktury `Profile`. W `PaWorker::doChangeVolume()` klampować wynikową głośność do `[vol_min/100.0, vol_max/100.0]` przed wysłaniem do libpulse/libpipewire. `ProfileEditDialog` powinien oferować dwa suwaki lub pola spinbox dla tych limitów. Zaktualizować `profileToJson`/`profileFromJson` w `config.cpp` oraz testy.
+**Pliki:** `cpp/src/config.h`, `cpp/src/config.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/tests/test_config.cpp`
+**Status:** Planowane.
+
+### 26. Stopniowe wyciszanie ducking (fade in/out)
+
+**Problem:** `ToggleDucking` zmienia głośność ściszanych aplikacji natychmiastowo — skok z np. 80% do 20% jest słyszalny jako nagłe tąpnięcie. Profesjonalne implementacje duckingu stosują płynne przejścia z konfigurowalnym czasem.
+**Rekomendacja:** Dodać pola `ducking.fade_in_ms` i `ducking.fade_out_ms` do `DuckingConfig` (domyślnie 0 ms = zachowanie obecne, brak regresji). W `PaWorker::doToggleDucking()` zamiast natychmiastowych `setAppVolume()` uruchomić QTimer-driven ramp: co ~30 ms obliczać kolejną wartość głośności wzdłuż liniowej krzywej dla każdej ściszanej aplikacji. Anulowanie (drugie wciśnięcie) przerywa ramp i uruchamia fade powrotu do pierwotnych wartości z snapshotu.
+**Pliki:** `cpp/src/config.h`, `cpp/src/config.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/tests/test_config.cpp`
+**Status:** Planowane.
+
+### 27. Pakietowanie .deb i .rpm przez CPack
+
+**Problem:** Dystrybucja dla użytkowników Debiana, Ubuntu, Fedory i openSUSE wymaga samodzielnego budowania ze źródeł. Istniejący PKGBUILD obsługuje tylko Arch Linux. Wzmianka o `.deb/.rpm` w pozycji #1 nigdy niezrealizowana. Istniejące reguły `install()` w `CMakeLists.txt` są już kompletne.
+**Rekomendacja:** Dodać plik `cmake/cpack.cmake` z konfiguracją CPack dla generatorów `DEB` i `RPM`. Zdefiniować `CPACK_DEBIAN_PACKAGE_DEPENDS` (`libqt6core6, libevdev2, libpulse0, libpipewire-0.3-0`) i `CPACK_RPM_PACKAGE_REQUIRES` analogicznie. Włączyć `include(cmake/cpack.cmake)` w `CMakeLists.txt`. Opcjonalnie: job `release` w CI wyzwalany tagiem `v*`, archiwizujący paczki jako artefakty GitHub Actions.
+**Pliki:** Nowy `cmake/cpack.cmake`, `cpp/CMakeLists.txt`, `.github/workflows/ci.yml`
+**Status:** Planowane.
+
+### 28. Natywne pozycjonowanie OSD na Waylandzie (wlr-layer-shell)
+
+**Problem:** Aplikacja wymusza `QT_QPA_PLATFORM=xcb` (XWayland) ponieważ `QWidget::move()` jest ignorowane przez natywne kompozytory Wayland. Na środowiskach bez XWayland OSD nie działa poprawnie. Obejście w `main.cpp` powoduje utratę korzyści z natywnego Wayland (prawidłowe skalowanie HiDPI per-output, HDR).
+**Rekomendacja:** Dodać alternatywną ścieżkę pozycjonowania OSD przez protokół `zwlr_layer_shell_v1` (dostępny w Sway, Hyprland, wlroots ≥ 0.15, KDE Plasma ≥ 5.27). Użyć `layer-shell-qt` (`qt6-layer-shell` na Arch) lub bindingów `wayland-scanner`. W `main.cpp` wykrywać środowisko runtime: jeśli `WAYLAND_DISPLAY` ustawione i `QT_QPA_PLATFORM` nie nadpisane przez użytkownika — sprawdzić dostępność protokołu i wybrać ścieżkę Wayland, w przeciwnym razie cofnąć się do XCB. Zmiana jest naturalnym uzupełnieniem kotwic OSD z punktu #20.
+**Pliki:** `cpp/src/osdwindow.h`, `cpp/src/osdwindow.cpp`, `cpp/src/main.cpp`, `cpp/CMakeLists.txt`
+**Status:** Planowane.
+
+### 29. WindowTracker na czystym Waylandzie (wlr-foreign-toplevel)
+
+**Problem:** Tryb Follow Focus (#16) działa wyłącznie na X11/XWayland przez `_NET_ACTIVE_WINDOW` via XCB. Na czystym Waylandzie bez XWayland (Sway, Hyprland, GNOME Wayland) `WindowTracker` kończy pracę z błędem i auto-przełączanie profili nie funkcjonuje. Jest to znane ograniczenie wymienione w #16.
+**Rekomendacja:** Dodać backend Wayland do `WindowTracker` oparty na protokole `zwlr_foreign_toplevel_management_unstable_v1`. Protokół dostarcza eventy `toplevel_activated` z `app_id` (odpowiednik nazwy binarki). Wykrywać backend w runtime: XCB gdy `DISPLAY` dostępne, fallback do Wayland gdy `WAYLAND_DISPLAY` i protokół obecny w `wl_registry`. Zachować ten sam publiczny sygnał `focusedBinaryChanged(QString)` — `App::onFocusedBinaryChanged()` w `main.cpp` nie wymaga zmian. Opcjonalnie: trzeci backend D-Bus dla KDE Plasma (`org.kde.KWin`).
+**Pliki:** `cpp/src/windowtracker.h`, `cpp/src/windowtracker.cpp`, `cpp/CMakeLists.txt`
+**Status:** Planowane.
 
 ---
 
