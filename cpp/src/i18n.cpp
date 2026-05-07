@@ -40,6 +40,7 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("settings.hotkey.volume_up"), QStringLiteral("Volume up:")},
              {QStringLiteral("settings.hotkey.volume_down"), QStringLiteral("Volume down:")},
              {QStringLiteral("settings.hotkey.mute"), QStringLiteral("Mute:")},
+             {QStringLiteral("settings.hotkey.show"), QStringLiteral("Show volume:")},
              {QStringLiteral("settings.hotkey.capture_title"), QStringLiteral("Capture key")},
              {QStringLiteral("settings.hotkey.capture_prompt"),
               QStringLiteral("Press the key you want to bind.\nEsc or Cancel to abort.")},
@@ -153,6 +154,8 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("settings.hotkey.volume_down"),
               QStringLiteral("G\u0142o\u015bno\u015b\u0107 w d\u00f3\u0142:")},
              {QStringLiteral("settings.hotkey.mute"), QStringLiteral("Wyciszenie:")},
+             {QStringLiteral("settings.hotkey.show"),
+              QStringLiteral("Poka\u017c g\u0142o\u015bno\u015b\u0107:")},
              {QStringLiteral("settings.hotkey.capture_title"), QStringLiteral("Przypisz klawisz")},
              {QStringLiteral("settings.hotkey.capture_prompt"),
               QStringLiteral("Naci\u015bnij klawisz, kt\u00f3ry chcesz przypisa\u0107.\nEsc lub "

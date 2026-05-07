@@ -649,6 +649,53 @@ class PaWorker : public QObject
         }
     }
 
+    void doQueryVolume(const QString& appName)
+    {
+        if (m_stopping) return;
+
+        // 1. Active sink input — live read, no write
+        if (contextReady())
+        {
+            pa_threaded_mainloop_lock(m_mainloop);
+            const auto inputs = getSinkInputs();
+            for (const auto& si : inputs)
+            {
+                if (!si.matches(appName)) continue;
+
+                pa_threaded_mainloop_unlock(m_mainloop);
+                m_appVolumes[appName] = si.volume;
+                m_appMutes[appName] = si.muted;
+                emit volumeChanged(appName, si.volume, si.muted);
+                return;
+            }
+            pa_threaded_mainloop_unlock(m_mainloop);
+        }
+
+        // 2. Stream restore DB (persisted volume for inactive apps)
+        if (auto restored = streamRestoreQueryVolume(appName))
+        {
+            const auto [muted, volume] = *restored;
+            m_appVolumes[appName] = volume;
+            m_appMutes[appName] = muted;
+            emit volumeChanged(appName, volume, muted);
+            return;
+        }
+
+        // 3. PipeWire node (idle/paused app)
+        auto node = ::findPipeWireNodeForApp(appName);
+        if (node)
+        {
+            m_appVolumes[appName] = node->volume;
+            m_appMutes[appName] = node->muted;
+            emit volumeChanged(appName, node->volume, node->muted);
+            return;
+        }
+
+        // 4. Cache fallback (app not currently present in PA or PW)
+        emit volumeChanged(appName, m_appVolumes.value(appName, 1.0),
+                           m_appMutes.value(appName, false));
+    }
+
     void doListApps(bool forceRefresh)
     {
         if (m_stopping) return;
@@ -1126,6 +1173,23 @@ class PaWorker : public QObject
         }
     }
 
+    struct StreamRestoreQueryCbData
+    {
+        QString target;
+        std::optional<std::pair<bool, double>>* out;
+    };
+
+    static void streamRestoreQueryCallback(pa_context*, const pa_ext_stream_restore_info* info,
+                                           int eol, void* ud)
+    {
+        auto* d = static_cast<StreamRestoreQueryCbData*>(ud);
+        if (eol) return;
+        if (!info || QString::fromUtf8(info->name) != d->target) return;
+
+        const double vol = static_cast<double>(pa_cvolume_avg(&info->volume)) / PA_VOLUME_NORM;
+        *d->out = std::make_pair(info->mute != 0, vol);
+    }
+
     QStringList streamRestoreAppCandidates(const QString& app) const
     {
         QStringList candidates;
@@ -1167,6 +1231,23 @@ class PaWorker : public QObject
             pa_threaded_mainloop_lock(m_mainloop);
             waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
                              "read stream restore volume");
+            pa_threaded_mainloop_unlock(m_mainloop);
+            if (result) return result;
+        }
+        return std::nullopt;
+    }
+
+    std::optional<std::pair<bool, double>> streamRestoreQueryVolume(const QString& app)
+    {
+        if (!contextReady()) return std::nullopt;
+        for (const QString& candidate : streamRestoreAppCandidates(app))
+        {
+            std::optional<std::pair<bool, double>> result;
+            StreamRestoreQueryCbData d{
+                QStringLiteral("sink-input-by-application-name:") + candidate, &result};
+            pa_threaded_mainloop_lock(m_mainloop);
+            waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreQueryCallback, &d),
+                             "read stream restore query volume");
             pa_threaded_mainloop_unlock(m_mainloop);
             if (result) return result;
         }
@@ -1367,6 +1448,14 @@ void VolumeController::toggleDucking(const QString& keepApp, double duckVolume)
 
     QMetaObject::invokeMethod(m_worker, "doToggleDucking", Qt::QueuedConnection,
                               Q_ARG(QString, keepApp), Q_ARG(double, duckVolume));
+}
+
+void VolumeController::queryVolume(const QString& appName)
+{
+    if (m_closing || !m_worker) return;
+
+    QMetaObject::invokeMethod(m_worker, "doQueryVolume", Qt::QueuedConnection,
+                              Q_ARG(QString, appName));
 }
 
 #include "volumecontroller.moc"

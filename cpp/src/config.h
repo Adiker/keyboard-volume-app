@@ -61,6 +61,7 @@ struct HotkeyConfig
     HotkeyBinding volumeUp = 115;   // KEY_VOLUMEUP
     HotkeyBinding volumeDown = 114; // KEY_VOLUMEDOWN
     HotkeyBinding mute = 113;       // KEY_MUTE
+    HotkeyBinding show;             // unassigned by default
 };
 
 struct DuckingConfig
@@ -135,7 +136,8 @@ struct Profile
 
 inline bool operator==(const HotkeyConfig& a, const HotkeyConfig& b)
 {
-    return a.volumeUp == b.volumeUp && a.volumeDown == b.volumeDown && a.mute == b.mute;
+    return a.volumeUp == b.volumeUp && a.volumeDown == b.volumeDown && a.mute == b.mute &&
+           a.show == b.show;
 }
 inline bool operator!=(const HotkeyConfig& a, const HotkeyConfig& b)
 {

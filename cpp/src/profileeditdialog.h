@@ -39,5 +39,6 @@ class ProfileEditDialog : public QDialog
     HotkeyCapture* m_hkUp = nullptr;
     HotkeyCapture* m_hkDown = nullptr;
     HotkeyCapture* m_hkMute = nullptr;
+    HotkeyCapture* m_hkShow = nullptr;
     HotkeyCapture* m_hkDucking = nullptr;
 };

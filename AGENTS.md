@@ -96,12 +96,12 @@ The tray icon is embedded as a Qt resource: `cpp/resources.qrc` maps `../resourc
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 29 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / scroll hotkeys / id uniqueification)
+- `test_config` — 32 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / scroll hotkeys / show hotkey / id uniqueification)
 - `test_i18n` — 7 tests (lookup, fallback)
-- `test_kvctlcommand` — 6 tests (subcommand parser, profile option, get/set fields, invalid input)
+- `test_kvctlcommand` — 9 tests (subcommand parser, profile option, get/set fields, show command, invalid input)
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
-- `test_inputhandler` — 21 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity, scroll binding matching)
+- `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity, scroll binding matching, show volume action)
 
 Run locally: `cd cpp/build && ctest --output-on-failure`.
 

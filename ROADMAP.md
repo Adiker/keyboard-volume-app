@@ -23,7 +23,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 - InputHandler (mock evdev)
 - i18n (lookup, fallback)
 **Pliki:** `cpp/tests/`, zmiana w `cpp/CMakeLists.txt` (subdirectory)
-**Status:** Zrealizowane. 5 plików testowych (test_config 23 testy, test_i18n 7 testów, test_pwutils 3 testy, test_volumecontroller 5 smoke testów, test_inputhandler 15 testów), zintegrowane z CTest, 100% pass.
+**Status:** Zrealizowane. 6 plików testowych (test_config 32 testy, test_i18n 7 testów, test_pwutils 3 testy, test_volumecontroller 5 smoke testów, test_kvctlcommand 9 testów, test_inputhandler 26 testów), zintegrowane z CTest, 100% pass.
 
 ### 3. Poszanowanie XDG_CONFIG_HOME ✓
 
@@ -120,12 +120,12 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** `cpp/src/inputhandler.h`, `cpp/src/inputhandler.cpp`, `cpp/tests/test_inputhandler.cpp`
 **Status:** Planowane.
 
-### 24. Hotkey „Pokaż głośność" (OSD bez zmiany głośności)
+### 24. Hotkey „Pokaż głośność" (OSD bez zmiany głośności) ✓
 
 **Problem:** Nie ma możliwości podejrzenia aktualnej głośności bez jej zmieniania. Użytkownik musi uruchomić `kv-ctl get volume` w terminalu lub chwilowo zmienić i cofnąć głośność, żeby zobaczyć bieżący poziom na OSD.
 **Rekomendacja:** Dodać opcjonalny hotkey `show` w konfiguracji profilu (obok `volume_up`/`volume_down`/`mute`/`ducking`). Po wciśnięciu: zapytać `VolumeController` o aktualną głośność aplikacji profilu (nowa metoda `queryVolume(app)` → async sygnał `volumeChanged` bez zmiany wartości) i wyświetlić OSD. Wystawić metodę D-Bus `ShowVolume()` / `ShowVolumeProfile(id)` oraz komendę `kv-ctl show [--profile id]`.
 **Pliki:** `cpp/src/config.h`, `cpp/src/config.cpp`, `cpp/src/inputhandler.h`, `cpp/src/inputhandler.cpp`, `cpp/src/volumecontroller.h`, `cpp/src/volumecontroller.cpp`, `cpp/src/dbusinterface.h`, `cpp/src/dbusinterface.cpp`, `cpp/src/kvctlcommand.h`, `cpp/src/kvctl.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`
-**Status:** Planowane.
+**Status:** Zrealizowane. Dodano pole `hotkeys.show` jako `HotkeyBinding` (`0` = nieprzypisany; obsługiwane też scroll bindingi) do `HotkeyConfig` i schematu JSON profilu. `InputHandler` zbiera przypisane bindingi `show` spośród wszystkich profili, dopasowuje przez `resolveProfileHotkey()` i emituje nowy sygnał `show_volume(profileId)` dla klawiszy oraz scrolla. `App::onShowVolume()` wywołuje `VolumeController::queryVolume(app)`, które asynchronicznie szuka głośności w aktywnym sink-input PA, stream-restore, idle PipeWire node, a na końcu cache — i emituje `volumeChanged` bez żadnej modyfikacji. OSD pojawia się bez zmiany głośności. D-Bus dostał metody `ShowVolume()` i `ShowVolumeProfile(id)`. `kv-ctl show [--profile id]` mapuje na te metody. UI (`ProfileEditDialog`) ma nowe pole `HotkeyCapture` dla hotkey `show` z etykietą `settings.hotkey.show` oraz obsługą unassign. Dodano testy config/inputhandler/kvctlcommand dla show hotkey. Ryzyko/rollback: zmiana dotyka evdev dispatch, PA hot path i D-Bus; rollback to usunięcie pola `show` z konfigu i revert sygnałów.
 
 ---
 
@@ -145,7 +145,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Problem:** Tylko jedna aplikacja audio może być kontrolowana naraz.
 **Rekomendacja:** Profile/keybinds — np. Ctrl+Vol dla przeglądarki, sam Vol dla Spotify.
 **Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/inputhandler.{h,cpp}`, `cpp/src/main.cpp`, `cpp/src/trayapp.{h,cpp}`, `cpp/src/settingsdialog.{h,cpp}`, `cpp/src/profileeditdialog.{h,cpp}` (nowe), `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/i18n.cpp`, `cpp/CMakeLists.txt`, `cpp/tests/test_config.cpp`, `cpp/tests/test_inputhandler.cpp`
-**Status:** Zrealizowane. Wprowadzono profile audio z osobnymi hotkeyami i opcjonalnymi modyfikatorami (Ctrl/Shift, L+R znormalizowane do kanonicznej postaci). Schema config rozszerzona o `profiles` array; migracja ze starego `selected_app`/`hotkeys` (deprecated mirror profile[0] dla backwards compat). InputHandler śledzi modyfikatory z grabowanych urządzeń, dispatch per-profile z debounce per-`(code, profileId)`. Settings dialog ma sekcję Profiles + nowy `ProfileEditDialog`. D-Bus wystawia `Profiles` property + `VolumeUp/Down/ToggleMuteProfile(id)` metody; bare metody i MPRIS targetują profile domyślny (backwards compat). Pending volume z `PaWorker` obsługuje brak działającej apki bez zmian. 53 testy przechodzą (23 config + 7 i18n + 3 pwutils + 5 volumecontroller + 15 inputhandler).
+**Status:** Zrealizowane. Wprowadzono profile audio z osobnymi hotkeyami i opcjonalnymi modyfikatorami (Ctrl/Shift, L+R znormalizowane do kanonicznej postaci). Schema config rozszerzona o `profiles` array; migracja ze starego `selected_app`/`hotkeys` (deprecated mirror profile[0] dla backwards compat). InputHandler śledzi modyfikatory z grabowanych urządzeń, dispatch per-profile z debounce per-`(binding, profileId)`. Settings dialog ma sekcję Profiles + nowy `ProfileEditDialog`. D-Bus wystawia `Profiles` property + `VolumeUp/Down/ToggleMuteProfile(id)` metody; bare metody i MPRIS targetują profile domyślny (backwards compat). Pending volume z `PaWorker` obsługuje brak działającej apki bez zmian. 82 testy przechodzą (32 config + 7 i18n + 3 pwutils + 5 volumecontroller + 9 kvctlcommand + 26 inputhandler).
 
 ### 9. Integracja DBus / MPRIS ✓
 

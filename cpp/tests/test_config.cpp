@@ -235,6 +235,7 @@ TEST(Config, ScrollHotkeyRoundtrip)
     p.hotkeys.volumeUp = HotkeyBinding::relative(REL_WHEEL, 1);
     p.hotkeys.volumeDown = HotkeyBinding::relative(REL_WHEEL, -1);
     p.hotkeys.mute = KEY_MUTE;
+    p.hotkeys.show = HotkeyBinding::relative(REL_HWHEEL, 1);
     p.ducking.enabled = true;
     p.ducking.hotkey = HotkeyBinding::relative(REL_HWHEEL, -1);
 
@@ -248,16 +249,22 @@ TEST(Config, ScrollHotkeyRoundtrip)
     ASSERT_EQ(profs.size(), 1);
     EXPECT_EQ(profs[0].hotkeys.volumeUp, HotkeyBinding::relative(REL_WHEEL, 1));
     EXPECT_EQ(profs[0].hotkeys.volumeDown, HotkeyBinding::relative(REL_WHEEL, -1));
+    EXPECT_EQ(profs[0].hotkeys.show, HotkeyBinding::relative(REL_HWHEEL, 1));
     EXPECT_EQ(profs[0].ducking.hotkey, HotkeyBinding::relative(REL_HWHEEL, -1));
 
     QFile f(tmp.path() + "/config.json");
     ASSERT_TRUE(f.open(QIODevice::ReadOnly));
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
     const QJsonObject profile = root["profiles"].toArray().first().toObject();
-    const QJsonObject volumeUp = profile["hotkeys"].toObject()["volume_up"].toObject();
+    const QJsonObject hotkeys = profile["hotkeys"].toObject();
+    const QJsonObject volumeUp = hotkeys["volume_up"].toObject();
     EXPECT_EQ(volumeUp["type"].toString().toStdString(), "rel");
     EXPECT_EQ(volumeUp["code"].toInt(), REL_WHEEL);
     EXPECT_EQ(volumeUp["direction"].toInt(), 1);
+    const QJsonObject show = hotkeys["show"].toObject();
+    EXPECT_EQ(show["type"].toString().toStdString(), "rel");
+    EXPECT_EQ(show["code"].toInt(), REL_HWHEEL);
+    EXPECT_EQ(show["direction"].toInt(), 1);
 }
 
 TEST(Config, OsdRoundtrip)
@@ -439,13 +446,13 @@ TEST(ConfigProfiles, RoundTripTwoProfiles)
     a.id = "default";
     a.name = "Default";
     a.app = "spotify";
-    a.hotkeys = {115, 114, 113};
+    a.hotkeys = {115, 114, 113, {}};
 
     Profile b;
     b.id = "firefox-ctrl";
     b.name = "Firefox (Ctrl)";
     b.app = "firefox";
-    b.hotkeys = {115, 114, 113};
+    b.hotkeys = {115, 114, 113, {}};
     b.modifiers.insert(Modifier::Ctrl);
     b.ducking.enabled = true;
     b.ducking.volume = 20;
@@ -503,7 +510,7 @@ TEST(ConfigProfiles, DuckingVolumeAndHotkeyAreSanitized)
     Profile p;
     p.id = "default";
     p.name = "Default";
-    p.hotkeys = {115, 114, 113};
+    p.hotkeys = {115, 114, 113, {}};
     p.ducking.enabled = true;
     p.ducking.volume = 150;
     p.ducking.hotkey = -9;
@@ -526,13 +533,13 @@ TEST(ConfigProfiles, DefaultMirroringToLegacyKeys)
     a.id = "main";
     a.name = "Main";
     a.app = "vlc";
-    a.hotkeys = {300, 301, 302};
+    a.hotkeys = {300, 301, 302, {}};
 
     Profile b;
     b.id = "other";
     b.name = "Other";
     b.app = "firefox";
-    b.hotkeys = {115, 114, 113};
+    b.hotkeys = {115, 114, 113, {}};
 
     config.setProfiles({a, b});
 
@@ -592,12 +599,12 @@ TEST(ConfigProfiles, SetProfilesUniqueifiesIds)
     a.id = "x";
     a.name = "X";
     a.app = "spotify";
-    a.hotkeys = {1, 2, 3};
+    a.hotkeys = {1, 2, 3, {}};
     Profile b;
     b.id = "x";
     b.name = "X2";
     b.app = "firefox";
-    b.hotkeys = {4, 5, 6};
+    b.hotkeys = {4, 5, 6, {}};
 
     config.setProfiles({a, b});
     auto profs = config.profiles();
@@ -676,4 +683,48 @@ TEST(ConfigScenes, SanitizesTargetsAndUniqueifiesIds)
     ASSERT_EQ(scenes[1].targets.size(), 1);
     ASSERT_TRUE(scenes[1].targets[0].volume);
     EXPECT_EQ(*scenes[1].targets[0].volume, 0);
+}
+
+TEST(ConfigHotkeys, ShowHotkeyDefaultsToZero)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+    EXPECT_FALSE(config.defaultProfile().hotkeys.show.isAssigned());
+}
+
+TEST(ConfigHotkeys, ShowHotkeyRoundTrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    QList<Profile> profs = config.profiles();
+    profs[0].hotkeys.show = 99;
+    config.setProfiles(profs);
+
+    Config config2(tmp.path());
+    EXPECT_EQ(config2.profiles()[0].hotkeys.show, HotkeyBinding::key(99));
+}
+
+TEST(ConfigHotkeys, ShowHotkeyMissingInOldFileDefaultsToZero)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    // Write a profile JSON without the "show" key (simulates an old config file).
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject hk{{QStringLiteral("volume_up"), 115},
+                   {QStringLiteral("volume_down"), 114},
+                   {QStringLiteral("mute"), 113}};
+    QJsonObject prof{{QStringLiteral("id"), QStringLiteral("default")},
+                     {QStringLiteral("name"), QStringLiteral("Default")},
+                     {QStringLiteral("hotkeys"), hk}};
+    QJsonObject root{{QStringLiteral("profiles"), QJsonArray{prof}}};
+    f.write(QJsonDocument(root).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    EXPECT_FALSE(config.defaultProfile().hotkeys.show.isAssigned());
 }

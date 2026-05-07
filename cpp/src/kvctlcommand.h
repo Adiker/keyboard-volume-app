@@ -14,7 +14,8 @@ struct KvCtlCommand
         ApplyScene,
         Refresh,
         Get,
-        Set
+        Set,
+        Show
     };
 
     enum class Field

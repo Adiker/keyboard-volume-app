@@ -21,6 +21,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 
 - **Per-app volume control** — changes the volume of only the selected application, not the system master
 - **Multiple audio profiles** — define several profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, and target audio app. Bare `VolUp` controls Spotify, `Ctrl+VolUp` controls Firefox, `F11` controls VLC — all from the same keyboard
+- **Show volume hotkey** — each profile can bind an optional `show` hotkey that displays the OSD with the current volume of that profile's app without changing it; also available via `kv-ctl show [--profile id]` and D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
 - **Focus audio / ducking** — each profile can bind a manual ducking hotkey that lowers every other known audio app to a configured percentage, then restores the previous levels on the next press
 - **Auto-switch by window focus** — when enabled, the active (focused) window determines which profile's audio app receives volume keys; switch from Spotify to Firefox and volume keys follow automatically
 - **Audio scenes / mixer presets** — define named presets in `config.json` that set volume and/or mute for several apps at once, then apply them from scripts with `kv-ctl scene ID`
@@ -177,6 +178,12 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    # Toggle Focus audio ducking for a specific profile
    kv-ctl duck --profile discord
 
+   # Show current volume on OSD without changing it
+   kv-ctl show
+
+   # Show current volume for a specific profile
+   kv-ctl show --profile firefox-ctrl
+
    # List all profiles
    kv-ctl get profiles
 
@@ -225,12 +232,12 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
       "modifiers": [],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
       "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
       "auto_switch": true },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
       "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
       "auto_switch": true }
   ],
@@ -245,7 +252,7 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
 }
 ```
 
-Hotkey values are Linux evdev key codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113). The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch. Scene target `match` values use the same app/binary names as `kv-ctl get apps`; `volume` is a `0..100` percent value, and omitted `volume` or `muted` fields leave that part unchanged.
+Hotkey values are evdev bindings: legacy integers are `EV_KEY` codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), while scroll bindings use objects such as `{ "type": "rel", "code": 8, "direction": 1 }`. `show` defaults to `0` (unassigned) and supports the same key/scroll binding formats. The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch. Scene target `match` values use the same app/binary names as `kv-ctl get apps`; `volume` is a `0..100` percent value, and omitted `volume` or `muted` fields leave that part unchanged.
 
 `auto_profile_switch` (default `false`) globally enables auto-profile switching by focused window. Per-profile `auto_switch` (default `true`) controls whether a given profile participates in auto-switching.
 
@@ -330,6 +337,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 
 - **Sterowanie głośnością per aplikacja** — zmienia głośność wyłącznie wybranej aplikacji, nie ruszając głośności systemowej
 - **Wiele profili audio** — definiuj kilka profili, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją. `VolUp` steruje Spotify, `Ctrl+VolUp` steruje Firefoxem, `F11` steruje VLC — wszystko z tej samej klawiatury
+- **Hotkey „Pokaż głośność"** — każdy profil może mieć opcjonalny skrót `show`, który wyświetla OSD z aktualną głośnością aplikacji profilu bez jej zmieniania; dostępny też przez `kv-ctl show [--profile id]` i D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
 - **Tryb skupienia audio / ducking** — każdy profil może mieć ręczny skrót, który ścisza wszystkie inne znane aplikacje audio do ustawionego procentu, a kolejne naciśnięcie przywraca poprzednie poziomy
 - **Sceny audio / presety miksera** — definiuj nazwane presety w `config.json`, które ustawiają głośność i/lub wyciszenie kilku aplikacji naraz, a potem odpalaj je ze skryptów przez `kv-ctl scene ID`
 - **Auto-przełączanie profilu wg aktywnego okna** — po włączeniu aktywne okno (np. Firefox, Spotify) automatycznie wybiera odpowiedni profil audio; klawisze głośności zawsze sterują aplikacją na wierzchu
@@ -485,6 +493,12 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
    # Włącz lub wyłącz ducking wybranego profilu
    kv-ctl duck --profile discord
 
+   # Pokaż aktualną głośność na OSD bez zmieniania wartości
+   kv-ctl show
+
+   # Pokaż aktualną głośność wybranego profilu
+   kv-ctl show --profile firefox-ctrl
+
    # Wylistuj wszystkie profile
    kv-ctl get profiles
 
@@ -533,12 +547,12 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
       "modifiers": [],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
       "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
       "auto_switch": true },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
       "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
       "auto_switch": true }
   ],
@@ -553,7 +567,7 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
 }
 ```
 
-Wartości skrótów to kody klawiszy evdev (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113). Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu. `match` w targetach scen używa tych samych nazw aplikacji/binarek co `kv-ctl get apps`; `volume` to procent `0..100`, a pominięte pola `volume` lub `muted` pozostawiają daną część stanu bez zmian.
+Wartości skrótów to bindingi evdev: starsze liczby oznaczają kody `EV_KEY` (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), a scroll używa obiektów takich jak `{ "type": "rel", "code": 8, "direction": 1 }`. `show` domyślnie ma `0` (nieprzypisany) i obsługuje te same formaty klawiszy oraz scrolla. Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu. `match` w targetach scen używa tych samych nazw aplikacji/binarek co `kv-ctl get apps`; `volume` to procent `0..100`, a pominięte pola `volume` lub `muted` pozostawiają daną część stanu bez zmian.
 
 `auto_profile_switch` (domyślnie `false`) globalnie włącza auto-przełączanie profilu wg aktywnego okna. Per-profilowe `auto_switch` (domyślnie `true`) kontroluje, czy dany profil bierze udział w auto-przełączaniu.
 
