@@ -16,6 +16,13 @@
 #include <memory>
 #include <vector>
 
+// Hi-res wheel companion codes — added in Linux 4.19; define fallbacks for
+// older kernel headers so the build works everywhere.
+#ifndef REL_WHEEL_HI_RES
+#  define REL_WHEEL_HI_RES  0x0b
+#  define REL_HWHEEL_HI_RES 0x0c
+#endif
+
 // ─── Device enumeration ───────────────────────────────────────────────────────
 QList<QString> listEvdevDevices()
 {
@@ -572,6 +579,32 @@ void InputHandler::run()
                 {
                     if (ev.type == EV_REL)
                     {
+                        // Suppress hi-res companion events when the standard wheel
+                        // binding would be consumed. Hi-res mice emit both
+                        // REL_WHEEL_HI_RES and REL_WHEEL per notch; without this
+                        // the focused app still scrolls while the hotkey fires.
+                        if (ev.code == REL_WHEEL_HI_RES || ev.code == REL_HWHEEL_HI_RES)
+                        {
+                            const unsigned short stdCode =
+                                ev.code == REL_WHEEL_HI_RES ? REL_WHEEL : REL_HWHEEL;
+                            input_event companion = ev;
+                            companion.code = stdCode;
+                            bool suppress = false;
+                            for (const HotkeyBinding& binding : std::as_const(hotkeys))
+                            {
+                                if (!matchesInputEvent(binding, companion)) continue;
+                                if (!resolveProfileHotkey(binding,
+                                                          normalizeHeldModifiers(heldModifiers),
+                                                          profiles).profileId.isEmpty())
+                                {
+                                    suppress = true;
+                                    break;
+                                }
+                            }
+                            if (!suppress) forwardUinputEvent(e, ev);
+                            continue;
+                        }
+
                         HotkeyBinding matchedBinding;
                         bool configured = false;
                         for (const HotkeyBinding& binding : std::as_const(hotkeys))
