@@ -386,7 +386,10 @@ int main(int argc, char* argv[])
 
         const bool onWaylandSession = !waylandDisplay.isEmpty() && sessionType == "wayland";
         const bool qtPlatformUnset = qtPlatform.isEmpty();
-        const bool qtPlatformWayland = qtPlatform == "wayland";
+        // Also match "wayland;xcb" and similar Qt semicolon fallback lists
+        // (https://doc.qt.io/qt-6/qpa.html#selecting-a-qpa-plugin): Qt will try
+        // the first entry first, so "wayland;..." is effectively a Wayland session.
+        const bool qtPlatformWayland = qtPlatform == "wayland" || qtPlatform.startsWith("wayland;");
 
         // Probe when the session is Wayland and Qt will (or already does) use the
         // Wayland platform. Skip when the user pinned QT_QPA_PLATFORM to something
