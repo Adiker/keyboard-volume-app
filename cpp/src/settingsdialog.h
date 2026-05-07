@@ -40,11 +40,11 @@ class ColorButton : public QPushButton
 // Modal dialog that waits for a single key press.
 //
 // Two parallel capture paths (whichever fires first wins):
-//   1. KeyCaptureThread  — grabs devices via evdev; catches media/CC keys.
+//   1. KeyCaptureThread  — grabs devices via evdev; catches media/CC keys and wheel scroll.
 //   2. keyPressEvent     — catches regular keys forwarded by XWayland.
 //      Conversion: evdev_code = X11_keycode − 8.
 //
-// ESC or Cancel → rejected; any other key → accepted, capturedCode() set.
+// ESC or Cancel → rejected; any other key/scroll → accepted, capturedBinding() set.
 class KeyCaptureThread; // forward — declared in inputhandler.h
 
 class KeyCaptureDialog : public QDialog
@@ -54,10 +54,10 @@ class KeyCaptureDialog : public QDialog
     explicit KeyCaptureDialog(const QString& devicePath, QWidget* parent = nullptr);
     ~KeyCaptureDialog() override;
 
-    // The captured evdev code, or -1 if cancelled.
-    int capturedCode() const
+    // The captured binding, or an unassigned binding if cancelled.
+    HotkeyBinding capturedBinding() const
     {
-        return m_code;
+        return m_binding;
     }
 
   protected:
@@ -65,10 +65,10 @@ class KeyCaptureDialog : public QDialog
     void closeEvent(QCloseEvent* event) override;
 
   private:
-    void onCaptured(int code);
+    void onCaptured(HotkeyBinding binding);
     void doCancel();
 
-    int m_code = -1;
+    HotkeyBinding m_binding;
     bool m_done = false;
     KeyCaptureThread* m_thread = nullptr;
 };
@@ -80,13 +80,14 @@ class HotkeyCapture : public QPushButton
 {
     Q_OBJECT
   public:
-    explicit HotkeyCapture(int evdevCode, InputHandler* inputHandler, QWidget* parent = nullptr);
+    explicit HotkeyCapture(HotkeyBinding binding, InputHandler* inputHandler,
+                           QWidget* parent = nullptr);
 
-    int evdevCode() const
+    HotkeyBinding binding() const
     {
-        return m_code;
+        return m_binding;
     }
-    static QString keyDisplayName(int code);
+    static QString keyDisplayName(const HotkeyBinding& binding);
 
   private slots:
     void capture();
@@ -94,7 +95,7 @@ class HotkeyCapture : public QPushButton
   private:
     void updateDisplay();
 
-    int m_code;
+    HotkeyBinding m_binding;
     InputHandler* m_inputHandler;
 };
 

@@ -8,6 +8,7 @@
 #include <QPair>
 #include <QMutex>
 #include <atomic>
+#include <linux/input.h>
 
 struct libevdev;
 
@@ -16,19 +17,19 @@ struct libevdev;
 QList<QString> listEvdevDevices();
 
 // Returns all evdev nodes that share the same physical parent as primaryPath
-// AND expose at least one EV_KEY capability.
+// AND expose at least one EV_KEY or EV_REL capability.
 QList<QString> findSiblingDevices(const QString& primaryPath);
 
 // Returns devices for the key-capture dialog:
-//   siblings of primaryPath + all other EV_KEY devices
+//   siblings of primaryPath + all other EV_KEY / scroll-capable EV_REL devices
 QList<QString> findCaptureDevices(const QString& primaryPath);
 
 // Returns (path, exclusiveGrab) pairs for runtime hotkey handling:
 //   siblings of primaryPath → exclusive grab + uinput re-injection
-//   other EV_KEY devices exposing at least one configured hotkey → exclusive
-//   grab + uinput re-injection, so global media hotkeys are swallowed everywhere.
+//   other devices exposing at least one configured hotkey binding → exclusive
+//   grab + uinput re-injection, so global hotkeys are swallowed everywhere.
 QList<std::pair<QString, bool>> findHotkeyDevices(const QString& primaryPath,
-                                                  const QSet<int>& hotkeyCodes);
+                                                  const QSet<HotkeyBinding>& hotkeys);
 
 // Returns (path, "Device Name  [path]") for every device that has KEY_VOLUMEUP
 // or KEY_VOLUMEDOWN.
@@ -56,22 +57,30 @@ struct ProfileHotkeyMatch
 // profile matching. L/R variants collapse.
 QSet<Modifier> normalizeHeldModifiers(const QSet<int>& heldRaw);
 
-// Find the most specific profile whose hotkey set contains `code` and whose
+// Find the most specific profile whose hotkey set contains `binding` and whose
 // required modifiers are a subset of `held`. Specificity = number of required
-// modifiers; ties broken by first-in-list. Returns the profile id, or "" if
-// no profile matches.
+// modifiers; ties broken by first-in-list. Returns the profile id, or "" if no
+// profile matches. The int overloads treat the code as an EV_KEY binding.
 QString resolveProfile(int code, const QSet<Modifier>& held, const QList<Profile>& profiles);
+QString resolveProfile(const HotkeyBinding& binding, const QSet<Modifier>& held,
+                       const QList<Profile>& profiles);
 
 ProfileHotkeyMatch resolveProfileHotkey(int code, const QSet<Modifier>& held,
                                         const QList<Profile>& profiles);
+ProfileHotkeyMatch resolveProfileHotkey(const HotkeyBinding& binding, const QSet<Modifier>& held,
+                                        const QList<Profile>& profiles);
+
+// True when `binding` represents this evdev event. EV_REL bindings compare the
+// sign of ev.value so high-resolution/multistep wheel deltas still match.
+bool matchesInputEvent(const HotkeyBinding& binding, const input_event& ev);
 
 // True when `code` is one of the modifiers we track (KEY_LEFTCTRL,
 // KEY_RIGHTCTRL, KEY_LEFTSHIFT, KEY_RIGHTSHIFT).
 bool isTrackedModifierCode(int code);
 
 // ─── KeyCaptureThread ─────────────────────────────────────────────────────────
-// One-shot: grabs candidate devices, waits for a single key-down event,
-// then releases.  KEY_ESC → cancelled(); anything else → key_captured(code).
+// One-shot: grabs candidate devices, waits for a single key-down or scroll
+// event, then releases. KEY_ESC → cancelled(); anything else → hotkey_captured().
 class KeyCaptureThread : public QThread
 {
     Q_OBJECT
@@ -82,7 +91,7 @@ class KeyCaptureThread : public QThread
     void cancel();
 
   signals:
-    void key_captured(int evdevCode);
+    void hotkey_captured(HotkeyBinding binding);
     void cancelled();
 
   protected:
@@ -105,8 +114,8 @@ class KeyCaptureThread : public QThread
 //
 // v1 limitation: modifier state is observed only on devices that InputHandler
 // already grabs (siblings of the primary device + devices exposing any
-// configured hotkey code). A modifier held on a separate keyboard with no
-// media keys is NOT tracked. TODO(v2): passive read-only open of
+// configured hotkey binding). A modifier held on a separate keyboard with no
+// matching hotkey is NOT tracked. TODO(v2): passive read-only open of
 // modifier-bearing devices.
 class InputHandler : public QThread
 {
@@ -147,6 +156,6 @@ class InputHandler : public QThread
     mutable QMutex m_profilesMutex;
     QList<Profile> m_profiles; // guarded by m_profilesMutex
 
-    // Per-(code, profileId) last-trigger timestamp (ms) for 100 ms debounce.
-    QMap<QPair<int, QString>, qint64> m_lastTriggerMs;
+    // Per-(binding, profileId) last-trigger timestamp (ms) for 100 ms debounce.
+    QMap<QPair<HotkeyBinding, QString>, qint64> m_lastTriggerMs;
 };

@@ -10,6 +10,63 @@
 #include <QStringList>
 #include <algorithm>
 
+namespace
+{
+
+QString bindingTypeToString(HotkeyBindingType type)
+{
+    switch (type)
+    {
+    case HotkeyBindingType::Key:
+        return QStringLiteral("key");
+    case HotkeyBindingType::Relative:
+        return QStringLiteral("rel");
+    }
+    return QStringLiteral("key");
+}
+
+HotkeyBindingType bindingTypeFromString(const QString& type)
+{
+    return type.compare(QStringLiteral("rel"), Qt::CaseInsensitive) == 0
+               ? HotkeyBindingType::Relative
+               : HotkeyBindingType::Key;
+}
+
+QJsonValue bindingToJson(const HotkeyBinding& binding)
+{
+    if (!binding.isAssigned()) return 0;
+    if (binding.type == HotkeyBindingType::Key) return binding.code;
+    return QJsonObject{
+        {QStringLiteral("type"), bindingTypeToString(binding.type)},
+        {QStringLiteral("code"), binding.code},
+        {QStringLiteral("direction"), binding.direction < 0 ? -1 : 1},
+    };
+}
+
+HotkeyBinding bindingFromJson(const QJsonValue& value, int defaultKey)
+{
+    if (value.isObject())
+    {
+        const QJsonObject obj = value.toObject();
+        HotkeyBinding binding;
+        binding.type = bindingTypeFromString(obj[QStringLiteral("type")].toString());
+        binding.code = std::max(0, obj[QStringLiteral("code")].toInt(defaultKey));
+        if (binding.type == HotkeyBindingType::Relative)
+        {
+            const int rawDirection = obj[QStringLiteral("direction")].toInt(0);
+            binding.direction = rawDirection < 0 ? -1 : (rawDirection > 0 ? 1 : 0);
+        }
+        else
+        {
+            binding.direction = 0;
+        }
+        return binding.isAssigned() ? binding : HotkeyBinding{};
+    }
+    return HotkeyBinding(value.toInt(defaultKey));
+}
+
+} // namespace
+
 // ─── Paths ────────────────────────────────────────────────────────────────────
 QString Config::configDir() const
 {
@@ -129,15 +186,15 @@ QJsonObject Config::profileToJson(const Profile& p)
         {QStringLiteral("modifiers"), mods},
         {QStringLiteral("hotkeys"),
          QJsonObject{
-             {QStringLiteral("volume_up"), p.hotkeys.volumeUp},
-             {QStringLiteral("volume_down"), p.hotkeys.volumeDown},
-             {QStringLiteral("mute"), p.hotkeys.mute},
+             {QStringLiteral("volume_up"), bindingToJson(p.hotkeys.volumeUp)},
+             {QStringLiteral("volume_down"), bindingToJson(p.hotkeys.volumeDown)},
+             {QStringLiteral("mute"), bindingToJson(p.hotkeys.mute)},
          }},
         {QStringLiteral("ducking"),
          QJsonObject{
              {QStringLiteral("enabled"), p.ducking.enabled},
              {QStringLiteral("volume"), std::clamp(p.ducking.volume, 0, 100)},
-             {QStringLiteral("hotkey"), std::max(0, p.ducking.hotkey)},
+             {QStringLiteral("hotkey"), bindingToJson(p.ducking.hotkey)},
          }},
         {QStringLiteral("auto_switch"), p.autoSwitch},
     };
@@ -152,9 +209,9 @@ Profile Config::profileFromJson(const QJsonObject& o)
     p.app = av.isString() ? av.toString() : QString{};
 
     QJsonObject hk = o[QStringLiteral("hotkeys")].toObject();
-    p.hotkeys.volumeUp = hk[QStringLiteral("volume_up")].toInt(115);
-    p.hotkeys.volumeDown = hk[QStringLiteral("volume_down")].toInt(114);
-    p.hotkeys.mute = hk[QStringLiteral("mute")].toInt(113);
+    p.hotkeys.volumeUp = bindingFromJson(hk[QStringLiteral("volume_up")], 115);
+    p.hotkeys.volumeDown = bindingFromJson(hk[QStringLiteral("volume_down")], 114);
+    p.hotkeys.mute = bindingFromJson(hk[QStringLiteral("mute")], 113);
 
     QJsonArray mods = o[QStringLiteral("modifiers")].toArray();
     for (const auto& v : mods)
@@ -165,7 +222,7 @@ Profile Config::profileFromJson(const QJsonObject& o)
     QJsonObject duck = o[QStringLiteral("ducking")].toObject();
     p.ducking.enabled = duck[QStringLiteral("enabled")].toBool(false);
     p.ducking.volume = std::clamp(duck[QStringLiteral("volume")].toInt(25), 0, 100);
-    p.ducking.hotkey = std::max(0, duck[QStringLiteral("hotkey")].toInt(0));
+    p.ducking.hotkey = bindingFromJson(duck[QStringLiteral("hotkey")], 0);
     p.autoSwitch = o[QStringLiteral("auto_switch")].toBool(true);
     return p;
 }
@@ -273,9 +330,9 @@ void Config::migrateLegacyToProfilesUnlocked()
     QString app = av.isString() ? av.toString() : QString{};
 
     QJsonObject hk = m_data[QStringLiteral("hotkeys")].toObject();
-    int vUp = hk[QStringLiteral("volume_up")].toInt(115);
-    int vDown = hk[QStringLiteral("volume_down")].toInt(114);
-    int mute = hk[QStringLiteral("mute")].toInt(113);
+    QJsonValue vUp = bindingToJson(bindingFromJson(hk[QStringLiteral("volume_up")], 115));
+    QJsonValue vDown = bindingToJson(bindingFromJson(hk[QStringLiteral("volume_down")], 114));
+    QJsonValue mute = bindingToJson(bindingFromJson(hk[QStringLiteral("mute")], 113));
 
     QJsonObject defaultProfile{
         {QStringLiteral("id"), QStringLiteral("default")},
@@ -311,9 +368,11 @@ void Config::mirrorDefaultProfileToLegacyUnlocked()
 
     QJsonObject hk = p0[QStringLiteral("hotkeys")].toObject();
     m_data[QStringLiteral("hotkeys")] = QJsonObject{
-        {QStringLiteral("volume_up"), hk[QStringLiteral("volume_up")].toInt(115)},
-        {QStringLiteral("volume_down"), hk[QStringLiteral("volume_down")].toInt(114)},
-        {QStringLiteral("mute"), hk[QStringLiteral("mute")].toInt(113)},
+        {QStringLiteral("volume_up"),
+         bindingToJson(bindingFromJson(hk[QStringLiteral("volume_up")], 115))},
+        {QStringLiteral("volume_down"),
+         bindingToJson(bindingFromJson(hk[QStringLiteral("volume_down")], 114))},
+        {QStringLiteral("mute"), bindingToJson(bindingFromJson(hk[QStringLiteral("mute")], 113))},
     };
 }
 
@@ -521,9 +580,9 @@ HotkeyConfig Config::hotkeys() const
     std::lock_guard<std::mutex> lock(m_mutex);
     QJsonObject o = m_data[QStringLiteral("hotkeys")].toObject();
     HotkeyConfig h;
-    h.volumeUp = o[QStringLiteral("volume_up")].toInt(115);
-    h.volumeDown = o[QStringLiteral("volume_down")].toInt(114);
-    h.mute = o[QStringLiteral("mute")].toInt(113);
+    h.volumeUp = bindingFromJson(o[QStringLiteral("volume_up")], 115);
+    h.volumeDown = bindingFromJson(o[QStringLiteral("volume_down")], 114);
+    h.mute = bindingFromJson(o[QStringLiteral("mute")], 113);
     return h;
 }
 
@@ -575,7 +634,7 @@ void Config::setProfiles(const QList<Profile>& profiles)
         while (seen.contains(p.id)) p.id = base + QStringLiteral("-") + QString::number(suffix++);
         seen.insert(p.id);
         p.ducking.volume = std::clamp(p.ducking.volume, 0, 100);
-        p.ducking.hotkey = std::max(0, p.ducking.hotkey);
+        if (!p.ducking.hotkey.isAssigned()) p.ducking.hotkey = {};
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);

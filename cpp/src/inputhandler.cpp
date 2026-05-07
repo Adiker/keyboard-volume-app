@@ -49,7 +49,8 @@ QList<QString> findSiblingDevices(const QString& primaryPath)
         if (!dev.isOpen()) continue;
         const char* p = dev.phys();
         QString devPhys = p ? QString::fromLocal8Bit(p) : QString{};
-        if (devPhys.isEmpty() || !devPhys.startsWith(physPrefix) || !dev.hasEventType(EV_KEY))
+        const bool usefulInput = dev.hasEventType(EV_KEY) || dev.hasEventType(EV_REL);
+        if (devPhys.isEmpty() || !devPhys.startsWith(physPrefix) || !usefulInput)
         {
             dev.close();
             continue;
@@ -82,7 +83,10 @@ QList<QString> findCaptureDevices(const QString& primaryPath)
         if (seen.contains(path)) continue;
         EvdevDevice dev(path);
         if (!dev.isOpen()) continue;
-        if (dev.hasEventType(EV_KEY))
+        const bool hasKey = dev.hasEventType(EV_KEY);
+        const bool hasScroll =
+            dev.hasEventCode(EV_REL, REL_WHEEL) || dev.hasEventCode(EV_REL, REL_HWHEEL);
+        if (hasKey || hasScroll)
         {
             seen.insert(path);
             result.append(path);
@@ -92,7 +96,7 @@ QList<QString> findCaptureDevices(const QString& primaryPath)
 }
 
 QList<std::pair<QString, bool>> findHotkeyDevices(const QString& primaryPath,
-                                                  const QSet<int>& hotkeyCodes)
+                                                  const QSet<HotkeyBinding>& hotkeys)
 {
     QList<std::pair<QString, bool>> result;
     QSet<QString> seen;
@@ -115,9 +119,10 @@ QList<std::pair<QString, bool>> findHotkeyDevices(const QString& primaryPath,
         EvdevDevice dev(path);
         if (!dev.isOpen()) continue;
         bool hasHotkey = false;
-        for (int code : hotkeyCodes)
+        for (const HotkeyBinding& binding : hotkeys)
         {
-            if (dev.hasEventCode(EV_KEY, static_cast<unsigned int>(code)))
+            const unsigned int type = binding.type == HotkeyBindingType::Relative ? EV_REL : EV_KEY;
+            if (dev.hasEventCode(type, static_cast<unsigned int>(binding.code)))
             {
                 hasHotkey = true;
                 break;
@@ -151,6 +156,7 @@ QList<std::pair<QString, QString>> getVolumeDevices()
 KeyCaptureThread::KeyCaptureThread(const QString& devicePath, QObject* parent)
     : QThread(parent), m_devicePath(devicePath)
 {
+    qRegisterMetaType<HotkeyBinding>("HotkeyBinding");
 }
 
 void KeyCaptureThread::cancel()
@@ -219,14 +225,24 @@ void KeyCaptureThread::run()
             while ((rc = libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0)
             {
                 if (rc == LIBEVDEV_READ_STATUS_SYNC) continue;
-                if (ev.type != EV_KEY) continue;
-                if (ev.value != 1) continue;
-                m_running = false;
-                if (ev.code == KEY_ESC)
-                    emit cancelled();
-                else
-                    emit key_captured(static_cast<int>(ev.code));
-                goto done;
+                if (ev.type == EV_KEY)
+                {
+                    if (ev.value != 1) continue;
+                    m_running = false;
+                    if (ev.code == KEY_ESC)
+                        emit cancelled();
+                    else
+                        emit hotkey_captured(HotkeyBinding::key(static_cast<int>(ev.code)));
+                    goto done;
+                }
+                if (ev.type == EV_REL && (ev.code == REL_WHEEL || ev.code == REL_HWHEEL) &&
+                    ev.value != 0)
+                {
+                    m_running = false;
+                    emit hotkey_captured(
+                        HotkeyBinding::relative(static_cast<int>(ev.code), ev.value));
+                    goto done;
+                }
             }
         }
     }
@@ -263,12 +279,13 @@ QSet<Modifier> normalizeHeldModifiers(const QSet<int>& heldRaw)
 namespace
 {
 
-ProfileHotkeyAction actionForCode(const Profile& profile, int code)
+ProfileHotkeyAction actionForBinding(const Profile& profile, const HotkeyBinding& binding)
 {
-    if (profile.hotkeys.volumeUp == code) return ProfileHotkeyAction::VolumeUp;
-    if (profile.hotkeys.volumeDown == code) return ProfileHotkeyAction::VolumeDown;
-    if (profile.hotkeys.mute == code) return ProfileHotkeyAction::Mute;
-    if (profile.ducking.enabled && profile.ducking.hotkey > 0 && profile.ducking.hotkey == code)
+    if (profile.hotkeys.volumeUp == binding) return ProfileHotkeyAction::VolumeUp;
+    if (profile.hotkeys.volumeDown == binding) return ProfileHotkeyAction::VolumeDown;
+    if (profile.hotkeys.mute == binding) return ProfileHotkeyAction::Mute;
+    if (profile.ducking.enabled && profile.ducking.hotkey.isAssigned() &&
+        profile.ducking.hotkey == binding)
     {
         return ProfileHotkeyAction::DuckingToggle;
     }
@@ -277,14 +294,14 @@ ProfileHotkeyAction actionForCode(const Profile& profile, int code)
 
 } // namespace
 
-ProfileHotkeyMatch resolveProfileHotkey(int code, const QSet<Modifier>& held,
+ProfileHotkeyMatch resolveProfileHotkey(const HotkeyBinding& binding, const QSet<Modifier>& held,
                                         const QList<Profile>& profiles)
 {
     ProfileHotkeyMatch best;
     int bestSpec = -1;
     for (const Profile& p : profiles)
     {
-        const ProfileHotkeyAction action = actionForCode(p, code);
+        const ProfileHotkeyAction action = actionForBinding(p, binding);
         if (action == ProfileHotkeyAction::None) continue;
 
         // profile.modifiers must be a subset of held modifiers
@@ -310,9 +327,33 @@ ProfileHotkeyMatch resolveProfileHotkey(int code, const QSet<Modifier>& held,
     return best;
 }
 
+ProfileHotkeyMatch resolveProfileHotkey(int code, const QSet<Modifier>& held,
+                                        const QList<Profile>& profiles)
+{
+    return resolveProfileHotkey(HotkeyBinding::key(code), held, profiles);
+}
+
+QString resolveProfile(const HotkeyBinding& binding, const QSet<Modifier>& held,
+                       const QList<Profile>& profiles)
+{
+    return resolveProfileHotkey(binding, held, profiles).profileId;
+}
+
 QString resolveProfile(int code, const QSet<Modifier>& held, const QList<Profile>& profiles)
 {
-    return resolveProfileHotkey(code, held, profiles).profileId;
+    return resolveProfile(HotkeyBinding::key(code), held, profiles);
+}
+
+bool matchesInputEvent(const HotkeyBinding& binding, const input_event& ev)
+{
+    if (!binding.isAssigned()) return false;
+    if (binding.type == HotkeyBindingType::Key)
+    {
+        return ev.type == EV_KEY && static_cast<int>(ev.code) == binding.code;
+    }
+    if (ev.type != EV_REL || static_cast<int>(ev.code) != binding.code || ev.value == 0)
+        return false;
+    return (binding.direction > 0 && ev.value > 0) || (binding.direction < 0 && ev.value < 0);
 }
 
 // ─── InputHandler ─────────────────────────────────────────────────────────────
@@ -367,22 +408,22 @@ void InputHandler::run()
     // for each restart.
     const QList<Profile> profiles = currentProfiles();
 
-    // Union of every hotkey code used by any profile.
-    QSet<int> hotkeySet;
+    // Union of every hotkey binding used by any profile.
+    QSet<HotkeyBinding> hotkeys;
     for (const Profile& p : profiles)
     {
-        hotkeySet.insert(p.hotkeys.volumeUp);
-        hotkeySet.insert(p.hotkeys.volumeDown);
-        hotkeySet.insert(p.hotkeys.mute);
-        if (p.ducking.enabled && p.ducking.hotkey > 0) hotkeySet.insert(p.ducking.hotkey);
+        if (p.hotkeys.volumeUp.isAssigned()) hotkeys.insert(p.hotkeys.volumeUp);
+        if (p.hotkeys.volumeDown.isAssigned()) hotkeys.insert(p.hotkeys.volumeDown);
+        if (p.hotkeys.mute.isAssigned()) hotkeys.insert(p.hotkeys.mute);
+        if (p.ducking.enabled && p.ducking.hotkey.isAssigned()) hotkeys.insert(p.ducking.hotkey);
     }
-    if (hotkeySet.isEmpty())
+    if (hotkeys.isEmpty())
     {
         qWarning() << "[InputHandler] No hotkeys configured — nothing to grab";
         return;
     }
 
-    const auto candidates = findHotkeyDevices(m_devicePath, hotkeySet);
+    const auto candidates = findHotkeyDevices(m_devicePath, hotkeys);
 
     std::vector<std::unique_ptr<EvdevDevice>> devices;
 
@@ -480,15 +521,16 @@ void InputHandler::run()
                         continue;
                     }
 
-                    if (hotkeySet.contains(code))
+                    const HotkeyBinding binding = HotkeyBinding::key(code);
+                    if (hotkeys.contains(binding))
                     {
                         if (ev.value == 1 || ev.value == 2)
                         { // press or repeat
                             const ProfileHotkeyMatch match = resolveProfileHotkey(
-                                code, normalizeHeldModifiers(heldModifiers), profiles);
+                                binding, normalizeHeldModifiers(heldModifiers), profiles);
                             if (!match.profileId.isEmpty())
                             {
-                                const QPair<int, QString> key{code, match.profileId};
+                                const QPair<HotkeyBinding, QString> key{binding, match.profileId};
                                 qint64 now = QDateTime::currentMSecsSinceEpoch();
                                 qint64 last = m_lastTriggerMs.value(key, 0LL);
                                 if (now - last >= 100)
@@ -518,7 +560,7 @@ void InputHandler::run()
                             // No profile matched (unusual modifier combo) —
                             // forward as a normal key so typing isn't blocked.
                         }
-                        // Release of a hotkey code with no matched profile,
+                        // Release of a hotkey binding with no matched profile,
                         // or value == 2 with no match — forward.
                         forwardUinputEvent(e, ev);
                         continue;
@@ -528,6 +570,55 @@ void InputHandler::run()
                 }
                 else
                 {
+                    if (ev.type == EV_REL)
+                    {
+                        HotkeyBinding matchedBinding;
+                        bool configured = false;
+                        for (const HotkeyBinding& binding : std::as_const(hotkeys))
+                        {
+                            if (matchesInputEvent(binding, ev))
+                            {
+                                matchedBinding = binding;
+                                configured = true;
+                                break;
+                            }
+                        }
+
+                        if (configured)
+                        {
+                            const ProfileHotkeyMatch match = resolveProfileHotkey(
+                                matchedBinding, normalizeHeldModifiers(heldModifiers), profiles);
+                            if (!match.profileId.isEmpty())
+                            {
+                                const QPair<HotkeyBinding, QString> key{matchedBinding,
+                                                                        match.profileId};
+                                qint64 now = QDateTime::currentMSecsSinceEpoch();
+                                qint64 last = m_lastTriggerMs.value(key, 0LL);
+                                if (now - last >= 100)
+                                {
+                                    m_lastTriggerMs[key] = now;
+                                    switch (match.action)
+                                    {
+                                    case ProfileHotkeyAction::VolumeUp:
+                                        emit volume_up(match.profileId);
+                                        break;
+                                    case ProfileHotkeyAction::VolumeDown:
+                                        emit volume_down(match.profileId);
+                                        break;
+                                    case ProfileHotkeyAction::Mute:
+                                        emit volume_mute(match.profileId);
+                                        break;
+                                    case ProfileHotkeyAction::DuckingToggle:
+                                        emit ducking_toggle(match.profileId);
+                                        break;
+                                    case ProfileHotkeyAction::None:
+                                        break;
+                                    }
+                                }
+                                continue;
+                            }
+                        }
+                    }
                     forwardUinputEvent(e, ev);
                 }
             }

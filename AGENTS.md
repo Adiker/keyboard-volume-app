@@ -42,11 +42,11 @@ The app reads `WAYLAND_DISPLAY` / `XDG_SESSION_TYPE` at startup. On Wayland, reg
 
 Do not remove this startup decision logic from `main.cpp`, and do not set `QT_WAYLAND_SHELL_INTEGRATION=layer-shell` globally; that would turn dialogs and other windows into layer-shell surfaces too.
 
-## Key codes are evdev, not Qt
+## Hotkey bindings are evdev, not Qt
 
-Config `hotkeys` and all internal key handling use **Linux evdev key codes** (e.g. `KEY_VOLUMEUP` = 115). Conversion from X11 keycodes: `evdev = X11_keycode − 8`. The `KeyCaptureDialog` in `settingsdialog.cpp` uses two capture paths in parallel: evdev thread for media keys, `QKeyEvent::nativeScanCode()` for regular keys.
+Config `hotkeys` and all internal key handling use evdev bindings. Legacy integer values still mean **EV_KEY Linux evdev key codes** (e.g. `KEY_VOLUMEUP` = 115). New scroll bindings are stored as objects such as `{ "type": "rel", "code": 8, "direction": 1 }` for `EV_REL / REL_WHEEL`. Conversion from X11 keycodes: `evdev = X11_keycode − 8`. The `KeyCaptureDialog` in `settingsdialog.cpp` uses two capture paths in parallel: evdev thread for media keys and scroll, `QKeyEvent::nativeScanCode()` for regular keys.
 
-Key repeat events (`ev.value == 2`) are handled alongside regular press events (`ev.value == 1`) in `InputHandler::run()`, with 100ms debounce per key code.
+Key repeat events (`ev.value == 2`) are handled alongside regular press events (`ev.value == 1`) in `InputHandler::run()`, with 100ms debounce per hotkey binding.
 
 ## Threading — critical rules
 
@@ -96,12 +96,12 @@ The tray icon is embedded as a Qt resource: `cpp/resources.qrc` maps `../resourc
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 23 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / id uniqueification)
+- `test_config` — 29 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / scroll hotkeys / id uniqueification)
 - `test_i18n` — 7 tests (lookup, fallback)
 - `test_kvctlcommand` — 6 tests (subcommand parser, profile option, get/set fields, invalid input)
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
-- `test_inputhandler` — 15 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity)
+- `test_inputhandler` — 21 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity, scroll binding matching)
 
 Run locally: `cd cpp/build && ctest --output-on-failure`.
 
