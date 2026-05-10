@@ -331,7 +331,7 @@ Enables integration with KDE Connect, Plasma widgets, and other MPRIS-aware tool
 
 Settings dialog with live OSD position and color preview, plus a **Profiles** section: `QTableWidget` (`Name | App | Modifiers | VolUp | VolDown | Mute | Ducking`) with Add / Edit / Remove / Set as default buttons. The default profile is row 0 and rendered with a `(default)` suffix; Remove is disabled when only one profile remains. `saveAndAccept()` calls `Config::setProfiles(...)`; the existing `settingsChanged` signal triggers `App::onHotkeysMaybeChanged` which restarts `InputHandler` with the new profile set.
 
-`HotkeyCapture` stops `InputHandler` during capture (releases the grabbed device) and restarts it after.
+`HotkeyCapture` stops `InputHandler` during capture (releases the grabbed device) and restarts it after. Right-clicking a `HotkeyCapture` button opens a context menu with **Unassign** (`settings.hotkey.unassign`) that resets its binding to `HotkeyBinding{}` (unassigned).
 
 **`KeyCaptureDialog`** has two parallel capture paths:
 - evdev thread (`KeyCaptureThread`) — catches media/Consumer-Control keys
@@ -343,8 +343,8 @@ Sub-dialog launched from the Settings → Profiles section to add or edit a sing
 - `QLineEdit` — profile name
 - `AppListWidget` — picker for the audio app (reused from tray/first-run wizard)
 - 2× `QCheckBox` — Ctrl, Shift required modifiers
-- 3× `HotkeyCapture` — VolUp / VolDown / Mute evdev codes
-- Ducking controls — enable checkbox, other-apps volume slider/spinbox, and Focus Audio `HotkeyCapture`
+- 3× `HotkeyCapture` — VolUp / VolDown / Mute hotkey bindings (each is a `HotkeyBinding`, supports `EV_KEY` and `EV_REL`); right-click for **Unassign**
+- Ducking controls — enable checkbox, other-apps volume slider/spinbox, and Focus Audio `HotkeyCapture` with the same right-click **Unassign** action
 
 `result()` builds a `Profile` from the widgets and preserves the original `id` when editing (a fresh Add gets the empty id and `Config::setProfiles()` slugifies/uniqueifies it).
 
