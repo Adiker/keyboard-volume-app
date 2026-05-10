@@ -129,6 +129,15 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 
 ---
 
+### 30. Wyczyść przypisany hotkey z UI ✓
+
+**Problem:** Po przypisaniu hotkeya nie było prostego sposobu, żeby go wyzerować (code = 0 / nieprzypisany) z poziomu UI — jedyna opcja to przechwycenie nowego klawisza w `KeyCaptureDialog`.
+**Rekomendacja:** Dodać menu kontekstowe (prawy klik) do `HotkeyCapture`, które zeruje binding bez otwierania dialogu.
+**Pliki:** `cpp/src/settingsdialog.cpp`, `cpp/src/settingsdialog.h`, `cpp/src/i18n.cpp`
+**Status:** Zrealizowane. Prawy klik na każdym polu hotkeya w `ProfileEditDialog` → menu `Unassign` / `Wyczyść` → resetuje binding do `HotkeyBinding{}` (code = 0, nieprzypisane). Bez zmian w hot path ani w capture mechanic.
+
+---
+
 ## Priorytet 3 — Dobre mieć
 
 ### 8. Obsługa wielu aplikacji jednocześnie ✓

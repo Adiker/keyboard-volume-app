@@ -26,7 +26,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Audio scenes / mixer presets** — define named presets in `config.json` that set volume and/or mute for several apps at once, then apply them from scripts with `kv-ctl scene ID`
 - **Global key capture** — reads directly from an evdev input device, works regardless of which window is focused
 - **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising volume keys from any profile, so the desktop never intercepts them
-- **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio keys are reassignable via Settings → Profiles; defaults are the dedicated media keys
+- **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio keys are reassignable via Settings → Profiles; right-click any hotkey field for an **Unassign** menu option to clear it; defaults are the dedicated media keys
 - **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists non-system PipeWire audio clients, including apps that are connected but not currently playing
@@ -160,7 +160,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    - OSD opacity (0–100%)
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
-   - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app, and optional Focus audio ducking hotkey; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls)
+    - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app, and optional Focus audio ducking hotkey; right-click any hotkey field to **Unassign** it; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls)
 
 7. **CLI / D-Bus remote control** — use `kv-ctl` to drive the running tray app from scripts, custom keybinds, or external tools without calling the external `qdbus` program:
 
@@ -194,7 +194,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    `kv-ctl` still uses the app's existing session D-Bus API under the hood, so `keyboard-volume-app` must already be running.
    App names are case-sensitive; use `kv-ctl get apps` to list the exact names known by the daemon.
 
-> **Hotkey capture note:** the app grabs its configured keys at the evdev level, so those exact keys won't be visible to Qt while the app is running. To reassign *currently active* hotkeys, first bind them to temporary placeholders (e.g. F9/F10/F11), save and reopen Settings, then set the final keys.
+> **Hotkey capture note:** the app grabs its configured keys at the evdev level, so those exact keys won't be visible to Qt while the app is running. To reassign a *currently active* hotkey, right-click the hotkey field in Settings → Profiles, choose **Unassign**, save, reopen the profile, and capture the new key.
 
 ### Configuration
 
@@ -335,7 +335,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Auto-przełączanie profilu wg aktywnego okna** — po włączeniu aktywne okno (np. Firefox, Spotify) automatycznie wybiera odpowiedni profil audio; klawisze głośności zawsze sterują aplikacją na wierzchu
 - **Globalne przechwytywanie klawiszy** — odczytuje zdarzenia bezpośrednio z urządzenia evdev, działa niezależnie od tego, które okno jest aktywne
 - **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające klawisze użyte w którymkolwiek profilu, aby system nie przechwytywał ich
-- **Konfigurowalne skróty** — Głośność w górę, Głośność w dół, Wyciszenie i tryb skupienia każdego profilu można przypisać do dowolnego klawisza przez Ustawienia → Profile; domyślnie są to dedykowane klawisze multimedialne
+- **Konfigurowalne skróty** — Głośność w górę, Głośność w dół, Wyciszenie i tryb skupienia każdego profilu można przypisać do dowolnego klawisza przez Ustawienia → Profile; prawy klik na polu hotkeya otwiera menu **Wyczyść**; domyślnie są to dedykowane klawisze multimedialne
 - **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; znika automatycznie po upływie skonfigurowanego czasu
 - **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego oraz dostęp do ustawień
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera niesystemowe klienty audio PipeWire, także aplikacje podłączone, ale aktualnie nieodtwarzające dźwięku
@@ -468,7 +468,7 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
    - Krycie OSD (0–100%)
    - Krok zmiany głośności na jedno naciśnięcie klawisza (%)
    - Kolory OSD (tło, tekst, pasek)
-   - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift`, docelową aplikacją i opcjonalnym skrótem trybu skupienia; pierwszy wiersz jest profilem domyślnym (używanym przez zasobnik oraz przez metody D-Bus / MPRIS bez wskazania profilu)
+    - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift`, docelową aplikacją i opcjonalnym skrótem trybu skupienia; prawy klik na polu hotkeya = **Wyczyść**; pierwszy wiersz jest profilem domyślnym (używanym przez zasobnik oraz przez metody D-Bus / MPRIS bez wskazania profilu)
 
 7. **Zdalne sterowanie CLI / D-Bus** — użyj `kv-ctl` do kontrolowania działającej aplikacji ze skryptów, własnych skrótów lub zewnętrznych narzędzi bez uruchamiania zewnętrznego programu `qdbus`:
 
@@ -502,7 +502,7 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
    `kv-ctl` nadal używa istniejącego API D-Bus aplikacji, więc `keyboard-volume-app` musi już działać.
    Nazwy aplikacji rozróżniają wielkość liter; użyj `kv-ctl get apps`, żeby sprawdzić dokładne nazwy znane daemonowi.
 
-> **Uwaga dot. przechwytywania klawiszy:** aplikacja blokuje aktualnie skonfigurowane klawisze na poziomie evdev, więc te właśnie klawisze nie są widoczne dla Qt podczas działania programu. Aby zmienić *aktywne* skróty, najpierw przypisz je do tymczasowych klawiszy (np. F9/F10/F11), zapisz i otwórz Ustawienia ponownie.
+> **Uwaga dot. przechwytywania klawiszy:** aplikacja blokuje aktualnie skonfigurowane klawisze na poziomie evdev, więc te właśnie klawisze nie są widoczne dla Qt podczas działania programu. Aby zmienić *aktywny* skrót, kliknij prawym przyciskiem pole hotkeya w Ustawienia → Profile, wybierz **Wyczyść**, zapisz, otwórz profil ponownie i przechwyć nowy klawisz.
 
 ### Konfiguracja
 
