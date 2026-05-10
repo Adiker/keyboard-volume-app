@@ -44,6 +44,7 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("settings.hotkey.capture_prompt"),
               QStringLiteral("Press the key you want to bind.\nEsc or Cancel to abort.")},
              {QStringLiteral("settings.hotkey.capture_cancel"), QStringLiteral("Cancel")},
+             {QStringLiteral("settings.hotkey.unassign"), QStringLiteral("Unassign")},
              // profiles
              {QStringLiteral("settings.profiles.section"), QStringLiteral("Profiles")},
              {QStringLiteral("settings.profiles.add"), QStringLiteral("Add")},
@@ -157,6 +158,7 @@ static const QMap<QString, QMap<QString, QString>>& strings()
               QStringLiteral("Naci\u015bnij klawisz, kt\u00f3ry chcesz przypisa\u0107.\nEsc lub "
                              "Anuluj, by przerwa\u0107.")},
              {QStringLiteral("settings.hotkey.capture_cancel"), QStringLiteral("Anuluj")},
+             {QStringLiteral("settings.hotkey.unassign"), QStringLiteral("Wyczy\u015b\u0107")},
              // profiles
              {QStringLiteral("settings.profiles.section"), QStringLiteral("Profile")},
              {QStringLiteral("settings.profiles.add"), QStringLiteral("Dodaj")},
