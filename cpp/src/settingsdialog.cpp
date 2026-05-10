@@ -21,6 +21,7 @@
 #include <QCloseEvent>
 #include <QCursor>
 #include <QDebug>
+#include <QAction>
 #include <QTableWidget>
 #include <QHeaderView>
 #include <QStringList>
@@ -192,13 +193,14 @@ HotkeyCapture::HotkeyCapture(HotkeyBinding binding, InputHandler* inputHandler, 
     connect(this, &QPushButton::clicked, this, &HotkeyCapture::capture);
     setContextMenuPolicy(Qt::ActionsContextMenu);
     auto* clearAction = new QAction(::tr(QStringLiteral("settings.hotkey.unassign")), this);
-    connect(clearAction, &QAction::triggered, this,
-            [this]
-            {
-                m_code = 0;
-                updateDisplay();
-            });
+    connect(clearAction, &QAction::triggered, this, &HotkeyCapture::unassign);
     addAction(clearAction);
+}
+
+void HotkeyCapture::unassign()
+{
+    m_binding = {};
+    updateDisplay();
 }
 
 void HotkeyCapture::updateDisplay()

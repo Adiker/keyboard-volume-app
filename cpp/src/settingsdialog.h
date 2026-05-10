@@ -91,6 +91,7 @@ class HotkeyCapture : public QPushButton
 
   private slots:
     void capture();
+    void unassign();
 
   private:
     void updateDisplay();
