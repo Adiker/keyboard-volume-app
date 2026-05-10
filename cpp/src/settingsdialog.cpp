@@ -190,6 +190,15 @@ HotkeyCapture::HotkeyCapture(HotkeyBinding binding, InputHandler* inputHandler, 
     setMinimumWidth(120);
     updateDisplay();
     connect(this, &QPushButton::clicked, this, &HotkeyCapture::capture);
+    setContextMenuPolicy(Qt::ActionsContextMenu);
+    auto* clearAction = new QAction(::tr(QStringLiteral("settings.hotkey.unassign")), this);
+    connect(clearAction, &QAction::triggered, this,
+            [this]
+            {
+                m_code = 0;
+                updateDisplay();
+            });
+    addAction(clearAction);
 }
 
 void HotkeyCapture::updateDisplay()
