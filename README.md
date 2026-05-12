@@ -53,6 +53,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 | libevdev + uinput access | Global keyboard input capture and re-injection |
 | libpulse | Per-app volume control via PipeWire/PulseAudio socket |
 | libpipewire | Listing and controlling idle PipeWire audio apps without subprocesses |
+| TagLib | Reading local audio-file duration when a player reports stale MPRIS metadata |
 | libxcb | X11 protocol for active-window detection (auto-switch feature) |
 | wayland-client + LayerShellQt >= 6.6 | Optional native Wayland OSD positioning via `zwlr_layer_shell_v1` |
 | GTest | Unit tests (optional, `BUILD_TESTING=ON`) |
@@ -82,12 +83,12 @@ cd keyboard-volume-app
 
 Arch / Manjaro:
 ```bash
-sudo pacman -S qt6-base libevdev libpulse libxcb pipewire wayland layer-shell-qt cmake gcc gtest
+sudo pacman -S qt6-base libevdev libpulse libxcb pipewire taglib wayland layer-shell-qt cmake gcc gtest
 ```
 
 Ubuntu / Debian:
 ```bash
-sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libxcb-dev libwayland-dev cmake g++ libgtest-dev
+sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libtag1-dev libxcb-dev libwayland-dev cmake g++ libgtest-dev
 ```
 
 Native Wayland OSD positioning is compiled in when `wayland-client` and `LayerShellQt >= 6.6` development files are available. On wlroots/KDE compositors that expose `zwlr_layer_shell_v1`, the OSD uses native Wayland layer-shell positioning. On GNOME or other compositors without that protocol, the app keeps the XWayland (`xcb`) fallback when `QT_QPA_PLATFORM` is unset. Auto-switch by focused window is still X11/XWayland-only.
@@ -378,6 +379,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 | libevdev + dostęp do uinput | Globalne przechwytywanie klawiszy i reinjekcja zdarzeń |
 | libpulse | Sterowanie głośnością per aplikacja przez gniazdo PipeWire/PulseAudio |
 | libpipewire | Listowanie i sterowanie nieaktywnymi aplikacjami PipeWire bez procesów pomocniczych |
+| TagLib | Odczyt długości lokalnych plików audio, gdy odtwarzacz zgłasza nieaktualne metadane MPRIS |
 | libxcb | Protokół X11 do wykrywania aktywnego okna (funkcja auto-przełączania) |
 | wayland-client + LayerShellQt >= 6.6 | Opcjonalne natywne pozycjonowanie OSD na Waylandzie przez `zwlr_layer_shell_v1` |
 | GTest | Testy jednostkowe (opcjonalne, `BUILD_TESTING=ON`) |
@@ -407,12 +409,12 @@ cd keyboard-volume-app
 
 Arch / Manjaro:
 ```bash
-sudo pacman -S qt6-base libevdev libpulse libxcb pipewire wayland layer-shell-qt cmake gcc gtest
+sudo pacman -S qt6-base libevdev libpulse libxcb pipewire taglib wayland layer-shell-qt cmake gcc gtest
 ```
 
 Ubuntu / Debian:
 ```bash
-sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libxcb-dev libwayland-dev cmake g++ libgtest-dev
+sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libtag1-dev libxcb-dev libwayland-dev cmake g++ libgtest-dev
 ```
 
 Natywne pozycjonowanie OSD na Waylandzie jest kompilowane, gdy dostępne są pliki deweloperskie `wayland-client` oraz `LayerShellQt >= 6.6`. Na kompozytorach wlroots/KDE z protokołem `zwlr_layer_shell_v1` OSD używa natywnego pozycjonowania layer-shell. Na GNOME lub innych kompozytorach bez tego protokołu aplikacja zachowuje fallback do XWayland (`xcb`), gdy `QT_QPA_PLATFORM` nie jest ustawione. Auto-przełączanie według aktywnego okna nadal działa tylko na X11/XWayland.

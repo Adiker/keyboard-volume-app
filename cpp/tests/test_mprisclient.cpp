@@ -15,10 +15,13 @@
 #include <QDBusAbstractAdaptor>
 #include <QDBusMessage>
 #include <QDBusObjectPath>
+#include <QDataStream>
 #include <QEventLoop>
+#include <QFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantMap>
 
 #include "config.h"
@@ -54,6 +57,41 @@ static bool waitFor(std::function<bool()> pred, int maxMs = 2000)
         loop.exec();
     }
     return pred();
+}
+
+static bool writeSilentWav(const QString& path, int durationMs)
+{
+    constexpr quint16 channels = 1;
+    constexpr quint32 sampleRate = 44100;
+    constexpr quint16 bitsPerSample = 16;
+    const quint16 blockAlign = channels * bitsPerSample / 8;
+    const quint32 byteRate = sampleRate * blockAlign;
+    const quint32 sampleCount = sampleRate * durationMs / 1000;
+    const quint32 dataSize = sampleCount * blockAlign;
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+
+    QDataStream out(&file);
+    out.setByteOrder(QDataStream::LittleEndian);
+    out.writeRawData("RIFF", 4);
+    out << quint32(36 + dataSize);
+    out.writeRawData("WAVE", 4);
+    out.writeRawData("fmt ", 4);
+    out << quint32(16);
+    out << quint16(1);
+    out << channels;
+    out << sampleRate;
+    out << byteRate;
+    out << blockAlign;
+    out << bitsPerSample;
+    out.writeRawData("data", 4);
+    out << dataSize;
+
+    QByteArray silence;
+    silence.resize(static_cast<qsizetype>(dataSize));
+    silence.fill('\0');
+    return file.write(silence) == silence.size();
 }
 
 // ─── Fake MPRIS player adaptor ────────────────────────────────────────────────
@@ -108,10 +146,20 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
     void setMetadata(const QString& title, const QString& artist, qint64 lengthUs,
                      const QString& trackId)
     {
+        setMetadataWithUrl(title, artist, lengthUs, trackId, QString{});
+    }
+
+    void setMetadataWithUrl(const QString& title, const QString& artist, qint64 lengthUs,
+                            const QString& trackId, const QString& url)
+    {
         m_metadata[QStringLiteral("xesam:title")] = title;
         m_metadata[QStringLiteral("xesam:artist")] = QStringList{artist};
         m_metadata[QStringLiteral("mpris:length")] = lengthUs;
         m_metadata[QStringLiteral("mpris:trackid")] = QVariant::fromValue(QDBusObjectPath(trackId));
+        if (url.isEmpty())
+            m_metadata.remove(QStringLiteral("xesam:url"));
+        else
+            m_metadata[QStringLiteral("xesam:url")] = url;
         emitPropertiesChanged({{QStringLiteral("Metadata"), m_metadata}});
     }
 
@@ -770,6 +818,31 @@ TEST_F(MprisClientTest, BundledMetadataAndPositionEmitsTrackBeforePosition)
     EXPECT_EQ(events.at(0), QStringLiteral("track"));
     EXPECT_EQ(events.at(1), QStringLiteral("position"));
     EXPECT_EQ(emittedPosition, 12000000LL);
+}
+
+TEST_F(MprisClientTest, HarmonoidLocalFileDurationOverridesStaleMprisLength)
+{
+    SKIP_IF_NO_DBUS();
+
+    const QString wavPath = m_tmpDir->path() + QStringLiteral("/real-duration.wav");
+    ASSERT_TRUE(writeSilentWav(wavPath, 3000));
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+
+    MprisClient client(m_config.get());
+    QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
+
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+    trackSpy.clear();
+
+    fp.player->setMetadataWithUrl(QStringLiteral("Superstar"), QStringLiteral("Jamelia"),
+                                  169456734LL, QStringLiteral("/t/stale"),
+                                  QUrl::fromLocalFile(wavPath).toString());
+
+    const bool got = waitFor([&] { return trackSpy.count() > 0; }, 2000);
+    ASSERT_TRUE(got) << "trackChanged not emitted after Harmonoid local file metadata";
+    EXPECT_EQ(trackSpy.last().at(2).toLongLong(), 3000000LL);
 }
 
 // Metadata values delivered via PropertiesChanged may arrive wrapped in

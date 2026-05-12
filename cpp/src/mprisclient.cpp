@@ -10,6 +10,12 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDebug>
+#include <QFile>
+#include <QFileInfo>
+#include <QUrl>
+
+#include <audioproperties.h>
+#include <fileref.h>
 
 static constexpr const char* MPRIS_PREFIX = "org.mpris.MediaPlayer2.";
 static constexpr const char* MPRIS_PATH = "/org/mpris/MediaPlayer2";
@@ -87,6 +93,28 @@ static QVariantMap variantMapFromDBusArg(const QVariant& v)
         return m;
     }
     return inner.toMap();
+}
+
+static qint64 localAudioDurationUs(const QString& urlText)
+{
+    const QUrl url(urlText);
+    if (!url.isValid() || !url.isLocalFile()) return 0;
+
+    const QString path = url.toLocalFile();
+    if (!QFileInfo::exists(path)) return 0;
+
+    const QByteArray encodedPath = QFile::encodeName(path);
+    TagLib::FileRef file(encodedPath.constData(), true, TagLib::AudioProperties::Accurate);
+    if (file.isNull() || !file.audioProperties()) return 0;
+
+    const int durationMs = file.audioProperties()->lengthInMilliseconds();
+    if (durationMs <= 0) return 0;
+    return static_cast<qint64>(durationMs) * 1000LL;
+}
+
+static bool isHarmonoidService(const QString& service)
+{
+    return serviceDisplayName(service).contains(QStringLiteral("harmonoid"));
 }
 
 // ─── MprisClient ──────────────────────────────────────────────────────────────
@@ -329,6 +357,13 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
         }
 
         kp.lengthUs = unwrapDBusVariant(meta.value(QStringLiteral("mpris:length"))).toLongLong();
+
+        const QVariant urlVar = unwrapDBusVariant(meta.value(QStringLiteral("xesam:url")));
+        if (isHarmonoidService(service))
+        {
+            const qint64 fileLengthUs = localAudioDurationUs(urlVar.toString());
+            if (fileLengthUs > 0) kp.lengthUs = fileLengthUs;
+        }
 
         const QVariant tidVar = unwrapDBusVariant(meta.value(QStringLiteral("mpris:trackid")));
         if (tidVar.canConvert<QDBusObjectPath>())
