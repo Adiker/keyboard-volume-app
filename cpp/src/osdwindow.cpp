@@ -319,6 +319,10 @@ void OSDWindow::setProgressVisible(bool on)
 void OSDWindow::updateTrack(const QString& title, const QString& artist, qint64 lengthUs,
                             bool canSeek)
 {
+    const bool trackChanged = m_trackTitle != title || m_trackArtist != artist ||
+                              m_trackLengthUs != lengthUs || m_canSeek != canSeek;
+    if (m_seeking && trackChanged) finishSeeking();
+
     m_trackTitle = title;
     m_trackArtist = artist;
     m_trackLengthUs = lengthUs;
