@@ -383,6 +383,26 @@ TEST_F(MprisClientTest, PriorityOrderRespected)
     EXPECT_TRUE(client.activePlayer().service.contains(QLatin1String("spotify")));
 }
 
+TEST_F(MprisClientTest, MatchesInstanceSuffixedServiceNames)
+{
+    SKIP_IF_NO_DBUS();
+
+    OsdConfig osd = m_config->osd();
+    osd.trackedPlayers = {QStringLiteral("vlc")};
+    m_config->setOsd(osd);
+
+    FakePlayer fp(QStringLiteral("vlc.instance7389"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Movie"), QStringLiteral(""), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+
+    const bool found = waitFor([&] { return !client.activePlayer().service.isEmpty(); }, 3000);
+    EXPECT_TRUE(found);
+    EXPECT_TRUE(client.activePlayer().service.contains(QLatin1String("vlc.instance7389")));
+}
+
 TEST_F(MprisClientTest, LiveStreamLengthZeroDisablesSeek)
 {
     SKIP_IF_NO_DBUS();
