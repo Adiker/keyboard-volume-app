@@ -375,7 +375,7 @@ void MprisClient::reevaluateActive(bool forceTrackChanged)
     // Manage poll timer
     if (m_pollTimer)
     {
-        if (m_active.status == QLatin1String("Playing"))
+        if (m_config->osd().progressEnabled && m_active.status == QLatin1String("Playing"))
         {
             if (!m_pollTimer->isActive()) m_pollTimer->start();
         }
@@ -389,6 +389,7 @@ void MprisClient::reevaluateActive(bool forceTrackChanged)
 void MprisClient::pollPosition()
 {
     if (!m_hasActive || m_seeking) return;
+    if (!m_config->osd().progressEnabled) return;
     if (m_active.status != QLatin1String("Playing")) return;
 
     const QString service = m_active.service;

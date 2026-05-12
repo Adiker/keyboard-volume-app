@@ -22,9 +22,9 @@ class MprisPlayerProxy; // one per tracked player, defined in mprisclient.cpp
 //   3. Pick first Playing → first Paused → emit noPlayer().
 //
 // Position polling:
-//   QTimer fires every progressPollMs ms, but only when status == "Playing"
-//   and no seek drag is in progress. Spotify does not emit PropertiesChanged
-//   for Position, so polling is mandatory.
+//   QTimer fires every progressPollMs ms, but only when progressEnabled is true,
+//   status == "Playing", and no seek drag is in progress. Spotify does not emit
+//   PropertiesChanged for Position, so polling is mandatory when progress is shown.
 //
 // Seek:
 //   setPosition(us) calls SetPosition(trackId, us) via D-Bus.

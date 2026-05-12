@@ -294,7 +294,7 @@ Consumes external MPRIS2 players from the session bus. It detects services named
 
 Selection is deterministic: filter by `Config::osd().trackedPlayers`, sort by that priority list, then prefer the first Playing player over the first Paused player. Matching uses the full service suffix after `org.mpris.MediaPlayer2.`, so instance names like `vlc.7389` still match tracked player `vlc`. `reload()` re-reads tracked players and poll interval, re-evaluates the active player, and re-emits the current track so settings toggles can show an already-active player immediately.
 
-`MprisClient` lives in the main Qt thread only. All D-Bus reads are async via QtDBus; do not call it from `PaWorker` or `InputHandler`.
+`MprisClient` lives in the main Qt thread only. All D-Bus reads are async via QtDBus; do not call it from `PaWorker` or `InputHandler`. It may keep active-player and metadata state current while progress is disabled, but it must not poll `Position` unless `Config::osd().progressEnabled` is true.
 
 ### `cpp/src/trayapp.h/cpp` — `TrayApp`
 
@@ -553,7 +553,7 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
-- `test_mprisclient` — 11 tests (MPRIS player detection, metadata changes, seek forwarding, reload behavior, instance suffix matching, priority, polling)
+- `test_mprisclient` — 12 tests (MPRIS player detection, metadata changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards)
 
 Run locally: `cd cpp/build && ctest -E test_mprisclient --output-on-failure` and `cd cpp/build && dbus-run-session -- ctest -R test_mprisclient --output-on-failure`.
 
