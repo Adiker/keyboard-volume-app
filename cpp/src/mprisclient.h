@@ -1,6 +1,7 @@
 #pragma once
 #include <QObject>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QDBusConnection>
 #include <QDBusServiceWatcher>
 #include <QString>
@@ -124,4 +125,9 @@ class MprisClient : public QObject
 
     QStringList m_trackedPlayers; // cached from config
     int m_pollMs = 500;
+
+    // Throttle for Position updates delivered via PropertiesChanged (e.g. Harmonoid
+    // sends ~12/sec). Only emit positionChanged once per m_pollMs window; also used
+    // to skip the redundant D-Bus poll when fresh data already arrived this cycle.
+    QElapsedTimer m_positionThrottle;
 };

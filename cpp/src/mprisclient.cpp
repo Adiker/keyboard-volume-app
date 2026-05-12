@@ -271,12 +271,20 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
     // at very high frequency (~12/sec). If Position is the only changed property, emit
     // positionChanged directly and skip the expensive reevaluateActive() call entirely —
     // nothing about player state has changed.
+    // Throttle: emit at most once per m_pollMs ms to avoid hammering the OSD (which
+    // repaints the label and progress bar on every positionChanged signal).
     if (props.size() == 1 && props.contains(QStringLiteral("Position")))
     {
         const qint64 pos =
             unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
         if (m_hasActive && m_active.service == service && pos >= 0 && !m_seeking)
-            emit positionChanged(pos);
+        {
+            if (!m_positionThrottle.isValid() || m_positionThrottle.hasExpired(m_pollMs))
+            {
+                m_positionThrottle.restart();
+                emit positionChanged(pos);
+            }
+        }
         return;
     }
 
@@ -329,13 +337,18 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
     }
 
     // Also handle Position when it arrives alongside other properties (e.g. during
-    // track-change signals that bundle Position with Metadata).
+    // track-change signals that bundle Position with Metadata). This is a one-shot
+    // event (not high-frequency), so no throttle needed; reset throttle so the next
+    // PropertiesChanged Position update is allowed immediately after.
     if (props.contains(QStringLiteral("Position")))
     {
         const qint64 pos =
             unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
         if (m_hasActive && m_active.service == service && pos >= 0 && !m_seeking)
+        {
+            m_positionThrottle.restart();
             emit positionChanged(pos);
+        }
     }
 
     reevaluateActive();
@@ -443,6 +456,13 @@ void MprisClient::pollPosition()
     if (!m_hasActive || m_seeking) return;
     if (!m_config->osd().progressEnabled) return;
     if (m_active.status != QLatin1String("Playing")) return;
+
+    // Skip the D-Bus round-trip if the active player already pushed a fresh Position
+    // update via PropertiesChanged within this poll window (e.g. Harmonoid). The
+    // throttle timer was restarted when we last emitted from the PropertiesChanged path,
+    // so if it hasn't expired yet we have nothing to gain from polling.
+    if (m_positionThrottle.isValid() && !m_positionThrottle.hasExpired(m_pollMs))
+        return;
 
     const QString service = m_active.service;
     QDBusMessage msg = QDBusMessage::createMethodCall(
