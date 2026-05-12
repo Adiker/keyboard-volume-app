@@ -55,10 +55,7 @@ class DbusInterface : public QObject
     {
         return m_scenesProp;
     }
-    bool progressEnabled() const
-    {
-        return m_progressEnabled;
-    }
+    bool progressEnabled() const;
 
     void setVolume(double vol);
     void setMuted(bool muted);
@@ -68,6 +65,7 @@ class DbusInterface : public QObject
 
     // Re-read profiles from Config and emit profilesChanged() if different.
     void reloadProfiles();
+    void reloadProgressEnabled();
 
   public slots:
     Q_SCRIPTABLE void VolumeUp();

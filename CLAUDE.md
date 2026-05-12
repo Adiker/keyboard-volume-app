@@ -331,7 +331,7 @@ Filters `/dev/input/event*` to show only devices exposing `KEY_VOLUMEUP`/`KEY_VO
 
 Exposes `org.keyboardvolumeapp.VolumeControl` on the D-Bus session bus (bus name `org.keyboardvolumeapp`, object path `/org/keyboardvolumeapp`).
 
-Caches volume/mute/app state by listening to `VolumeController::volumeChanged`, `VolumeController::appsReady`, and `TrayApp::appChanged`. D-Bus properties (`Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`, `Profiles`, `Scenes`) are served from the cache; setters delegate to `VolumeController`/`Config` async.
+Caches volume/mute/app state by listening to `VolumeController::volumeChanged`, `VolumeController::appsReady`, and `TrayApp::appChanged`. D-Bus properties are `Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`, `Profiles`, `Scenes`, and `ProgressEnabled`; setters delegate to `VolumeController`/`Config` async. `ProgressEnabled` reads current `Config::osd()` to avoid stale cache after GUI settings changes.
 
 D-Bus methods:
 - `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `ToggleDucking()`, `RefreshApps()` — bare methods target the default profile / `m_activeApp`, kept for backwards compat and script-friendly default-profile control.
@@ -342,6 +342,7 @@ D-Bus methods:
 
 `Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute, show}), ducking ({enabled, volume, hotkey})}`. Hotkey values are legacy ints for `EV_KEY` bindings or maps for scroll bindings. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
 `Scenes` property is `QVariantList` of `QVariantMap` entries — `{id, name, targets ([{match, volume?, muted?}])}`.
+`ProgressEnabled` patches `OsdConfig::progressEnabled` and emits `progressEnabledChanged`; `App::initDbus()` wires that signal to `OSDWindow::reloadStyles()` and `MprisClient::reload()` so `kv-ctl set progress-enabled ...` takes effect without opening Settings or restarting the app. `reloadProgressEnabled()` keeps the D-Bus signal/cache aligned when Settings changes the same field.
 
 ### `cpp/src/kvctl.cpp`, `cpp/src/kvctlcommand.h/cpp` — `kv-ctl`
 
@@ -351,8 +352,8 @@ D-Bus methods:
 - `kv-ctl show [--profile id]` maps to `ShowVolume()` or `ShowVolumeProfile(id)`; displays the OSD with the current volume without changing it.
 - `kv-ctl scene ID` maps to `ApplyScene(ID)`.
 - `kv-ctl refresh` maps to `RefreshApps`.
-- `kv-ctl get volume|muted|active-app|apps|step|profiles|scenes` reads D-Bus properties through `org.freedesktop.DBus.Properties.Get`.
-- `kv-ctl set volume|muted|active-app|step VALUE` writes properties through `org.freedesktop.DBus.Properties.Set`; volume is given as `0..100` percent and mapped to `0.0..1.0`.
+- `kv-ctl get volume|muted|active-app|apps|step|profiles|scenes|progress-enabled` reads D-Bus properties through `org.freedesktop.DBus.Properties.Get`.
+- `kv-ctl set volume|muted|active-app|step|progress-enabled VALUE` writes properties through `org.freedesktop.DBus.Properties.Set`; volume is given as `0..100` percent and mapped to `0.0..1.0`, while `progress-enabled` accepts `true|false`.
 
 Exit codes: `0` success, `1` usage, `2` daemon unavailable, `3` D-Bus error, `4` invalid value. Parser logic lives in `kvctlcommand` so it can be unit-tested without a session bus.
 

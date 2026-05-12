@@ -37,7 +37,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Persistent config** — all settings saved atomically to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
 - **PL / EN interface** — switch language in Settings
 - **First-run wizard** — on first launch, a QWizard guides through language, input device, and default audio app selection; the app is production-ready out of the box after a few clicks
-- **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles** and **scenes**; bare `VolumeUp/Down/ToggleMute/ToggleDucking/RefreshApps` methods, per-profile methods, plus `ApplyScene(id)`
+- **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles**, **scenes**, and runtime `ProgressEnabled`; bare `VolumeUp/Down/ToggleMute/ToggleDucking/RefreshApps` methods, per-profile methods, plus `ApplyScene(id)`
 - **`kv-ctl` CLI** — script-friendly command-line client for D-Bus control without calling the external `qdbus` program
 - **MPRIS v2** — registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client
 - **MPRIS playback tracking** — consumes other players' MPRIS metadata, position, seek support and player priority for the optional OSD playback progress features
@@ -198,6 +198,10 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
 
    # Read current volume
    kv-ctl get volume
+
+   # Toggle OSD playback progress at runtime
+   kv-ctl get progress-enabled
+   kv-ctl set progress-enabled true
    ```
 
    `kv-ctl` still uses the app's existing session D-Bus API under the hood, so `keyboard-volume-app` must already be running.
@@ -361,7 +365,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Trwała konfiguracja** — wszystkie ustawienia zapisywane atomowo w `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`)
 - **Interfejs PL / EN** — przełączanie języka w oknie ustawień
 - **Asystent pierwszego uruchomienia** — przy pierwszym starcie QWizard przeprowadza przez wybór języka, urządzenia wejściowego i domyślnej aplikacji audio; aplikacja działa od razu po kilku kliknięciach
-- **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile** i **sceny**; metody bez wskazania profilu, metody profilowe oraz `ApplyScene(id)`
+- **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile**, **sceny** oraz runtime `ProgressEnabled`; metody bez wskazania profilu, metody profilowe oraz `ApplyScene(id)`
 - **CLI `kv-ctl`** — wygodny klient wiersza poleceń do sterowania przez D-Bus bez wywoływania zewnętrznego programu `qdbus`
 - **MPRIS v2** — zarejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS
 - **Śledzenie odtwarzania MPRIS** — odczytuje metadane, pozycję, możliwość seekowania i priorytet innych odtwarzaczy dla opcjonalnego paska postępu OSD
@@ -522,6 +526,10 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
 
    # Odczytaj aktualną głośność
    kv-ctl get volume
+
+   # Przełącz postęp odtwarzania OSD w trakcie działania aplikacji
+   kv-ctl get progress-enabled
+   kv-ctl set progress-enabled true
    ```
 
    `kv-ctl` nadal używa istniejącego API D-Bus aplikacji, więc `keyboard-volume-app` musi już działać.
