@@ -163,7 +163,8 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    - OSD opacity (0–100%)
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
-    - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app, and optional Focus audio ducking hotkey; right-click any hotkey field to **Unassign** it; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls)
+   - **Playback progress** — enable the MPRIS progress row, allow/disable interactive seeking, choose poll interval, choose app/track/both label mode, and edit the comma-separated tracked-player priority list
+   - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app, and optional Focus audio ducking hotkey; right-click any hotkey field to **Unassign** it; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls)
 
 7. **CLI / D-Bus remote control** — use `kv-ctl` to drive the running tray app from scripts, custom keybinds, or external tools without calling the external `qdbus` program:
 
@@ -487,7 +488,8 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
    - Krycie OSD (0–100%)
    - Krok zmiany głośności na jedno naciśnięcie klawisza (%)
    - Kolory OSD (tło, tekst, pasek)
-    - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift`, docelową aplikacją i opcjonalnym skrótem trybu skupienia; prawy klik na polu hotkeya = **Wyczyść**; pierwszy wiersz jest profilem domyślnym (używanym przez zasobnik oraz przez metody D-Bus / MPRIS bez wskazania profilu)
+   - **Postęp odtwarzania** — włączenie wiersza MPRIS, włączenie/wyłączenie interaktywnego seekowania, interwał odpytywania, tryb etykiety app/track/both oraz rozdzielona przecinkami lista priorytetów odtwarzaczy
+   - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift`, docelową aplikacją i opcjonalnym skrótem trybu skupienia; prawy klik na polu hotkeya = **Wyczyść**; pierwszy wiersz jest profilem domyślnym (używanym przez zasobnik oraz przez metody D-Bus / MPRIS bez wskazania profilu)
 
 7. **Zdalne sterowanie CLI / D-Bus** — użyj `kv-ctl` do kontrolowania działającej aplikacji ze skryptów, własnych skrótów lub zewnętrznych narzędzi bez uruchamiania zewnętrznego programu `qdbus`:
 

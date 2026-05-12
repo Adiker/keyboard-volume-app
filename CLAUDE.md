@@ -365,7 +365,9 @@ Exit codes: `0` success, `1` usage, `2` daemon unavailable, `3` D-Bus error, `4`
 
 Enables integration with KDE Connect, Plasma widgets, and other MPRIS-aware tools.
 
-Settings dialog with live OSD position and color preview, plus a **Profiles** section: `QTableWidget` (`Name | App | Modifiers | VolUp | VolDown | Mute | Ducking`) with Add / Edit / Remove / Set as default buttons. The default profile is row 0 and rendered with a `(default)` suffix; Remove is disabled when only one profile remains. `saveAndAccept()` calls `Config::setProfiles(...)`; the existing `settingsChanged` signal triggers `App::onHotkeysMaybeChanged` which restarts `InputHandler` with the new profile set.
+Settings dialog with live OSD position and color preview, a **Playback progress** section, and a **Profiles** section. Playback progress controls patch `OsdConfig` through `Config::setOsd()`: `progressEnabled` checkbox, `progressInteractive` checkbox, `progressPollMs` spinbox (`200..2000`), `progressLabelMode` combo (`app` / `track` / `both`), and comma-separated `trackedPlayers`. `TrayApp::settingsChanged` is wired to `OSDWindow::reloadStyles()` and `MprisClient::reload()`, so enabling progress in the GUI refreshes the current active track immediately.
+
+Profiles use a `QTableWidget` (`Name | App | Modifiers | VolUp | VolDown | Mute | Ducking`) with Add / Edit / Remove / Set as default buttons. The default profile is row 0 and rendered with a `(default)` suffix; Remove is disabled when only one profile remains. `saveAndAccept()` calls `Config::setProfiles(...)`; the existing `settingsChanged` signal triggers `App::onHotkeysMaybeChanged` which restarts `InputHandler` with the new profile set.
 
 `HotkeyCapture` stops `InputHandler` during capture (releases the grabbed device) and restarts it after. Right-clicking a `HotkeyCapture` button opens a context menu with **Unassign** (`settings.hotkey.unassign`) that resets its binding to `HotkeyBinding{}` (unassigned).
 
