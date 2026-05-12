@@ -275,8 +275,7 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
     // repaints the label and progress bar on every positionChanged signal).
     if (props.size() == 1 && props.contains(QStringLiteral("Position")))
     {
-        const qint64 pos =
-            unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
+        const qint64 pos = unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
         if (m_hasActive && m_active.service == service && pos >= 0 && !m_seeking)
         {
             if (!m_positionThrottle.isValid() || m_positionThrottle.hasExpired(m_pollMs))
@@ -326,8 +325,7 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
             kp.artist = artistVar.toString();
         }
 
-        kp.lengthUs =
-            unwrapDBusVariant(meta.value(QStringLiteral("mpris:length"))).toLongLong();
+        kp.lengthUs = unwrapDBusVariant(meta.value(QStringLiteral("mpris:length"))).toLongLong();
 
         const QVariant tidVar = unwrapDBusVariant(meta.value(QStringLiteral("mpris:trackid")));
         if (tidVar.canConvert<QDBusObjectPath>())
@@ -342,8 +340,7 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
     // PropertiesChanged Position update is allowed immediately after.
     if (props.contains(QStringLiteral("Position")))
     {
-        const qint64 pos =
-            unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
+        const qint64 pos = unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
         if (m_hasActive && m_active.service == service && pos >= 0 && !m_seeking)
         {
             m_positionThrottle.restart();
@@ -461,8 +458,7 @@ void MprisClient::pollPosition()
     // update via PropertiesChanged within this poll window (e.g. Harmonoid). The
     // throttle timer was restarted when we last emitted from the PropertiesChanged path,
     // so if it hasn't expired yet we have nothing to gain from polling.
-    if (m_positionThrottle.isValid() && !m_positionThrottle.hasExpired(m_pollMs))
-        return;
+    if (m_positionThrottle.isValid() && !m_positionThrottle.hasExpired(m_pollMs)) return;
 
     const QString service = m_active.service;
     QDBusMessage msg = QDBusMessage::createMethodCall(

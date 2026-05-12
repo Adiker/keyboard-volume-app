@@ -736,8 +736,8 @@ TEST_F(MprisClientTest, MetadataLengthExtractedCorrectlyViaPropertiesChanged)
     QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
 
     // Send metadata via PropertiesChanged (the path that may wrap values in QDBusVariant).
-    fp.player->setMetadata(QStringLiteral("Liberty City"), QStringLiteral("Seryoga"),
-                           147401588LL, QStringLiteral("/t/abc"));
+    fp.player->setMetadata(QStringLiteral("Liberty City"), QStringLiteral("Seryoga"), 147401588LL,
+                           QStringLiteral("/t/abc"));
 
     const bool got = waitFor([&] { return trackSpy.count() > 0; }, 2000);
     ASSERT_TRUE(got) << "trackChanged not emitted after setMetadata";
