@@ -359,6 +359,24 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
 {
     if (obj != m_progressBar) return QWidget::eventFilter(obj, event);
 
+    auto posFromMouseX = [this](int mouseX) -> qint64
+    {
+        const int w = m_progressBar->width();
+        if (w <= 0) return 0;
+        const double ratio = std::clamp(static_cast<double>(mouseX) / w, 0.0, 1.0);
+        return static_cast<qint64>(ratio * m_trackLengthUs);
+    };
+
+    auto applySeekPosition = [this, &posFromMouseX](int mouseX)
+    {
+        const qint64 posUs = posFromMouseX(mouseX);
+        const int val = static_cast<int>(posUs * 1000LL / m_trackLengthUs);
+        m_progressBar->setValue(val);
+        m_labelTime->setText(
+            QStringLiteral("%1 / %2").arg(formatTime(posUs), formatTime(m_trackLengthUs)));
+        emit seekRequested(posUs);
+    };
+
     if (m_seeking)
     {
         if (event->type() == QEvent::MouseButtonRelease)
@@ -366,6 +384,8 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
             auto* me = static_cast<QMouseEvent*>(event);
             if (me->button() == Qt::LeftButton)
             {
+                if (m_canSeek && m_trackLengthUs > 0 && m_config->osd().progressInteractive)
+                    applySeekPosition(me->position().toPoint().x());
                 finishSeeking();
                 return true;
             }
@@ -379,14 +399,6 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
     if (!m_canSeek || m_trackLengthUs <= 0 || !m_config->osd().progressInteractive)
         return QWidget::eventFilter(obj, event);
 
-    auto posFromMouseX = [this](int mouseX) -> qint64
-    {
-        const int w = m_progressBar->width();
-        if (w <= 0) return 0;
-        const double ratio = std::clamp(static_cast<double>(mouseX) / w, 0.0, 1.0);
-        return static_cast<qint64>(ratio * m_trackLengthUs);
-    };
-
     if (event->type() == QEvent::MouseButtonPress)
     {
         auto* me = static_cast<QMouseEvent*>(event);
@@ -394,12 +406,7 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
         {
             m_seeking = true;
             emit seekStarted();
-            const qint64 posUs = posFromMouseX(me->position().toPoint().x());
-            const int val = static_cast<int>(posUs * 1000LL / m_trackLengthUs);
-            m_progressBar->setValue(val);
-            m_labelTime->setText(
-                QStringLiteral("%1 / %2").arg(formatTime(posUs), formatTime(m_trackLengthUs)));
-            emit seekRequested(posUs);
+            applySeekPosition(me->position().toPoint().x());
             return true;
         }
     }
@@ -408,12 +415,7 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
         auto* me = static_cast<QMouseEvent*>(event);
         if (me->buttons() & Qt::LeftButton)
         {
-            const qint64 posUs = posFromMouseX(me->position().toPoint().x());
-            const int val = static_cast<int>(posUs * 1000LL / m_trackLengthUs);
-            m_progressBar->setValue(val);
-            m_labelTime->setText(
-                QStringLiteral("%1 / %2").arg(formatTime(posUs), formatTime(m_trackLengthUs)));
-            emit seekRequested(posUs);
+            applySeekPosition(me->position().toPoint().x());
             return true;
         }
         finishSeeking();
