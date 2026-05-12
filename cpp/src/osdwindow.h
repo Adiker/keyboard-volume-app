@@ -136,6 +136,7 @@ class OSDWindow : public QWidget
 
     // Update m_labelName text based on progressLabelMode + cached track info.
     void refreshNameLabel();
+    void finishSeeking();
 
     // Format microseconds → "m:ss".
     static QString formatTime(qint64 us);

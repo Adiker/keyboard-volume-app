@@ -297,6 +297,7 @@ void OSDWindow::setProgressEnabled(bool on)
     m_progressEnabled = on;
     if (!on)
     {
+        finishSeeking();
         m_progressVisible = false;
         m_progressRow->setVisible(false);
         refreshNameLabel();
@@ -308,6 +309,7 @@ void OSDWindow::setProgressVisible(bool on)
 {
     if (!m_progressEnabled) return;
     if (m_progressVisible == on) return;
+    if (!on) finishSeeking();
     m_progressVisible = on;
     m_progressRow->setVisible(on);
     refreshNameLabel();
@@ -321,6 +323,7 @@ void OSDWindow::updateTrack(const QString& title, const QString& artist, qint64 
     m_trackArtist = artist;
     m_trackLengthUs = lengthUs;
     m_canSeek = canSeek;
+    if (!m_canSeek || m_trackLengthUs <= 0) finishSeeking();
 
     refreshNameLabel();
 
@@ -354,8 +357,26 @@ void OSDWindow::updatePosition(qint64 positionUs)
 
 bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
 {
-    if (obj != m_progressBar || !m_canSeek || m_trackLengthUs <= 0 ||
-        !m_config->osd().progressInteractive)
+    if (obj != m_progressBar) return QWidget::eventFilter(obj, event);
+
+    if (m_seeking)
+    {
+        if (event->type() == QEvent::MouseButtonRelease)
+        {
+            auto* me = static_cast<QMouseEvent*>(event);
+            if (me->button() == Qt::LeftButton)
+            {
+                finishSeeking();
+                return true;
+            }
+        }
+        else if (event->type() == QEvent::UngrabMouse || event->type() == QEvent::Hide)
+        {
+            finishSeeking();
+        }
+    }
+
+    if (!m_canSeek || m_trackLengthUs <= 0 || !m_config->osd().progressInteractive)
         return QWidget::eventFilter(obj, event);
 
     auto posFromMouseX = [this](int mouseX) -> qint64
@@ -395,18 +416,9 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
             emit seekRequested(posUs);
             return true;
         }
+        finishSeeking();
+        return true;
     }
-    else if (event->type() == QEvent::MouseButtonRelease && m_seeking)
-    {
-        auto* me = static_cast<QMouseEvent*>(event);
-        if (me->button() == Qt::LeftButton)
-        {
-            m_seeking = false;
-            emit seekFinished();
-            return true;
-        }
-    }
-
     return QWidget::eventFilter(obj, event);
 }
 
@@ -440,6 +452,13 @@ void OSDWindow::refreshNameLabel()
                 : QStringLiteral("%1 \u2014 %2").arg(m_trackTitle, m_trackArtist);
         if (m_labelTrack) m_labelTrack->setText(trackText);
     }
+}
+
+void OSDWindow::finishSeeking()
+{
+    if (!m_seeking) return;
+    m_seeking = false;
+    emit seekFinished();
 }
 
 // static
@@ -525,6 +544,7 @@ void OSDWindow::reloadStyles()
 {
     applyStyles();
     setProgressEnabled(m_config->osd().progressEnabled);
+    if (!m_config->osd().progressInteractive) finishSeeking();
     auto [absX, absY] = absPos();
 #ifdef HAVE_LAYER_SHELL_QT
     if (m_layerShellActive && m_lsWindow)
