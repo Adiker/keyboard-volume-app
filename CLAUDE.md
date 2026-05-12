@@ -88,6 +88,7 @@ Signal wiring:
 - `InputHandler` signals (`volume_up`, `volume_down`, `volume_mute`) → `changeVolume()` / `onMute()`
 - `VolumeController` signal `volumeChanged(app, vol, muted)` → `OSDWindow::showVolume()`
 - `VolumeController` signal `appsReady(list)` → `TrayApp::rebuildMenu()`
+- `MprisClient` signals (`trackChanged`, `positionChanged`, `noPlayer`) → `OSDWindow` progress row
 - `TrayApp` signals → device/settings changes, OSD preview
 - `DbusInterface` sits alongside, caching volume/mute state and forwarding D-Bus calls to `VolumeController`/`TrayApp`/`Config`
 - `App::cleanup()` stops evdev, closes PA, unregisters D-Bus objects and services
@@ -275,10 +276,17 @@ Key repeat events (`ev.value == 2`) are handled alongside regular press events (
 
 ### `cpp/src/osdwindow.h/cpp` — `OSDWindow`
 
-Frameless, always-on-top Qt widget (220×70 px). Uses `WA_TranslucentBackground` + custom `paintEvent` for rounded corners (background drawn manually via `QPainter::drawRoundedRect()` because Qt skips stylesheet background painting on translucent top-level windows).
+Frameless, always-on-top Qt widget. Base size is 220×70 px for volume only; when `OsdConfig::progressEnabled` and an active MPRIS track are both present, it expands to 220×112 px with a progress row.
 
 `showVolume(app, volume, muted)` — main display call, starts the auto-hide timer.  
 After `show()`, position is also set via `QWindow::setPosition()` for XWayland compatibility.
+
+Progress row API:
+- `setProgressEnabled(bool)` caches the master toggle and hides the row when disabled.
+- `setProgressVisible(bool)` shows or hides the row for player presence; it is a no-op while disabled.
+- `updateTrack(title, artist, lengthUs, canSeek)` refreshes label mode, seekability and duration. `lengthUs <= 0` is live-stream mode: disabled bar and `LIVE` label.
+- `updatePosition(positionUs)` maps the position to the progress bar's 0-1000 range and updates the elapsed/total time label.
+- `progressLabelMode` controls whether the main label shows the app, track, or app plus track row.
 
 ### `cpp/src/mprisclient.h/cpp` — `MprisClient`
 
