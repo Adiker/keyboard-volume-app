@@ -32,11 +32,12 @@ static bool busAvailable()
 }
 
 // Macro: skip test when D-Bus is unavailable.
-#define SKIP_IF_NO_DBUS()                                                                          \
-    do                                                                                             \
-    {                                                                                              \
-        if (!busAvailable()) GTEST_SKIP() << "Session D-Bus not available";                        \
+// clang-format off
+#define SKIP_IF_NO_DBUS()                                          \
+    do {                                                           \
+        if (!busAvailable()) GTEST_SKIP() << "Session D-Bus not available"; \
     } while (false)
+// clang-format on
 
 // Pump the Qt event loop for up to maxMs milliseconds or until predicate
 // returns true. Uses QEventLoop::exec() with a short timer — this is required
@@ -428,6 +429,35 @@ TEST_F(MprisClientTest, ReloadUpdatesTrackedPlayers)
 
     const bool gone = waitFor([&] { return noPlayerSpy.count() > 0; }, 2000);
     EXPECT_TRUE(gone);
+}
+
+TEST_F(MprisClientTest, ReloadReemitsCurrentTrack)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Reload Song"), QStringLiteral("Reload Artist"),
+                           180000000LL, QStringLiteral("/track/reload"));
+
+    MprisClient client(m_config.get());
+    QSignalSpy spy(&client, &MprisClient::trackChanged);
+
+    const bool found = waitFor([&] { return !client.activePlayer().service.isEmpty(); });
+    EXPECT_TRUE(found);
+    spy.clear();
+
+    client.reload();
+
+    const bool got = waitFor([&] { return spy.count() > 0; }, 2000);
+    EXPECT_TRUE(got);
+    if (!spy.isEmpty())
+    {
+        EXPECT_EQ(spy.last()[0].toString().toStdString(), "Reload Song");
+        EXPECT_EQ(spy.last()[1].toString().toStdString(), "Reload Artist");
+        EXPECT_EQ(spy.last()[2].toLongLong(), 180000000LL);
+        EXPECT_TRUE(spy.last()[3].toBool());
+    }
 }
 
 TEST_F(MprisClientTest, PollPausesWhenNotPlaying)

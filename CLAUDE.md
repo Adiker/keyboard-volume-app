@@ -46,6 +46,7 @@ keyboard-volume-app/
 │       ├── firstrunwizard.h/cpp # QWizard — first-run language + device + app setup
 │       ├── dbusinterface.h/cpp  # Custom D-Bus interface (org.keyboardvolumeapp.VolumeControl)
 │       ├── mprisinterface.h/cpp # MPRIS adaptors (org.mpris.MediaPlayer2 + Player)
+│       ├── mprisclient.h/cpp    # MPRIS consumer for external player metadata/progress
 │       ├── kvctl.cpp            # kv-ctl command-line D-Bus client
 │       ├── kvctlcommand.h/cpp   # kv-ctl parser shared with tests
 │       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (fd, libevdev*, uinput)
@@ -111,7 +112,12 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
   "osd": {
     "screen": 0, "x": 50, "y": 1150,
     "timeout_ms": 1200, "opacity": 85,
-    "color_bg": "#1A1A1A", "color_text": "#FFFFFF", "color_bar": "#0078D7"
+    "color_bg": "#1A1A1A", "color_text": "#FFFFFF", "color_bar": "#0078D7",
+    "progress_enabled": false,
+    "progress_interactive": true,
+    "progress_poll_ms": 500,
+    "progress_label_mode": "both",
+    "tracked_players": ["spotify", "vlc", "strawberry", "harmonoid", "youtube"]
   },
   "volume_step": 5,
   "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
@@ -140,6 +146,8 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 ```
 
 Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113). Scroll bindings use object form such as `{ "type": "rel", "code": 8, "direction": 1 }` for `EV_REL / REL_WHEEL`.
+
+**OSD playback progress config.** `progress_enabled` is the master toggle. `progress_interactive` allows OSD seek controls when the active MPRIS player is seekable. `progress_poll_ms` is clamped to `200..2000` because many players do not emit position changes. `progress_label_mode` is one of `app`, `track`, or `both`. `tracked_players` is a priority list matched case-insensitively against MPRIS service names.
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
 - `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; }`
@@ -271,6 +279,14 @@ Frameless, always-on-top Qt widget (220×70 px). Uses `WA_TranslucentBackground`
 
 `showVolume(app, volume, muted)` — main display call, starts the auto-hide timer.  
 After `show()`, position is also set via `QWindow::setPosition()` for XWayland compatibility.
+
+### `cpp/src/mprisclient.h/cpp` — `MprisClient`
+
+Consumes external MPRIS2 players from the session bus. It detects services named `org.mpris.MediaPlayer2.*`, fetches `org.mpris.MediaPlayer2.Player` properties asynchronously, and emits active-player, track, position, playback-status and no-player signals for OSD playback progress wiring.
+
+Selection is deterministic: filter by `Config::osd().trackedPlayers`, sort by that priority list, then prefer the first Playing player over the first Paused player. `reload()` re-reads tracked players and poll interval, re-evaluates the active player, and re-emits the current track so settings toggles can show an already-active player immediately.
+
+`MprisClient` lives in the main Qt thread only. All D-Bus reads are async via QtDBus; do not call it from `PaWorker` or `InputHandler`.
 
 ### `cpp/src/trayapp.h/cpp` — `TrayApp`
 
@@ -529,8 +545,9 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
+- `test_mprisclient` — 10 tests (MPRIS player detection, metadata changes, seek forwarding, reload behavior, priority, polling)
 
-Run locally: `cd cpp/build && ctest --output-on-failure`.
+Run locally: `cd cpp/build && ctest -E test_mprisclient --output-on-failure` and `cd cpp/build && dbus-run-session -- ctest -R test_mprisclient --output-on-failure`.
 
 GitHub Actions CI is enabled in `.github/workflows/ci.yml` for PRs and pushes to
 `main`. It builds and runs CTest in both Debug and Release, and checks
