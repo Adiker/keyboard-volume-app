@@ -291,6 +291,7 @@ void OSDWindow::setProgressEnabled(bool on)
     {
         m_progressVisible = false;
         m_progressRow->setVisible(false);
+        refreshNameLabel();
         applySize();
     }
 }
@@ -301,6 +302,7 @@ void OSDWindow::setProgressVisible(bool on)
     if (m_progressVisible == on) return;
     m_progressVisible = on;
     m_progressRow->setVisible(on);
+    refreshNameLabel();
     applySize();
 }
 

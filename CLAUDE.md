@@ -283,7 +283,7 @@ After `show()`, position is also set via `QWindow::setPosition()` for XWayland c
 
 Progress row API:
 - `setProgressEnabled(bool)` caches the master toggle and hides the row when disabled.
-- `setProgressVisible(bool)` shows or hides the row for player presence; it is a no-op while disabled.
+- `setProgressVisible(bool)` shows or hides the row for player presence and refreshes labels immediately so `progressLabelMode=track` falls back to the app label when the row disappears; it is a no-op while disabled.
 - `updateTrack(title, artist, lengthUs, canSeek)` refreshes label mode, seekability and duration. `lengthUs <= 0` is live-stream mode: disabled bar and `LIVE` label.
 - `updatePosition(positionUs)` maps the position to the progress bar's 0-1000 range and updates the elapsed/total time label.
 - `progressLabelMode` controls whether the main label shows the app, track, or app plus track row.
