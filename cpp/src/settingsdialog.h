@@ -2,6 +2,7 @@
 #include "config.h" // Profile
 #include <QDialog>
 #include <QList>
+#include <QLineEdit>
 #include <QPushButton>
 
 class QSpinBox;
@@ -150,6 +151,13 @@ class SettingsDialog : public QDialog
     ColorButton* m_colorBar = nullptr;
     QSpinBox* m_opacity = nullptr;
     QCheckBox* m_autoProfile = nullptr;
+
+    // Progress / MPRIS section
+    QCheckBox* m_progressEnabled = nullptr;
+    QCheckBox* m_progressInteractive = nullptr;
+    QSpinBox* m_progressPollMs = nullptr;
+    QComboBox* m_progressLabelMode = nullptr;
+    QLineEdit* m_trackedPlayers = nullptr;
 
     // Profiles section
     QTableWidget* m_profilesTable = nullptr;
