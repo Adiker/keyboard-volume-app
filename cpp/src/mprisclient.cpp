@@ -60,8 +60,9 @@ class MprisPlayerProxy : public QObject
 
 static QString serviceDisplayName(const QString& service)
 {
-    const int dot = service.lastIndexOf(QLatin1Char('.'));
-    return (dot >= 0) ? service.mid(dot + 1).toLower() : service.toLower();
+    if (service.startsWith(QLatin1String(MPRIS_PREFIX)))
+        return service.mid(QString::fromLatin1(MPRIS_PREFIX).size()).toLower();
+    return service.toLower();
 }
 
 static QVariantMap variantMapFromDBusArg(const QVariant& v)
