@@ -120,7 +120,7 @@ void MprisClient::reload()
         m_pollMs = newMs;
         m_pollTimer->setInterval(m_pollMs);
     }
-    reevaluateActive();
+    reevaluateActive(true);
 }
 
 void MprisClient::setSeeking(bool seeking)
@@ -301,7 +301,7 @@ int MprisClient::priorityOf(const QString& service) const
     return -1; // not tracked
 }
 
-void MprisClient::reevaluateActive()
+void MprisClient::reevaluateActive(bool forceTrackChanged)
 {
     // Build candidate list: tracked players sorted by priority
     QList<const KnownPlayer*> candidates;
@@ -365,7 +365,7 @@ void MprisClient::reevaluateActive()
 
     if (serviceChanged) emit activePlayerChanged(m_active);
 
-    if (trackChanged)
+    if (trackChanged || forceTrackChanged)
         emit this->trackChanged(m_active.title, m_active.artist, m_active.lengthUs,
                                 m_active.canSeek && m_active.lengthUs > 0);
 

@@ -40,8 +40,9 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles** and **scenes**; bare `VolumeUp/Down/ToggleMute/ToggleDucking/RefreshApps` methods, per-profile methods, plus `ApplyScene(id)`
 - **`kv-ctl` CLI** — script-friendly command-line client for D-Bus control without calling the external `qdbus` program
 - **MPRIS v2** — registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client
+- **MPRIS playback tracking** — consumes other players' MPRIS metadata, position, seek support and player priority for the optional OSD playback progress features
 - **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
-- **Unit tests** — GTest + Qt Test suite covering Config, i18n, `kv-ctl` parsing, PipeWire utilities, VolumeController, and InputHandler
+- **Unit tests** — GTest + Qt Test suite covering Config, i18n, `kv-ctl` parsing, PipeWire utilities, VolumeController, InputHandler, and the MPRIS client
 
 ### Requirements
 
@@ -142,10 +143,11 @@ cpp/build/kv-ctl --help                  # Show CLI control commands
 ```bash
 cmake -S cpp -B cpp/build -DBUILD_TESTING=ON
 cmake --build cpp/build
-cd cpp/build && ctest
+cd cpp/build && ctest -E test_mprisclient
+cd cpp/build && dbus-run-session -- ctest -R test_mprisclient
 ```
 
-Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` command parsing, PipeWire utilities, VolumeController (smoke test), and InputHandler (API-only, no device required). Requires `gtest` / `libgtest-dev` package (see Requirements).
+Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` command parsing, PipeWire utilities, VolumeController (smoke test), InputHandler (API-only, no device required), and MPRIS client behavior. `test_mprisclient` should run under `dbus-run-session` so fake MPRIS players do not collide with the user's desktop session. Requires `gtest` / `libgtest-dev` package (see Requirements).
 
 ### Usage
 
@@ -220,7 +222,12 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
     "opacity": 85,
     "color_bg": "#1A1A1A",
     "color_text": "#FFFFFF",
-    "color_bar": "#0078D7"
+    "color_bar": "#0078D7",
+    "progress_enabled": false,
+    "progress_interactive": true,
+    "progress_poll_ms": 500,
+    "progress_label_mode": "both",
+    "tracked_players": ["spotify", "vlc", "strawberry", "harmonoid", "youtube"]
   },
   "volume_step": 5,
   "hotkeys": {
@@ -255,6 +262,8 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
 Hotkey values are evdev bindings: legacy integers are `EV_KEY` codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), while scroll bindings use objects such as `{ "type": "rel", "code": 8, "direction": 1 }`. `show` defaults to `0` (unassigned) and supports the same key/scroll binding formats. The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch. Scene target `match` values use the same app/binary names as `kv-ctl get apps`; `volume` is a `0..100` percent value, and omitted `volume` or `muted` fields leave that part unchanged.
 
 `auto_profile_switch` (default `false`) globally enables auto-profile switching by focused window. Per-profile `auto_switch` (default `true`) controls whether a given profile participates in auto-switching.
+
+OSD playback progress is configured under `osd`. `progress_enabled` is the master toggle, `progress_interactive` allows seek-capable players to be controlled from the progress bar, `progress_poll_ms` is clamped to `200..2000`, `progress_label_mode` is `app`, `track`, or `both`, and `tracked_players` is a priority list matched against MPRIS service names.
 
 ### Project structure
 
@@ -355,8 +364,9 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile** i **sceny**; metody bez wskazania profilu, metody profilowe oraz `ApplyScene(id)`
 - **CLI `kv-ctl`** — wygodny klient wiersza poleceń do sterowania przez D-Bus bez wywoływania zewnętrznego programu `qdbus`
 - **MPRIS v2** — zarejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS
+- **Śledzenie odtwarzania MPRIS** — odczytuje metadane, pozycję, możliwość seekowania i priorytet innych odtwarzaczy dla opcjonalnego paska postępu OSD
 - **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
-- **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, parsera `kv-ctl`, narzędzi PipeWire, VolumeController i InputHandler
+- **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, parsera `kv-ctl`, narzędzi PipeWire, VolumeController, InputHandler i klienta MPRIS
 
 ### Wymagania
 
@@ -457,10 +467,11 @@ cpp/build/kv-ctl --help                  # Pokaż komendy sterowania CLI
 ```bash
 cmake -S cpp -B cpp/build -DBUILD_TESTING=ON
 cmake --build cpp/build
-cd cpp/build && ctest
+cd cpp/build && ctest -E test_mprisclient
+cd cpp/build && dbus-run-session -- ctest -R test_mprisclient
 ```
 
-Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire, VolumeController (test dymny) i InputHandler (API, bez potrzeby urządzenia). Wymaga pakietu `gtest` / `libgtest-dev` (zobacz Wymagania).
+Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire, VolumeController (test dymny), InputHandler (API, bez potrzeby urządzenia) oraz klienta MPRIS. `test_mprisclient` uruchamiaj przez `dbus-run-session`, żeby fikcyjne odtwarzacze MPRIS nie mieszały się z sesją pulpitu użytkownika. Wymaga pakietu `gtest` / `libgtest-dev` (zobacz Wymagania).
 
 ### Użytkowanie
 
@@ -535,7 +546,12 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
     "opacity": 85,
     "color_bg": "#1A1A1A",
     "color_text": "#FFFFFF",
-    "color_bar": "#0078D7"
+    "color_bar": "#0078D7",
+    "progress_enabled": false,
+    "progress_interactive": true,
+    "progress_poll_ms": 500,
+    "progress_label_mode": "both",
+    "tracked_players": ["spotify", "vlc", "strawberry", "harmonoid", "youtube"]
   },
   "volume_step": 5,
   "hotkeys": {
@@ -570,6 +586,8 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
 Wartości skrótów to bindingi evdev: starsze liczby oznaczają kody `EV_KEY` (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), a scroll używa obiektów takich jak `{ "type": "rel", "code": 8, "direction": 1 }`. `show` domyślnie ma `0` (nieprzypisany) i obsługuje te same formaty klawiszy oraz scrolla. Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu. `match` w targetach scen używa tych samych nazw aplikacji/binarek co `kv-ctl get apps`; `volume` to procent `0..100`, a pominięte pola `volume` lub `muted` pozostawiają daną część stanu bez zmian.
 
 `auto_profile_switch` (domyślnie `false`) globalnie włącza auto-przełączanie profilu wg aktywnego okna. Per-profilowe `auto_switch` (domyślnie `true`) kontroluje, czy dany profil bierze udział w auto-przełączaniu.
+
+Postęp odtwarzania OSD jest konfigurowany w sekcji `osd`. `progress_enabled` jest głównym przełącznikiem, `progress_interactive` pozwala sterować seekowalnymi odtwarzaczami z paska postępu, `progress_poll_ms` jest ograniczane do `200..2000`, `progress_label_mode` przyjmuje `app`, `track` albo `both`, a `tracked_players` to lista priorytetów dopasowywana do nazw usług MPRIS.
 
 ### Struktura projektu
 

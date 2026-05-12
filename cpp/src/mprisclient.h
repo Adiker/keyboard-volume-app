@@ -108,7 +108,7 @@ class MprisClient : public QObject
     void removePlayer(const QString& service);
     void fetchAllProperties(const QString& service);
     void applyProperties(const QString& service, const QVariantMap& props);
-    void reevaluateActive();
+    void reevaluateActive(bool forceTrackChanged = false);
     int priorityOf(const QString& service) const; // lower = higher priority; -1 = not tracked
     void pollPosition();
 
