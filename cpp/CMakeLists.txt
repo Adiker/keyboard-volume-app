@@ -31,6 +31,7 @@ set(SOURCES
     src/firstrunwizard.cpp
     src/dbusinterface.cpp
     src/mprisinterface.cpp
+    src/mprisclient.cpp
     src/evdevdevice.cpp
     src/pwutils.cpp
     src/applistwidget.cpp

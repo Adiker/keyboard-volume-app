@@ -277,6 +277,13 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/volumecontroller.{h,cpp}`, `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/kvctl*.{h,cpp}`, testy i dokumentacja.
 **Status:** Zrealizowane. `Config` serializuje i sanityzuje sceny, `DbusInterface` wystawia property `Scenes` i metodę `ApplyScene(id)`, `kv-ctl` obsługuje `scene ID` oraz `get scenes`. `VolumeController` dostał absolutne async `setVolume(app, value)` i `setMuted(app, bool)`, nadal wykonywane na `PaWorker`. Ryzyko/rollback: zmiana dotyka D-Bus i libpulse/PipeWire mute path; rollback to usunięcie `ApplyScene`/`Scenes` i pozostawienie istniejących profili bez zmian.
 
+### 31. Interaktywny pasek postępu odtwarzania na OSD (MPRIS consumer)
+
+**Problem:** OSD pokazuje wyłącznie głośność. Użytkownik nie widzi tytułu utworu, czasu odtwarzania ani nie może przewinąć utworu bez przełączania się do okna playera.
+**Rekomendacja:** Dodać opcjonalny pasek postępu do OSD, zasilany przez MPRIS2 (`org.mpris.MediaPlayer2.Player`). Integracja z YouTube Music, Spotify, Harmonoid, Strawberry. Pasek interaktywny (klik + drag → `SetPosition`). Etykieta konfigurowalna: nazwa aplikacji / tytuł utworu / oba. Priorytet playerów konfigurowalny przez użytkownika.
+**Pliki:** Nowe `cpp/src/mprisclient.{h,cpp}`, `cpp/tests/test_mprisclient.cpp`; rozszerzenia `cpp/src/config.{h,cpp}`, `cpp/src/osdwindow.{h,cpp}`, `cpp/src/settingsdialog.{h,cpp}`, `cpp/src/main.cpp`, `cpp/tests/test_config.cpp`, `cpp/CMakeLists.txt`, `cpp/tests/CMakeLists.txt`, `.github/workflows/ci.yml`.
+**Status:** W trakcie realizacji (5 PR-ów). PR 1 (`feature/mpris-client`): `MprisClient` — konsument MPRIS2 na session D-Bus, `QDBusServiceWatcher` przez `NameOwnerChanged`, async polling pozycji (`QDBusPendingCallWatcher`), priorytet playerów, `SetPosition`/`Seek`. Nowe pola `OsdConfig`: `progressEnabled`, `progressInteractive`, `progressPollMs`, `progressLabelMode`, `trackedPlayers`. 9 testów (w tym fake MPRIS adaptor na session bus, skip gdy brak D-Bus). CI: `dbus-run-session` dla `test_mprisclient`. PR 2–5 planowane: OSD progress row, SeekBar, SettingsDialog, dokumentacja.
+
 ---
 
 ## Weryfikacja (dla każdej zmiany)
