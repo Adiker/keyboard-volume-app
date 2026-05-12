@@ -137,6 +137,17 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
         emitPropertiesChanged({{QStringLiteral("Position"), pos}});
     }
 
+    void emitMetadataAndPositionChanged(const QString& title, const QString& artist,
+                                        qint64 lengthUs, const QString& trackId, qint64 pos)
+    {
+        m_metadata[QStringLiteral("xesam:title")] = title;
+        m_metadata[QStringLiteral("xesam:artist")] = QStringList{artist};
+        m_metadata[QStringLiteral("mpris:length")] = lengthUs;
+        m_metadata[QStringLiteral("mpris:trackid")] = QVariant::fromValue(QDBusObjectPath(trackId));
+        m_position = pos;
+        emitPropertiesChanged(
+            {{QStringLiteral("Metadata"), m_metadata}, {QStringLiteral("Position"), pos}});
+    }
 
     void emitSeeked(qint64 pos)
     {
@@ -719,6 +730,46 @@ TEST_F(MprisClientTest, PositionOnlyPropertiesChangedDoesNotEmitTrackChanged)
 
     EXPECT_EQ(trackSpy.count(), 0) << "trackChanged must not fire for Position-only update";
     EXPECT_GT(posSpy.count(), 0) << "positionChanged must fire for Position-only update";
+}
+
+TEST_F(MprisClientTest, BundledMetadataAndPositionEmitsTrackBeforePosition)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Song"), QStringLiteral("Artist"), 200000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    QStringList events;
+    qint64 emittedPosition = -1;
+    QObject::connect(&client, &MprisClient::trackChanged, &client,
+                     [&events](const QString&, const QString&, qint64, bool)
+                     { events.append(QStringLiteral("track")); });
+    QObject::connect(&client, &MprisClient::positionChanged, &client,
+                     [&events, &emittedPosition](qint64 pos)
+                     {
+                         events.append(QStringLiteral("position"));
+                         emittedPosition = pos;
+                     });
+
+    fp.player->emitMetadataAndPositionChanged(QStringLiteral("Next Song"), QStringLiteral("Artist"),
+                                              210000000LL, QStringLiteral("/t/2"), 12000000LL);
+
+    ASSERT_TRUE(waitFor(
+        [&]
+        {
+            return events.contains(QStringLiteral("track")) &&
+                   events.contains(QStringLiteral("position"));
+        }))
+        << "bundled Metadata+Position update did not emit both track and position";
+    ASSERT_GE(events.size(), 2);
+    EXPECT_EQ(events.at(0), QStringLiteral("track"));
+    EXPECT_EQ(events.at(1), QStringLiteral("position"));
+    EXPECT_EQ(emittedPosition, 12000000LL);
 }
 
 // Metadata values delivered via PropertiesChanged may arrive wrapped in

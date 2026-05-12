@@ -288,6 +288,9 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
     }
 
     KnownPlayer& kp = m_players[service];
+    const bool wasActivePlayer = m_hasActive && m_active.service == service;
+    bool hasBundledPosition = false;
+    qint64 bundledPosition = -1;
 
     if (props.contains(QStringLiteral("PlaybackStatus")))
         kp.status = unwrapDBusVariant(props[QStringLiteral("PlaybackStatus")]).toString();
@@ -335,20 +338,23 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
     }
 
     // Also handle Position when it arrives alongside other properties (e.g. during
-    // track-change signals that bundle Position with Metadata). This is a one-shot
-    // event (not high-frequency), so no throttle needed; reset throttle so the next
-    // PropertiesChanged Position update is allowed immediately after.
+    // track-change signals that bundle Position with Metadata). Defer emission until
+    // after reevaluateActive() so trackChanged reaches the OSD before the new
+    // position; updateTrack() resets the progress bar.
     if (props.contains(QStringLiteral("Position")))
     {
-        const qint64 pos = unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
-        if (m_hasActive && m_active.service == service && pos >= 0 && !m_seeking)
-        {
-            m_positionThrottle.restart();
-            emit positionChanged(pos);
-        }
+        bundledPosition = unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
+        hasBundledPosition = bundledPosition >= 0;
     }
 
     reevaluateActive();
+
+    if (hasBundledPosition && wasActivePlayer && m_hasActive && m_active.service == service &&
+        !m_seeking)
+    {
+        m_positionThrottle.restart();
+        emit positionChanged(bundledPosition);
+    }
 }
 
 int MprisClient::priorityOf(const QString& service) const
