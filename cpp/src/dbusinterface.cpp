@@ -32,6 +32,7 @@ DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, TrayA
 {
     m_activeApp = m_tray->currentApp();
     m_volumeStep = m_config->volumeStep();
+    m_progressEnabled = m_config->osd().progressEnabled;
     m_profilesProp = buildProfilesProp();
     m_scenesProp = buildScenesProp();
 
@@ -114,6 +115,16 @@ void DbusInterface::setVolumeStep(int step)
 {
     m_config->setVolumeStep(step);
     m_volumeStep = m_config->volumeStep();
+}
+
+void DbusInterface::setProgressEnabled(bool on)
+{
+    if (m_progressEnabled == on) return;
+    OsdConfig osd = m_config->osd();
+    osd.progressEnabled = on;
+    m_config->setOsd(osd);
+    m_progressEnabled = on;
+    emit progressEnabledChanged(m_progressEnabled);
 }
 
 void DbusInterface::VolumeUp()

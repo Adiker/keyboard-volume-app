@@ -60,6 +60,8 @@ QString propertyName(KvCtlCommand::Field field)
         return QStringLiteral("Profiles");
     case KvCtlCommand::Field::Scenes:
         return QStringLiteral("Scenes");
+    case KvCtlCommand::Field::ProgressEnabled:
+        return QStringLiteral("ProgressEnabled");
     case KvCtlCommand::Field::None:
         return QString();
     }
@@ -239,6 +241,16 @@ QVariant setValueForCommand(const KvCtlCommand& cmd, bool* ok)
             return {};
         }
         return step;
+    }
+    case KvCtlCommand::Field::ProgressEnabled:
+    {
+        bool val = false;
+        if (!parseBool(cmd.value, &val))
+        {
+            *ok = false;
+            return {};
+        }
+        return val;
     }
     case KvCtlCommand::Field::None:
     case KvCtlCommand::Field::Apps:

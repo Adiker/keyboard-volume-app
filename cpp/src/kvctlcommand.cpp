@@ -19,6 +19,7 @@ KvCtlCommand::Field parseField(const QString& name)
     if (name == QStringLiteral("step")) return KvCtlCommand::Field::Step;
     if (name == QStringLiteral("profiles")) return KvCtlCommand::Field::Profiles;
     if (name == QStringLiteral("scenes")) return KvCtlCommand::Field::Scenes;
+    if (name == QStringLiteral("progress-enabled")) return KvCtlCommand::Field::ProgressEnabled;
     return KvCtlCommand::Field::None;
 }
 
@@ -107,7 +108,8 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
         cmd.value = positionalArgs[2];
 
         if (cmd.field != KvCtlCommand::Field::Volume && cmd.field != KvCtlCommand::Field::Muted &&
-            cmd.field != KvCtlCommand::Field::ActiveApp && cmd.field != KvCtlCommand::Field::Step)
+            cmd.field != KvCtlCommand::Field::ActiveApp && cmd.field != KvCtlCommand::Field::Step &&
+            cmd.field != KvCtlCommand::Field::ProgressEnabled)
         {
             return fail(
                 QStringLiteral("unknown or read-only set field '%1'").arg(positionalArgs[1]));
@@ -129,9 +131,11 @@ QString kvCtlUsageText()
                           "  kv-ctl show [--profile ID]\n"
                           "  kv-ctl scene ID\n"
                           "  kv-ctl refresh\n"
-                          "  kv-ctl get volume|muted|active-app|apps|step|profiles|scenes\n"
+                          "  kv-ctl get "
+                          "volume|muted|active-app|apps|step|profiles|scenes|progress-enabled\n"
                           "  kv-ctl set volume VALUE\n"
                           "  kv-ctl set muted true|false\n"
                           "  kv-ctl set active-app NAME\n"
-                          "  kv-ctl set step VALUE\n");
+                          "  kv-ctl set step VALUE\n"
+                          "  kv-ctl set progress-enabled true|false\n");
 }

@@ -60,9 +60,10 @@ TEST(KvCtlCommand, RejectsProfileWhereUnsupported)
 TEST(KvCtlCommand, ParsesGetFields)
 {
     const QStringList fields = {
-        QStringLiteral("volume"), QStringLiteral("muted"), QStringLiteral("active-app"),
-        QStringLiteral("apps"),   QStringLiteral("step"),  QStringLiteral("profiles"),
-        QStringLiteral("scenes"),
+        QStringLiteral("volume"),     QStringLiteral("muted"),
+        QStringLiteral("active-app"), QStringLiteral("apps"),
+        QStringLiteral("step"),       QStringLiteral("profiles"),
+        QStringLiteral("scenes"),     QStringLiteral("progress-enabled"),
     };
 
     for (const QString& field : fields)
@@ -108,6 +109,13 @@ TEST(KvCtlCommand, ParsesSetFields)
         {QStringLiteral("set"), QStringLiteral("step"), QStringLiteral("10")}, {}, false);
     ASSERT_TRUE(step.ok) << step.error.toStdString();
     EXPECT_EQ(step.command.field, KvCtlCommand::Field::Step);
+
+    auto progEnabled = parseKvCtlCommand(
+        {QStringLiteral("set"), QStringLiteral("progress-enabled"), QStringLiteral("true")}, {},
+        false);
+    ASSERT_TRUE(progEnabled.ok) << progEnabled.error.toStdString();
+    EXPECT_EQ(progEnabled.command.field, KvCtlCommand::Field::ProgressEnabled);
+    EXPECT_EQ(progEnabled.command.value.toStdString(), "true");
 }
 
 TEST(KvCtlCommand, RejectsBadCommands)
