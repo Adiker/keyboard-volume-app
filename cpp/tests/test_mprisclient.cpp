@@ -480,6 +480,29 @@ TEST_F(MprisClientTest, ReloadReemitsCurrentTrack)
     }
 }
 
+TEST_F(MprisClientTest, TrackChangedEmittedOnTrackIdUpdate)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Same Song"), QStringLiteral("Same Artist"), 180000000LL,
+                           QStringLiteral("/track/one"));
+
+    MprisClient client(m_config.get());
+    QSignalSpy spy(&client, &MprisClient::trackChanged);
+
+    const bool found = waitFor([&] { return !client.activePlayer().service.isEmpty(); });
+    EXPECT_TRUE(found);
+    spy.clear();
+
+    fp.player->setMetadata(QStringLiteral("Same Song"), QStringLiteral("Same Artist"), 180000000LL,
+                           QStringLiteral("/track/two"));
+
+    const bool got = waitFor([&] { return spy.count() > 0; }, 2000);
+    EXPECT_TRUE(got);
+}
+
 TEST_F(MprisClientTest, PollPausesWhenNotPlaying)
 {
     SKIP_IF_NO_DBUS();

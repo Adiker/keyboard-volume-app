@@ -553,7 +553,7 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
-- `test_mprisclient` — 12 tests (MPRIS player detection, metadata changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards)
+- `test_mprisclient` — 13 tests (MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards)
 
 Run locally: `cd cpp/build && ctest -E test_mprisclient --output-on-failure` and `cd cpp/build && dbus-run-session -- ctest -R test_mprisclient --output-on-failure`.
 
