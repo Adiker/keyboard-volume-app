@@ -558,7 +558,7 @@ OsdConfig Config::osd() const
     c.progressLabelMode =
         (lm == QLatin1String("track") || lm == QLatin1String("both")) ? lm : QStringLiteral("app");
     const QJsonArray tp = o[QStringLiteral("tracked_players")].toArray();
-    if (!tp.isEmpty())
+    if (o.contains(QStringLiteral("tracked_players")))
     {
         c.trackedPlayers.clear();
         for (const QJsonValue& v : tp)

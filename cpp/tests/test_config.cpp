@@ -848,12 +848,12 @@ TEST(ConfigOsdProgress, MigrateOldConfigGetsDefaults)
     EXPECT_EQ(osd.trackedPlayers.size(), 4);
 }
 
-TEST(ConfigOsdProgress, EmptyTrackedPlayersArrayKeepsDefaults)
+TEST(ConfigOsdProgress, EmptyTrackedPlayersArrayIsPreserved)
 {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
 
-    // Empty tracked_players array → getter keeps struct defaults (4 players)
+    // Empty tracked_players array means "do not track any MPRIS players".
     QFile f(tmp.path() + QStringLiteral("/config.json"));
     ASSERT_TRUE(f.open(QIODevice::WriteOnly));
     QJsonObject osdObj{{QStringLiteral("tracked_players"), QJsonArray{}}};
@@ -862,5 +862,5 @@ TEST(ConfigOsdProgress, EmptyTrackedPlayersArrayKeepsDefaults)
     f.close();
 
     Config config(tmp.path());
-    EXPECT_EQ(config.osd().trackedPlayers.size(), 4);
+    EXPECT_TRUE(config.osd().trackedPlayers.isEmpty());
 }
