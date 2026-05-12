@@ -486,6 +486,7 @@ TEST_F(MprisClientTest, PollPausesWhenNotPlaying)
 
     // Set a very short poll interval so we can observe it quickly
     OsdConfig osd = m_config->osd();
+    osd.progressEnabled = true;
     osd.progressPollMs = 200;
     m_config->setOsd(osd);
 
@@ -509,6 +510,29 @@ TEST_F(MprisClientTest, PollPausesWhenNotPlaying)
 
     const bool got = waitFor([&] { return spy.count() > 0; }, 2000);
     EXPECT_TRUE(got);
+}
+
+TEST_F(MprisClientTest, PollPausesWhenProgressDisabled)
+{
+    SKIP_IF_NO_DBUS();
+
+    OsdConfig osd = m_config->osd();
+    osd.progressEnabled = false;
+    osd.progressPollMs = 200;
+    m_config->setOsd(osd);
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    QSignalSpy spy(&client, &MprisClient::positionChanged);
+
+    waitFor([&] { return !client.activePlayer().service.isEmpty(); });
+
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 600);
+    EXPECT_EQ(spy.count(), 0);
 }
 
 #include "test_mprisclient.moc"
