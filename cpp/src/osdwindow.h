@@ -93,6 +93,8 @@ class OSDWindow : public QWidget
     QTimer* m_hideTimer = nullptr;
     QColor m_bgColor;
     bool m_previewMode = false;
+    bool m_previewHeld = false;
+    int m_previewTimeoutMs = 1500;
 
     // ── Progress row ─────────────────────────────────────────────────────────
     QWidget* m_progressRow = nullptr; // container — show/hide as a unit

@@ -164,7 +164,13 @@ void OSDWindow::enterEvent(QEnterEvent* /*event*/)
 
 void OSDWindow::leaveEvent(QEvent* /*event*/)
 {
-    if (isVisible() && !m_previewMode) m_hideTimer->start(m_config->osd().timeoutMs);
+    if (!isVisible()) return;
+    if (m_previewMode)
+    {
+        if (!m_previewHeld) m_hideTimer->start(m_previewTimeoutMs);
+        return;
+    }
+    m_hideTimer->start(m_config->osd().timeoutMs);
 }
 
 // ─── Size helpers ─────────────────────────────────────────────────────────────
@@ -389,6 +395,7 @@ QString OSDWindow::formatTime(qint64 us)
 void OSDWindow::showVolume(const QString& appName, double volume, bool muted)
 {
     m_previewMode = false;
+    m_previewHeld = false;
     m_currentAppName = appName;
     OsdConfig osd = m_config->osd();
     int pct = qRound(volume * 100);
@@ -406,6 +413,8 @@ void OSDWindow::showVolume(const QString& appName, double volume, bool muted)
 void OSDWindow::showPreview(int screenIdx, int x, int y, int timeoutMs)
 {
     m_previewMode = true;
+    m_previewHeld = false;
+    m_previewTimeoutMs = timeoutMs;
     m_hideTimer->stop();
 
     m_labelName->setText(::tr(QStringLiteral("osd.preview")));
@@ -425,6 +434,7 @@ void OSDWindow::hidePreview()
     if (m_previewMode)
     {
         m_previewMode = false;
+        m_previewHeld = false;
         hide();
     }
 }
@@ -432,12 +442,15 @@ void OSDWindow::hidePreview()
 void OSDWindow::showPreviewHeld(int screenIdx, int x, int y)
 {
     showPreview(screenIdx, x, y);
+    m_previewHeld = true;
     m_hideTimer->stop();
 }
 
 void OSDWindow::releasePreview(int timeoutMs)
 {
-    if (isVisible() && m_previewMode) m_hideTimer->start(timeoutMs);
+    m_previewHeld = false;
+    m_previewTimeoutMs = timeoutMs;
+    if (isVisible() && m_previewMode) m_hideTimer->start(m_previewTimeoutMs);
 }
 
 void OSDWindow::applyPreviewColors(const QString& colorBg, const QString& colorText,
