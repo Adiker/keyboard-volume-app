@@ -32,11 +32,12 @@ static bool busAvailable()
 }
 
 // Macro: skip test when D-Bus is unavailable.
-#define SKIP_IF_NO_DBUS()                                                                          \
-    do                                                                                             \
-    {                                                                                              \
-        if (!busAvailable()) GTEST_SKIP() << "Session D-Bus not available";                        \
+// clang-format off
+#define SKIP_IF_NO_DBUS()                                          \
+    do {                                                           \
+        if (!busAvailable()) GTEST_SKIP() << "Session D-Bus not available"; \
     } while (false)
+// clang-format on
 
 // Pump the Qt event loop for up to maxMs milliseconds or until predicate
 // returns true. Uses QEventLoop::exec() with a short timer — this is required
