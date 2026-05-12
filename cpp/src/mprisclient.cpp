@@ -65,15 +65,28 @@ static QString serviceDisplayName(const QString& service)
     return service.toLower();
 }
 
+// Unwrap a QDBusVariant wrapper if present, returning the inner QVariant.
+// QtDBus auto-demarshals a{sv} signal parameters leaving variant values wrapped
+// in QDBusVariant. Calling e.g. .toLongLong() on such a wrapper returns 0.
+// This mirrors the pattern already used in kvctl.cpp::variantToText().
+static QVariant unwrapDBusVariant(const QVariant& v)
+{
+    if (v.userType() == qMetaTypeId<QDBusVariant>())
+        return qvariant_cast<QDBusVariant>(v).variant();
+    return v;
+}
+
 static QVariantMap variantMapFromDBusArg(const QVariant& v)
 {
-    if (v.canConvert<QDBusArgument>())
+    // Unwrap a QDBusVariant wrapper before attempting QDBusArgument conversion.
+    const QVariant inner = unwrapDBusVariant(v);
+    if (inner.canConvert<QDBusArgument>())
     {
         QVariantMap m;
-        v.value<QDBusArgument>() >> m;
+        inner.value<QDBusArgument>() >> m;
         return m;
     }
-    return v.toMap();
+    return inner.toMap();
 }
 
 // ─── MprisClient ──────────────────────────────────────────────────────────────
@@ -253,21 +266,48 @@ void MprisClient::fetchAllProperties(const QString& service)
 void MprisClient::applyProperties(const QString& service, const QVariantMap& props)
 {
     if (!m_players.contains(service)) return;
+
+    // Fast path: Harmonoid (and some other players) send Position via PropertiesChanged
+    // at very high frequency (~12/sec). If Position is the only changed property, emit
+    // positionChanged directly and skip the expensive reevaluateActive() call entirely —
+    // nothing about player state has changed.
+    if (props.size() == 1 && props.contains(QStringLiteral("Position")))
+    {
+        const qint64 pos =
+            unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
+        if (m_hasActive && m_active.service == service && pos >= 0 && !m_seeking)
+            emit positionChanged(pos);
+        return;
+    }
+
     KnownPlayer& kp = m_players[service];
 
     if (props.contains(QStringLiteral("PlaybackStatus")))
-        kp.status = props[QStringLiteral("PlaybackStatus")].toString();
+        kp.status = unwrapDBusVariant(props[QStringLiteral("PlaybackStatus")]).toString();
 
     if (props.contains(QStringLiteral("CanSeek")))
-        kp.canSeek = props[QStringLiteral("CanSeek")].toBool();
+        kp.canSeek = unwrapDBusVariant(props[QStringLiteral("CanSeek")]).toBool();
+
+    if (props.contains(QStringLiteral("CanGoNext")))
+        kp.canGoNext = unwrapDBusVariant(props[QStringLiteral("CanGoNext")]).toBool();
+    if (props.contains(QStringLiteral("CanGoPrevious")))
+        kp.canGoPrevious = unwrapDBusVariant(props[QStringLiteral("CanGoPrevious")]).toBool();
+    if (props.contains(QStringLiteral("CanPause")))
+        kp.canPause = unwrapDBusVariant(props[QStringLiteral("CanPause")]).toBool();
+    if (props.contains(QStringLiteral("CanPlay")))
+        kp.canPlay = unwrapDBusVariant(props[QStringLiteral("CanPlay")]).toBool();
 
     if (props.contains(QStringLiteral("Metadata")))
     {
+        // variantMapFromDBusArg already handles QDBusVariant wrapping for the outer
+        // Metadata container. The individual values inside the a{sv} metadata dict may
+        // also arrive wrapped in QDBusVariant when delivered via PropertiesChanged
+        // signals (as opposed to GetAll replies). Unwrap each value before reading.
         const QVariantMap meta = variantMapFromDBusArg(props[QStringLiteral("Metadata")]);
 
-        kp.title = meta.value(QStringLiteral("xesam:title")).toString();
+        kp.title = unwrapDBusVariant(meta.value(QStringLiteral("xesam:title"))).toString();
 
-        const QVariant artistVar = meta.value(QStringLiteral("xesam:artist"));
+        const QVariant artistVar = unwrapDBusVariant(meta.value(QStringLiteral("xesam:artist")));
         if (artistVar.canConvert<QStringList>())
         {
             const QStringList al = artistVar.toStringList();
@@ -278,13 +318,24 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
             kp.artist = artistVar.toString();
         }
 
-        kp.lengthUs = meta.value(QStringLiteral("mpris:length")).toLongLong();
+        kp.lengthUs =
+            unwrapDBusVariant(meta.value(QStringLiteral("mpris:length"))).toLongLong();
 
-        const QVariant tidVar = meta.value(QStringLiteral("mpris:trackid"));
+        const QVariant tidVar = unwrapDBusVariant(meta.value(QStringLiteral("mpris:trackid")));
         if (tidVar.canConvert<QDBusObjectPath>())
             kp.trackId = tidVar.value<QDBusObjectPath>().path();
         else
             kp.trackId = tidVar.toString();
+    }
+
+    // Also handle Position when it arrives alongside other properties (e.g. during
+    // track-change signals that bundle Position with Metadata).
+    if (props.contains(QStringLiteral("Position")))
+    {
+        const qint64 pos =
+            unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
+        if (m_hasActive && m_active.service == service && pos >= 0 && !m_seeking)
+            emit positionChanged(pos);
     }
 
     reevaluateActive();

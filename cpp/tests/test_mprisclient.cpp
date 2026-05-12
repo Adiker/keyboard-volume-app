@@ -120,6 +120,24 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
         m_position = pos;
     }
 
+    void setCanGoNext(bool v)
+    {
+        m_canGoNext = v;
+        emitPropertiesChanged({{QStringLiteral("CanGoNext"), v}});
+    }
+    void setCanGoPrevious(bool v)
+    {
+        m_canGoPrevious = v;
+        emitPropertiesChanged({{QStringLiteral("CanGoPrevious"), v}});
+    }
+
+    // Simulate Harmonoid-style high-frequency Position updates via PropertiesChanged.
+    void emitPositionChanged(qint64 pos)
+    {
+        emitPropertiesChanged({{QStringLiteral("Position"), pos}});
+    }
+
+
     void emitSeeked(qint64 pos)
     {
         // Emit via the dedicated connection so the signal has the correct sender.
@@ -556,6 +574,179 @@ TEST_F(MprisClientTest, PollPausesWhenProgressDisabled)
 
     QCoreApplication::processEvents(QEventLoop::AllEvents, 600);
     EXPECT_EQ(spy.count(), 0);
+}
+
+TEST_F(MprisClientTest, PlayPauseCallsDBusMethod)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    client.playPause();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->playPauseCalled; }));
+}
+
+TEST_F(MprisClientTest, NextCallsDBusMethodWhenCanGoNext)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    // CanGoNext defaults to true in FakeMprisPlayerAdaptor
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+    ASSERT_TRUE(waitFor([&] { return client.activePlayer().canGoNext; }));
+
+    client.next();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->nextCalled; }));
+}
+
+TEST_F(MprisClientTest, NextIsNoOpWhenCanNotGoNext)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setCanGoNext(false); // Set before client starts so initial fetch sees false
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    client.next();
+
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 300);
+    EXPECT_FALSE(fp.player->nextCalled);
+}
+
+TEST_F(MprisClientTest, PreviousCallsDBusMethodWhenCanGoPrevious)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    // CanGoPrevious defaults to true in FakeMprisPlayerAdaptor
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+    ASSERT_TRUE(waitFor([&] { return client.activePlayer().canGoPrevious; }));
+
+    client.previous();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->previousCalled; }));
+}
+
+TEST_F(MprisClientTest, PreviousFallsBackToSetPositionZeroWhenCanNotGoPrevious)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setCanGoPrevious(false); // Set before client starts so initial fetch sees false
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    client.previous();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->setPositionCalled; }));
+    EXPECT_EQ(fp.player->setPositionPos, 0LL);
+}
+
+// ─── Harmonoid-style Position via PropertiesChanged ───────────────────────────
+
+// Players like Harmonoid send Position via PropertiesChanged at high frequency
+// (~12/sec) instead of relying on client polling. The client should emit
+// positionChanged directly without calling reevaluateActive.
+TEST_F(MprisClientTest, PositionViaPropertiesChangedEmitsPositionChanged)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Song"), QStringLiteral("Artist"), 200000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    QSignalSpy posSpy(&client, &MprisClient::positionChanged);
+
+    fp.player->emitPositionChanged(42000000LL);
+
+    const bool got = waitFor([&] { return posSpy.count() > 0; }, 2000);
+    ASSERT_TRUE(got) << "positionChanged not emitted for Position-only PropertiesChanged";
+    EXPECT_EQ(posSpy.first().first().toLongLong(), 42000000LL);
+}
+
+// Position-only PropertiesChanged must NOT trigger trackChanged — the track has
+// not changed, only the playback position. reevaluateActive should be skipped.
+TEST_F(MprisClientTest, PositionOnlyPropertiesChangedDoesNotEmitTrackChanged)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Song"), QStringLiteral("Artist"), 200000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
+    QSignalSpy posSpy(&client, &MprisClient::positionChanged);
+
+    fp.player->emitPositionChanged(10000000LL);
+
+    // Give the signal time to arrive and be processed.
+    waitFor([&] { return posSpy.count() > 0; }, 1000);
+
+    EXPECT_EQ(trackSpy.count(), 0) << "trackChanged must not fire for Position-only update";
+    EXPECT_GT(posSpy.count(), 0) << "positionChanged must fire for Position-only update";
+}
+
+// Metadata values delivered via PropertiesChanged may arrive wrapped in
+// QDBusVariant. Verify that mpris:length is correctly extracted so the OSD
+// progress bar shows the right total time (regression test for Harmonoid).
+TEST_F(MprisClientTest, MetadataLengthExtractedCorrectlyViaPropertiesChanged)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+
+    MprisClient client(m_config.get());
+
+    QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
+
+    // Send metadata via PropertiesChanged (the path that may wrap values in QDBusVariant).
+    fp.player->setMetadata(QStringLiteral("Liberty City"), QStringLiteral("Seryoga"),
+                           147401588LL, QStringLiteral("/t/abc"));
+
+    const bool got = waitFor([&] { return trackSpy.count() > 0; }, 2000);
+    ASSERT_TRUE(got) << "trackChanged not emitted after setMetadata";
+
+    // The length must arrive correctly — if QDBusVariant unwrapping is broken,
+    // toLongLong() returns 0 and the OSD treats the track as a live stream.
+    const qint64 emittedLength = trackSpy.first().at(2).toLongLong();
+    EXPECT_EQ(emittedLength, 147401588LL)
+        << "mpris:length was not correctly unwrapped from QDBusVariant";
 }
 
 #include "test_mprisclient.moc"
