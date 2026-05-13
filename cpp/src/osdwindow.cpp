@@ -387,6 +387,23 @@ std::pair<int, int> OSDWindow::absPos() const
     return {geo.x() + osd.x, geo.y() + osd.y};
 }
 
+// Clamp absX/absY so the OSD window (width() × height()) stays fully within
+// the available geometry of the screen that contains the requested position.
+std::pair<int, int> OSDWindow::clampedPos(int absX, int absY) const
+{
+    QScreen* screen = QApplication::screenAt(QPoint(absX, absY));
+    if (!screen && !QApplication::screens().isEmpty()) screen = QApplication::screens().first();
+    if (!screen) return {absX, absY};
+
+    const QRect avail = screen->availableGeometry();
+    const int maxX = std::max(avail.left(), avail.right() - width());
+    const int maxY = std::max(avail.top(), avail.bottom() - height());
+    const int x = std::clamp(absX, avail.left(), maxX);
+    const int y = std::clamp(absY, avail.top(), maxY);
+    return {x, y};
+}
+
+
 void OSDWindow::positionWindow(int absX, int absY)
 {
 #ifdef HAVE_LAYER_SHELL_QT
