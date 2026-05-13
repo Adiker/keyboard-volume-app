@@ -99,6 +99,8 @@ class MprisClient : public QObject
         QString status; // "Playing" / "Paused" / "Stopped"
         bool canSeek = false;
         qint64 lengthUs = 0;
+        qint64 harmonoidLocalLengthUs = 0;
+        QString harmonoidLocalLengthKey;
         QString trackId;
         QString title;
         QString artist;
@@ -112,6 +114,7 @@ class MprisClient : public QObject
     void reevaluateActive(bool forceTrackChanged = false);
     int priorityOf(const QString& service) const; // lower = higher priority; -1 = not tracked
     void pollPosition();
+    void emitPositionUpdate(qint64 positionUs, const QString& source);
 
     Config* m_config = nullptr;
     QDBusConnection m_bus;
@@ -125,6 +128,7 @@ class MprisClient : public QObject
 
     QStringList m_trackedPlayers; // cached from config
     int m_pollMs = 500;
+    qint64 m_lastPositionUs = -1;
 
     // Throttle for Position updates delivered via PropertiesChanged (e.g. Harmonoid
     // sends ~12/sec). Only emit positionChanged once per m_pollMs window; also used

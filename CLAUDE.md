@@ -308,7 +308,9 @@ Selection is deterministic: filter by `Config::osd().trackedPlayers`, sort by th
 
 `MprisClient` lives in the main Qt thread only. All D-Bus reads are async via QtDBus; do not call it from `PaWorker` or `InputHandler`. It may keep active-player and metadata state current while progress is disabled, but it must not poll `Position` unless `Config::osd().progressEnabled` is true.
 
-`PlayerInfo` struct: `service` (D-Bus name), `displayName`, `status` (`Playing`/`Paused`/`Stopped`), `canSeek`, `lengthUs`, `trackId`, `title`, `artist`.
+`PlayerInfo` struct: `service` (D-Bus name), `displayName`, `status` (`Playing`/`Paused`/`Stopped`), `canSeek`, `lengthUs`, `trackId`, `title`, `artist`. Capability flags: `canGoNext`, `canGoPrevious`, `canPause`, `canPlay` — read from D-Bus properties `CanGoNext`, `CanGoPrevious`, `CanPause`, `CanPlay` during initial fetch and `PropertiesChanged` updates.
+
+Harmonoid-specific guards: Harmonoid can push high-frequency `Position` via `PropertiesChanged` while an async `Get(Position)` poll briefly returns stale `0`; suppress Harmonoid poll replies that jump backwards by more than ~2s from the last accepted position. Harmonoid may also send transient incomplete metadata; keep the existing track identity/local TagLib duration when the same track briefly lacks URL, title/artist, or length. For live diagnosis, run with `KVA_DEBUG_PROGRESS=1` to log MPRIS→OSD progress decisions.
 
 Signals:
 - `activePlayerChanged(PlayerInfo)` — new active player selected or lost

@@ -267,6 +267,8 @@ Hotkey values are evdev bindings: legacy integers are `EV_KEY` codes (`KEY_VOLUM
 
 OSD playback progress is configured under `osd`. `progress_enabled` is the master toggle, `progress_interactive` allows seek-capable players to be controlled from the progress bar, `progress_poll_ms` is clamped to `200..2000`, `progress_label_mode` is `app`, `track`, or `both`, and `tracked_players` is a priority list matched against MPRIS service names. When enabled and a tracked player is active, the OSD expands from the base volume view to a progress row with a track label, 0-1000 progress bar, and time label. Clicking or dragging the bar sends MPRIS `SetPosition` while the player reports `CanSeek` and a known length. Streams with unknown length disable the bar and show `LIVE`. Set `progress_interactive: false` to disable click/drag seek globally while keeping the visual progress row — useful if the player supports `CanSeek` but you prefer keyboard-only control.
 
+For troubleshooting rare MPRIS progress glitches, start the app with `KVA_DEBUG_PROGRESS=1` to log progress metadata, position source, and OSD bar decisions.
+
 ### Project structure
 
 ```
@@ -592,6 +594,8 @@ Wartości skrótów to bindingi evdev: starsze liczby oznaczają kody `EV_KEY` (
 `auto_profile_switch` (domyślnie `false`) globalnie włącza auto-przełączanie profilu wg aktywnego okna. Per-profilowe `auto_switch` (domyślnie `true`) kontroluje, czy dany profil bierze udział w auto-przełączaniu.
 
 Postęp odtwarzania OSD jest konfigurowany w sekcji `osd`. `progress_enabled` jest głównym przełącznikiem, `progress_interactive` pozwala sterować seekowalnymi odtwarzaczami z paska postępu, `progress_poll_ms` jest ograniczane do `200..2000`, `progress_label_mode` przyjmuje `app`, `track` albo `both`, a `tracked_players` to lista priorytetów dopasowywana do nazw usług MPRIS. Gdy opcja jest włączona i działa śledzony odtwarzacz, OSD powiększa widok głośności o wiersz postępu z etykietą utworu, paskiem 0-1000 i czasem. Kliknięcie lub przeciągnięcie paska wysyła MPRIS `SetPosition`, jeśli odtwarzacz zgłasza `CanSeek` i znaną długość. Strumienie bez znanej długości wyłączają pasek i pokazują `LIVE`. Ustaw `progress_interactive: false`, aby wyłączyć seekowanie kliknięciem/przeciągnięciem globalnie, zachowując wizualny pasek postępu — przydatne gdy wolisz sterować wyłącznie z klawiatury.
+
+Do diagnozowania rzadkich problemów z postępem MPRIS uruchom aplikację z `KVA_DEBUG_PROGRESS=1`, żeby logować metadane postępu, źródło pozycji i decyzje paska OSD.
 
 ### Struktura projektu
 

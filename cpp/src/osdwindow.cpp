@@ -12,12 +12,19 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QProgressBar>
+#include <QPushButton>
+#include <QDebug>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPainter>
 #include <QScreen>
 #include <QWindow>
 #include <QPaintEvent>
+
+static bool progressDebugEnabled()
+{
+    return qEnvironmentVariableIsSet("KVA_DEBUG_PROGRESS");
+}
 
 // ─── MarqueeLabel ─────────────────────────────────────────────────────────────
 // QLabel that scrolls its text horizontally when the text is wider than the
@@ -445,9 +452,26 @@ void OSDWindow::setProgressVisible(bool on)
 void OSDWindow::updateTrack(const QString& title, const QString& artist, qint64 lengthUs,
                             bool canSeek)
 {
-    const bool trackChanged = m_trackTitle != title || m_trackArtist != artist ||
-                              m_trackLengthUs != lengthUs || m_canSeek != canSeek;
+    const qint64 oldLengthUs = m_trackLengthUs;
+    const qint64 oldPositionUs = m_lastPositionUs;
+    const int oldProgressValue = m_progressBar ? m_progressBar->value() : -1;
+    const QString oldTitle = m_trackTitle;
+    const QString oldArtist = m_trackArtist;
+    const bool oldCanSeek = m_canSeek;
+
+    const bool identityChanged = m_trackTitle != title || m_trackArtist != artist;
+    const bool transientMissingLength = !identityChanged && m_trackLengthUs > 0 && lengthUs <= 0;
+    if (transientMissingLength)
+    {
+        lengthUs = m_trackLengthUs;
+        canSeek = m_canSeek;
+    }
+
+    const bool trackChanged =
+        identityChanged || m_trackLengthUs != lengthUs || m_canSeek != canSeek;
     if (m_seeking && trackChanged) finishSeeking();
+
+    if (identityChanged) m_lastPositionUs = 0;
 
     m_trackTitle = title;
     m_trackArtist = artist;
@@ -467,8 +491,24 @@ void OSDWindow::updateTrack(const QString& title, const QString& artist, qint64 
     else
     {
         m_progressBar->setEnabled(true);
-        m_progressBar->setValue(0);
-        m_labelTime->setText(QStringLiteral("0:00 / %1").arg(formatTime(lengthUs)));
+        const qint64 posUs = identityChanged ? 0 : std::clamp(m_lastPositionUs, 0LL, lengthUs);
+        m_lastPositionUs = posUs;
+        const int val = static_cast<int>(std::clamp(posUs * 1000LL / lengthUs, 0LL, 1000LL));
+        m_progressBar->setValue(val);
+        m_labelTime->setText(
+            QStringLiteral("%1 / %2").arg(formatTime(posUs), formatTime(lengthUs)));
+    }
+
+    if (progressDebugEnabled())
+    {
+        qDebug() << "[ProgressDebug][OSD] updateTrack oldTitle=" << oldTitle << "newTitle=" << title
+                 << "oldArtist=" << oldArtist << "newArtist=" << artist << "oldLen=" << oldLengthUs
+                 << "newLen=" << lengthUs << "oldPos=" << oldPositionUs
+                 << "newPos=" << m_lastPositionUs << "oldCanSeek=" << oldCanSeek
+                 << "newCanSeek=" << canSeek << "identityChanged=" << identityChanged
+                 << "transientMissingLength=" << transientMissingLength
+                 << "oldBar=" << oldProgressValue << "newBar=" << m_progressBar->value()
+                 << "time=" << m_labelTime->text();
     }
 }
 
@@ -476,11 +516,23 @@ void OSDWindow::updatePosition(qint64 positionUs)
 {
     if (m_trackLengthUs <= 0 || m_seeking) return;
 
+    const qint64 oldPositionUs = m_lastPositionUs;
+    const int oldProgressValue = m_progressBar ? m_progressBar->value() : -1;
+    m_lastPositionUs = std::clamp(positionUs, 0LL, m_trackLengthUs);
     const int val =
-        static_cast<int>(std::clamp(positionUs * 1000LL / m_trackLengthUs, 0LL, 1000LL));
+        static_cast<int>(std::clamp(m_lastPositionUs * 1000LL / m_trackLengthUs, 0LL, 1000LL));
     m_progressBar->setValue(val);
     m_labelTime->setText(
-        QStringLiteral("%1 / %2").arg(formatTime(positionUs), formatTime(m_trackLengthUs)));
+        QStringLiteral("%1 / %2").arg(formatTime(m_lastPositionUs), formatTime(m_trackLengthUs)));
+
+    if (progressDebugEnabled() &&
+        (m_lastPositionUs + 2000000LL < oldPositionUs || val + 20 < oldProgressValue))
+    {
+        qDebug() << "[ProgressDebug][OSD] positionBackwards oldPos=" << oldPositionUs
+                 << "newPos=" << m_lastPositionUs << "oldBar=" << oldProgressValue
+                 << "newBar=" << val << "title=" << m_trackTitle << "artist=" << m_trackArtist
+                 << "len=" << m_trackLengthUs;
+    }
 }
 
 // ─── Seek interaction (event filter on m_progressBar) ─────────────────────────
