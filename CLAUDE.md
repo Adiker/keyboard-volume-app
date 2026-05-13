@@ -288,6 +288,15 @@ Selection is deterministic: filter by `Config::osd().trackedPlayers`, sort by th
 
 `MprisClient` lives in the main Qt thread only. All D-Bus reads are async via QtDBus; do not call it from `PaWorker` or `InputHandler`. It may keep active-player and metadata state current while progress is disabled, but it must not poll `Position` unless `Config::osd().progressEnabled` is true.
 
+`PlayerInfo` struct: `service` (D-Bus name), `displayName`, `status` (`Playing`/`Paused`/`Stopped`), `canSeek`, `lengthUs`, `trackId`, `title`, `artist`.
+
+Signals:
+- `activePlayerChanged(PlayerInfo)` — new active player selected or lost
+- `trackChanged(title, artist, lengthUs, canSeek)` — track metadata updated
+- `positionChanged(qint64 positionUs)` — position polled from active player (only when `progressEnabled`)
+- `playbackStatusChanged(QString status)` — Playing/Paused/Stopped state changed
+- `noPlayer()` — no tracked player available on the session bus
+
 ### `cpp/src/trayapp.h/cpp` — `TrayApp`
 
 System tray icon with context menu. `currentApp()` returns `Config::defaultProfile().app` (the default profile's app, NOT the legacy `selectedApp()` directly). Selecting an app from the tray's radio list calls `Config::setDefaultProfileApp(name)`, which updates the default profile and mirrors to legacy `selected_app` for D-Bus/MPRIS continuity.
