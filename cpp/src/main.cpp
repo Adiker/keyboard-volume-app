@@ -8,6 +8,7 @@
 #include "firstrunwizard.h"
 #include "dbusinterface.h"
 #include "mprisinterface.h"
+#include "mprisclient.h"
 #include "screenutils.h"
 #include "windowtracker.h"
 #include "audioapp.h"
@@ -89,6 +90,7 @@ class App : public QObject
         m_osd->initLayerShell(); // no-op unless g_nativeWayland && HAVE_LAYER_SHELL_QT
         m_input = new InputHandler(this);
         m_tray = new TrayApp(m_config.get(), m_volumeCtrl, m_input, this);
+        m_mpris = new MprisClient(m_config.get(), this);
 
         connectSignals();
         initDevice();
@@ -146,6 +148,20 @@ class App : public QObject
         // App list cache for auto-switch matching
         connect(m_volumeCtrl, &VolumeController::appsReady, this,
                 [this](QList<AudioApp> apps) { m_appCache = std::move(apps); });
+
+        // MprisClient → OSDWindow progress row
+        connect(m_mpris, &MprisClient::trackChanged, m_osd,
+                [this](const QString& title, const QString& artist, qint64 lengthUs, bool canSeek)
+                {
+                    m_osd->updateTrack(title, artist, lengthUs, canSeek);
+                    m_osd->setProgressVisible(true);
+                });
+        connect(m_mpris, &MprisClient::positionChanged, m_osd, &OSDWindow::updatePosition);
+        connect(m_mpris, &MprisClient::noPlayer, m_osd,
+                [this]() { m_osd->setProgressVisible(false); });
+
+        // Settings change → reload MprisClient config
+        connect(m_tray, &TrayApp::settingsChanged, m_mpris, &MprisClient::reload);
     }
 
     void initDevice()
@@ -355,6 +371,7 @@ class App : public QObject
     OSDWindow* m_osd = nullptr; // QWidget, no parent — deleted in ~App()
     InputHandler* m_input = nullptr;
     TrayApp* m_tray = nullptr;
+    MprisClient* m_mpris = nullptr;
 
     DbusInterface* m_dbus = nullptr;
     QObject* m_mprisEndpoint = nullptr;
