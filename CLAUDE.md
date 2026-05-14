@@ -288,6 +288,17 @@ Progress row API:
 - `updatePosition(positionUs)` maps the position to the progress bar's 0-1000 range and updates the elapsed/total time label.
 - `progressLabelMode` controls whether the main label shows the app, track, or app plus track row.
 
+- `eventFilter()` handles click/drag seeking on the progress bar. It emits `seekStarted()`, repeated `seekRequested(positionUs)`, applies the release coordinate as the final seek target, and emits `seekFinished()` on release/cancel. Always clear `m_seeking` via `finishSeeking()` before returning through interaction guards, otherwise `MprisClient` polling can remain suspended.
+
+App and track labels use `MarqueeLabel` (inner class in `osdwindow.cpp`): when the text exceeds the widget width, it pauses 1.5 s, scrolls left at ~33 fps, pauses 1 s at the end, then resets. Short text that fits displays statically. No config option — always active for both labels.
+
+Media controls row (inside `m_progressRow`, below the progress bar):
+- `setMediaControlsEnabled(bool)` — shows/hides `m_controlsRow` (⏮ prev / ⏵⏸ play-pause / ⏭ next buttons) and calls `applySize()` to resize the window. Called from `reloadStyles()`.
+- `updatePlaybackStatus(status)` — switches the play/pause button glyph: `\u23F5` (▶) when Paused/Stopped, `\u23F8` (⏸) when Playing. Connected from `MprisClient::playbackStatusChanged`.
+- Clicking the buttons emits `playPauseRequested()`, `previousRequested()`, `nextRequested()` — wired to `MprisClient::playPause`, `previous`, `next` in `main.cpp`.
+- Button styling: transparent background, OSD text color, hover = bar color; applied in `applyColorStyles()`.
+- `applySize()` uses three-way logic: base / progress / progress+controls.
+
 ### `cpp/src/mprisclient.h/cpp` — `MprisClient`
 
 Consumes external MPRIS2 players from the session bus. It detects services named `org.mpris.MediaPlayer2.*`, fetches `org.mpris.MediaPlayer2.Player` properties asynchronously, and emits active-player, track, position, playback-status and no-player signals for OSD playback progress wiring.
