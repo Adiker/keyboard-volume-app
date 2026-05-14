@@ -41,6 +41,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **`kv-ctl` CLI** — script-friendly command-line client for D-Bus control without calling the external `qdbus` program
 - **MPRIS v2** — registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client
 - **MPRIS playback tracking** — consumes other players' MPRIS metadata, position, seek support and player priority for the optional OSD playback progress features
+- **Marquee labels** — app and track names that exceed the OSD width scroll automatically; short labels display statically
 - **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
 - **Unit tests** — GTest + Qt Test suite covering Config, i18n, `kv-ctl` parsing, PipeWire utilities, VolumeController, InputHandler, and the MPRIS client
 
@@ -370,6 +371,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **CLI `kv-ctl`** — wygodny klient wiersza poleceń do sterowania przez D-Bus bez wywoływania zewnętrznego programu `qdbus`
 - **MPRIS v2** — zarejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS
 - **Śledzenie odtwarzania MPRIS** — odczytuje metadane, pozycję, możliwość seekowania i priorytet innych odtwarzaczy dla opcjonalnego paska postępu OSD
+- **Etykiety marquee** — nazwy aplikacji i utworów przekraczające szerokość OSD przewijają się automatycznie; krótkie etykiety wyświetlają się statycznie
 - **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
 - **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, parsera `kv-ctl`, narzędzi PipeWire, VolumeController, InputHandler i klienta MPRIS
 
