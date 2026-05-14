@@ -12,6 +12,7 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPainter>
@@ -22,6 +23,7 @@
 static constexpr int OSD_W = 220;
 static constexpr int OSD_H_BASE = 70;      // volume only
 static constexpr int OSD_H_PROGRESS = 112; // volume + progress row
+static constexpr int OSD_H_CONTROLS = 138; // volume + progress row + controls row
 
 // ─── Construction ─────────────────────────────────────────────────────────────
 
@@ -29,7 +31,9 @@ OSDWindow::OSDWindow(Config* config, QWidget* parent) : QWidget(parent), m_confi
 {
     buildUi();
     applyStyles();
-    setProgressEnabled(m_config->osd().progressEnabled);
+    const OsdConfig osd = m_config->osd();
+    m_mediaControlsEnabled = osd.mediaControlsEnabled;
+    setProgressEnabled(osd.progressEnabled);
 }
 
 void OSDWindow::buildUi()
@@ -38,11 +42,11 @@ void OSDWindow::buildUi()
     if (!g_nativeWayland) flags |= Qt::BypassWindowManagerHint;
     setWindowFlags(flags);
     setAttribute(Qt::WA_TranslucentBackground);
-    setFixedSize(OSD_W, OSD_H_BASE);
+    setFixedSize(scaled(OSD_W), scaled(OSD_H_BASE));
 
-    QVBoxLayout* layout = new QVBoxLayout(this);
-    layout->setContentsMargins(10, 8, 10, 8);
-    layout->setSpacing(4);
+    m_mainLayout = new QVBoxLayout(this);
+    m_mainLayout->setContentsMargins(scaled(10), scaled(8), scaled(10), scaled(8));
+    m_mainLayout->setSpacing(scaled(4));
 
     // ── Volume row ────────────────────────────────────────────────────────────
     m_labelName = new QLabel(this);
@@ -52,23 +56,23 @@ void OSDWindow::buildUi()
     m_bar = new QProgressBar(this);
     m_bar->setRange(0, 100);
     m_bar->setTextVisible(false);
-    m_bar->setFixedHeight(10);
+    m_bar->setFixedHeight(scaled(10));
 
     m_labelPct = new QLabel(this);
     m_labelPct->setAlignment(Qt::AlignCenter);
     m_labelPct->setObjectName(QStringLiteral("pct_label"));
 
-    layout->addWidget(m_labelName);
-    layout->addWidget(m_bar);
-    layout->addWidget(m_labelPct);
+    m_mainLayout->addWidget(m_labelName);
+    m_mainLayout->addWidget(m_bar);
+    m_mainLayout->addWidget(m_labelPct);
 
     // ── Progress row (hidden by default) ─────────────────────────────────────
     m_progressRow = new QWidget(this);
     m_progressRow->setVisible(false);
 
-    QVBoxLayout* pLayout = new QVBoxLayout(m_progressRow);
-    pLayout->setContentsMargins(0, 2, 0, 0);
-    pLayout->setSpacing(2);
+    m_progressLayout = new QVBoxLayout(m_progressRow);
+    m_progressLayout->setContentsMargins(0, scaled(2), 0, 0);
+    m_progressLayout->setSpacing(scaled(2));
 
     m_labelTrack = new QLabel(m_progressRow);
     m_labelTrack->setAlignment(Qt::AlignCenter);
@@ -78,18 +82,48 @@ void OSDWindow::buildUi()
     m_progressBar->setRange(0, 1000);
     m_progressBar->setValue(0);
     m_progressBar->setTextVisible(false);
-    m_progressBar->setFixedHeight(8);
+    m_progressBar->setFixedHeight(scaled(8));
     m_progressBar->installEventFilter(this); // seek interaction
 
     m_labelTime = new QLabel(m_progressRow);
     m_labelTime->setAlignment(Qt::AlignCenter);
     m_labelTime->setObjectName(QStringLiteral("time_label"));
 
-    pLayout->addWidget(m_labelTrack);
-    pLayout->addWidget(m_progressBar);
-    pLayout->addWidget(m_labelTime);
+    // ── Media controls row ────────────────────────────────────────────────────
+    m_controlsRow = new QWidget(m_progressRow);
+    m_controlsRow->setObjectName(QStringLiteral("controls_row"));
+    m_controlsLayout = new QHBoxLayout(m_controlsRow);
+    m_controlsLayout->setContentsMargins(0, 0, 0, 0);
+    m_controlsLayout->setSpacing(scaled(8));
+    m_controlsLayout->addStretch();
 
-    layout->addWidget(m_progressRow);
+    m_btnPrev = new QPushButton(QStringLiteral("\u23EE"), m_controlsRow);      // ⏮
+    m_btnPlayPause = new QPushButton(QStringLiteral("\u23F5"), m_controlsRow); // ⏵
+    m_btnNext = new QPushButton(QStringLiteral("\u23ED"), m_controlsRow);      // ⏭
+
+    for (auto* btn : {m_btnPrev, m_btnPlayPause, m_btnNext})
+    {
+        btn->setFixedSize(scaled(24), scaled(20));
+        btn->setCursor(Qt::PointingHandCursor);
+        btn->setFlat(true);
+        btn->setObjectName(QStringLiteral("ctrl_btn"));
+    }
+
+    m_controlsLayout->addWidget(m_btnPrev);
+    m_controlsLayout->addWidget(m_btnPlayPause);
+    m_controlsLayout->addWidget(m_btnNext);
+    m_controlsLayout->addStretch();
+
+    connect(m_btnPrev, &QPushButton::clicked, this, &OSDWindow::previousRequested);
+    connect(m_btnPlayPause, &QPushButton::clicked, this, &OSDWindow::playPauseRequested);
+    connect(m_btnNext, &QPushButton::clicked, this, &OSDWindow::nextRequested);
+
+    m_progressLayout->addWidget(m_labelTrack);
+    m_progressLayout->addWidget(m_progressBar);
+    m_progressLayout->addWidget(m_controlsRow);
+    m_progressLayout->addWidget(m_labelTime);
+
+    m_mainLayout->addWidget(m_progressRow);
 
     // ── Hide timer ────────────────────────────────────────────────────────────
     m_hideTimer = new QTimer(this);
@@ -116,32 +150,58 @@ void OSDWindow::applyColorStyles(const QString& colorBg, const QString& colorTex
     QString bar = colorBar;
     if (bar.startsWith(QLatin1Char('#'))) bar.remove(0, 1);
 
+    const double s = m_previewScale > 0.0 ? m_previewScale : m_config->osd().osdScale;
+    const int ptName = qMax(6, qRound(11 * s));
+    const int ptPct = qMax(5, qRound(9 * s));
+    const int ptTrack = qMax(5, qRound(9 * s));
+    const int ptTime = qMax(4, qRound(8 * s));
+    const int ptCtrl = qMax(6, qRound(12 * s));
+
     setStyleSheet(
         QStringLiteral(
             "QLabel { color: #%1; background: transparent; }"
-            "QLabel#name_label  { font-size: 11pt; font-weight: bold; font-family: 'Noto Sans', "
+            "QLabel#name_label  { font-size: %3pt; font-weight: bold; font-family: 'Noto Sans', "
             "'Segoe UI', sans-serif; }"
-            "QLabel#pct_label   { font-size: 9pt;  font-family: 'Noto Sans', 'Segoe UI', "
+            "QLabel#pct_label   { font-size: %4pt; font-family: 'Noto Sans', 'Segoe UI', "
             "sans-serif; }"
-            "QLabel#track_label { font-size: 9pt;  font-family: 'Noto Sans', 'Segoe UI', "
+            "QLabel#track_label { font-size: %5pt; font-family: 'Noto Sans', 'Segoe UI', "
             "sans-serif; }"
-            "QLabel#time_label  { font-size: 8pt;  font-family: 'Noto Sans', 'Segoe UI', "
+            "QLabel#time_label  { font-size: %6pt; font-family: 'Noto Sans', 'Segoe UI', "
             "sans-serif; }"
             "QProgressBar { background-color: #333333; border: none; border-radius: 3px; }"
             "QProgressBar::chunk { background-color: #%2; border-radius: 3px; }")
-            .arg(text, bar));
+            .arg(text, bar)
+            .arg(ptName)
+            .arg(ptPct)
+            .arg(ptTrack)
+            .arg(ptTime));
 
     m_labelName->setStyleSheet(
-        QStringLiteral("font-size: 11pt; font-weight: bold; color: #%1; background: transparent;")
-            .arg(text));
+        QStringLiteral("font-size: %2pt; font-weight: bold; color: #%1; background: transparent;")
+            .arg(text)
+            .arg(ptName));
     m_labelPct->setStyleSheet(
-        QStringLiteral("font-size: 9pt; color: #%1; background: transparent;").arg(text));
+        QStringLiteral("font-size: %2pt; color: #%1; background: transparent;")
+            .arg(text)
+            .arg(ptPct));
     if (m_labelTrack)
         m_labelTrack->setStyleSheet(
-            QStringLiteral("font-size: 9pt; color: #%1; background: transparent;").arg(text));
+            QStringLiteral("font-size: %2pt; color: #%1; background: transparent;")
+                .arg(text)
+                .arg(ptTrack));
     if (m_labelTime)
         m_labelTime->setStyleSheet(
-            QStringLiteral("font-size: 8pt; color: #%1; background: transparent;").arg(text));
+            QStringLiteral("font-size: %2pt; color: #%1; background: transparent;")
+                .arg(text)
+                .arg(ptTime));
+    const QString ctrlStyle =
+        QStringLiteral("QPushButton#ctrl_btn { background: transparent; border: none; "
+                       "color: #%1; font-size: %3pt; font-family: 'Noto Sans', 'Segoe UI', "
+                       "sans-serif; padding: 0; }"
+                       "QPushButton#ctrl_btn:hover { color: #%2; }")
+            .arg(text, bar)
+            .arg(ptCtrl);
+    if (m_controlsRow) m_controlsRow->setStyleSheet(ctrlStyle);
     update();
 }
 
@@ -153,7 +213,7 @@ void OSDWindow::paintEvent(QPaintEvent* event)
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setPen(Qt::NoPen);
     painter.setBrush(m_bgColor);
-    painter.drawRoundedRect(rect(), 8, 8);
+    painter.drawRoundedRect(rect(), scaled(8), scaled(8));
     QWidget::paintEvent(event);
 }
 
@@ -177,10 +237,34 @@ void OSDWindow::leaveEvent(QEvent* /*event*/)
 
 // ─── Size helpers ─────────────────────────────────────────────────────────────
 
+void OSDWindow::rescale()
+{
+    // Re-apply all inner widget sizes that were baked in buildUi() with the
+    // scale at construction time.  Must be called whenever osdScale changes.
+    m_mainLayout->setContentsMargins(scaled(10), scaled(8), scaled(10), scaled(8));
+    m_mainLayout->setSpacing(scaled(4));
+
+    m_bar->setFixedHeight(scaled(10));
+
+    if (m_progressLayout)
+    {
+        m_progressLayout->setContentsMargins(0, scaled(2), 0, 0);
+        m_progressLayout->setSpacing(scaled(2));
+    }
+    if (m_progressBar) m_progressBar->setFixedHeight(scaled(8));
+    if (m_controlsLayout) m_controlsLayout->setSpacing(scaled(8));
+    for (auto* btn : {m_btnPrev, m_btnPlayPause, m_btnNext})
+        if (btn) btn->setFixedSize(scaled(24), scaled(20));
+
+    applySize(); // updates outer window dimensions and repositions
+}
+
 void OSDWindow::applySize()
 {
-    const int h = (m_progressEnabled && m_progressVisible) ? OSD_H_PROGRESS : OSD_H_BASE;
-    setFixedSize(OSD_W, h);
+    int h = OSD_H_BASE;
+    if (m_progressEnabled && m_progressVisible)
+        h = (m_mediaControlsEnabled && m_controlsRow) ? OSD_H_CONTROLS : OSD_H_PROGRESS;
+    setFixedSize(scaled(OSD_W), scaled(h));
 
 #ifdef HAVE_LAYER_SHELL_QT
     if (m_layerShellActive && m_lsWindow && isVisible())
@@ -194,7 +278,7 @@ void OSDWindow::applySize()
     {
         auto [absX, absY] = absPos();
         move(absX, absY);
-        setGeometry(absX, absY, OSD_W, h);
+        setGeometry(absX, absY, scaled(OSD_W), scaled(h));
         if (QWindow* wh = windowHandle()) wh->setPosition(absX, absY);
     }
 }
@@ -254,12 +338,28 @@ std::pair<int, int> OSDWindow::absPos() const
     return {geo.x() + osd.x, geo.y() + osd.y};
 }
 
+// Clamp absX/absY so the OSD window (width() × height()) stays fully within
+// the available geometry of the screen that contains the requested position.
+std::pair<int, int> OSDWindow::clampedPos(int absX, int absY) const
+{
+    QScreen* screen = QApplication::screenAt(QPoint(absX, absY));
+    if (!screen && !QApplication::screens().isEmpty()) screen = QApplication::screens().first();
+    if (!screen) return {absX, absY};
+
+    const QRect avail = screen->availableGeometry();
+    const int x = std::clamp(absX, avail.left(), avail.right() - width());
+    const int y = std::clamp(absY, avail.top(), avail.bottom() - height());
+    return {x, y};
+}
+
 void OSDWindow::positionWindow(int absX, int absY)
 {
+    auto [x, y] = clampedPos(absX, absY);
+
 #ifdef HAVE_LAYER_SHELL_QT
     if (m_layerShellActive && m_lsWindow)
     {
-        QScreen* screen = QApplication::screenAt(QPoint(absX, absY));
+        QScreen* screen = QApplication::screenAt(QPoint(x, y));
         if (!screen && !QApplication::screens().isEmpty()) screen = QApplication::screens().first();
 
         if (screen && screen != m_lsScreen)
@@ -268,13 +368,13 @@ void OSDWindow::positionWindow(int absX, int absY)
             m_lsScreen = screen;
         }
 
-        int relX = absX;
-        int relY = absY;
+        int relX = x;
+        int relY = y;
         if (screen)
         {
             const QRect geo = screen->geometry();
-            relX = absX - geo.x();
-            relY = absY - geo.y();
+            relX = x - geo.x();
+            relY = y - geo.y();
         }
         m_lsWindow->setMargins(QMargins(relX, relY, 0, 0));
 
@@ -283,11 +383,11 @@ void OSDWindow::positionWindow(int absX, int absY)
         return;
     }
 #endif
-    move(absX, absY);
-    setGeometry(absX, absY, width(), height());
+    move(x, y);
+    setGeometry(x, y, width(), height());
     show();
     raise();
-    if (QWindow* wh = windowHandle()) wh->setPosition(absX, absY);
+    if (QWindow* wh = windowHandle()) wh->setPosition(x, y);
 }
 
 // ─── Progress row API ─────────────────────────────────────────────────────────
@@ -300,6 +400,7 @@ void OSDWindow::setProgressEnabled(bool on)
         finishSeeking();
         m_progressVisible = false;
         m_progressRow->setVisible(false);
+        if (m_controlsRow) m_controlsRow->setVisible(false);
         refreshNameLabel();
         applySize();
     }
@@ -312,6 +413,7 @@ void OSDWindow::setProgressVisible(bool on)
     if (!on) finishSeeking();
     m_progressVisible = on;
     m_progressRow->setVisible(on);
+    if (m_controlsRow) m_controlsRow->setVisible(on && m_mediaControlsEnabled);
     refreshNameLabel();
     applySize();
 }
@@ -460,11 +562,40 @@ void OSDWindow::refreshNameLabel()
     }
 }
 
+int OSDWindow::scaled(int base) const
+{
+    const double s = m_previewScale > 0.0 ? m_previewScale : m_config->osd().osdScale;
+    return qRound(base * s);
+}
+
+void OSDWindow::applyPreviewScale(double scale)
+{
+    m_previewScale = scale;
+    rescale();
+}
+
 void OSDWindow::finishSeeking()
 {
     if (!m_seeking) return;
     m_seeking = false;
     emit seekFinished();
+}
+
+void OSDWindow::updatePlaybackStatus(const QString& status)
+{
+    m_playbackStatus = status;
+    if (m_btnPlayPause)
+    {
+        m_btnPlayPause->setText(status == QLatin1String("Playing") ? QStringLiteral("\u23F8")
+                                                                   : QStringLiteral("\u23F5"));
+    }
+}
+
+void OSDWindow::setMediaControlsEnabled(bool on)
+{
+    m_mediaControlsEnabled = on;
+    if (m_controlsRow) m_controlsRow->setVisible(on && m_progressVisible);
+    applySize();
 }
 
 // static
@@ -548,9 +679,14 @@ void OSDWindow::applyPreviewColors(const QString& colorBg, const QString& colorT
 
 void OSDWindow::reloadStyles()
 {
-    applyStyles();
-    setProgressEnabled(m_config->osd().progressEnabled);
-    if (!m_config->osd().progressInteractive) finishSeeking();
+    m_previewScale = -1.0; // clear any live preview override before applying saved config
+    applyStyles();         // font sizes scale via scaled() internally
+    rescale();             // re-apply inner widget sizes (bar heights, button sizes, margins)
+    const OsdConfig osd = m_config->osd();
+    m_mediaControlsEnabled = osd.mediaControlsEnabled;
+    setMediaControlsEnabled(m_mediaControlsEnabled);
+    setProgressEnabled(osd.progressEnabled);
+    if (!osd.progressInteractive) finishSeeking();
     auto [absX, absY] = absPos();
 #ifdef HAVE_LAYER_SHELL_QT
     if (m_layerShellActive && m_lsWindow)

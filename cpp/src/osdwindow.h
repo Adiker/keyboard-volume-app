@@ -7,10 +7,13 @@
 #include <LayerShellQt/Window>
 #endif
 
+class QHBoxLayout;
 class QLabel;
 class QMouseEvent;
+class QPushButton;
 class QProgressBar;
 class QScreen;
+class QVBoxLayout;
 class Config;
 
 // Frameless always-on-top OSD overlay.
@@ -51,6 +54,10 @@ class OSDWindow : public QWidget
     void applyPreviewColors(const QString& colorBg, const QString& colorText,
                             const QString& colorBar, int opacity = 85);
 
+    // Apply scale live without saving — used for settings dialog preview.
+    // Call before applyPreviewColors() so font sizes use the preview scale.
+    void applyPreviewScale(double scale);
+
     // Call after config changes to refresh colors and position.
     void reloadStyles();
 
@@ -75,6 +82,13 @@ class OSDWindow : public QWidget
     // Update playback position. Ignored when no track is loaded or during drag.
     void updatePosition(qint64 positionUs);
 
+    // Update the play/pause button icon. Call when MprisClient::playbackStatusChanged fires.
+    void updatePlaybackStatus(const QString& status);
+
+    // Show or hide the media control buttons (prev/play-pause/next).
+    // No-op when the progress row is not enabled.
+    void setMediaControlsEnabled(bool on);
+
   signals:
     // Emitted when the user starts a seek drag — caller should suspend polling.
     void seekStarted();
@@ -82,6 +96,11 @@ class OSDWindow : public QWidget
     void seekFinished();
     // Emitted on press and every drag move with the target position in µs.
     void seekRequested(qint64 positionUs);
+
+    // Media control button clicks — connect to MprisClient slots.
+    void playPauseRequested();
+    void nextRequested();
+    void previousRequested();
 
   protected:
     void paintEvent(QPaintEvent* event) override;
@@ -92,6 +111,7 @@ class OSDWindow : public QWidget
   private:
     // ── Volume row ───────────────────────────────────────────────────────────
     Config* m_config;
+    QVBoxLayout* m_mainLayout = nullptr;
     QLabel* m_labelName = nullptr;
     QProgressBar* m_bar = nullptr;
     QLabel* m_labelPct = nullptr;
@@ -100,15 +120,26 @@ class OSDWindow : public QWidget
     bool m_previewMode = false;
     bool m_previewHeld = false;
     int m_previewTimeoutMs = 1500;
+    double m_previewScale = -1.0; // overrides config scale during settings preview; -1 = inactive
 
     // ── Progress row ─────────────────────────────────────────────────────────
     QWidget* m_progressRow = nullptr; // container — show/hide as a unit
+    QVBoxLayout* m_progressLayout = nullptr;
     QLabel* m_labelTrack = nullptr;
     QProgressBar* m_progressBar = nullptr;
     QLabel* m_labelTime = nullptr;
 
+    // ── Media controls row (within progress row) ──────────────────────────────
+    QWidget* m_controlsRow = nullptr;
+    QHBoxLayout* m_controlsLayout = nullptr;
+    QPushButton* m_btnPrev = nullptr;
+    QPushButton* m_btnPlayPause = nullptr;
+    QPushButton* m_btnNext = nullptr;
+    QString m_playbackStatus; // "Playing" / "Paused" / "Stopped"
+
     bool m_progressEnabled = false;
     bool m_progressVisible = false;
+    bool m_mediaControlsEnabled = true;
     qint64 m_trackLengthUs = 0;
     bool m_canSeek = false;
     bool m_seeking = false; // true while user is dragging the seek bar
@@ -130,9 +161,18 @@ class OSDWindow : public QWidget
                           int opacity);
     void positionWindow(int absX, int absY);
     std::pair<int, int> absPos() const;
+    // Clamp (absX, absY) so the window stays within its screen's available geometry.
+    std::pair<int, int> clampedPos(int absX, int absY) const;
 
     // Resize OSD and re-apply position (handles both X11 and layer-shell).
     void applySize();
+
+    // Scale a pixel dimension by the configured osdScale factor.
+    int scaled(int base) const;
+
+    // Re-apply all inner widget sizes/margins after osdScale changes.
+    // Must be called from reloadStyles() whenever scale may have changed.
+    void rescale();
 
     // Update m_labelName text based on progressLabelMode + cached track info.
     void refreshNameLabel();

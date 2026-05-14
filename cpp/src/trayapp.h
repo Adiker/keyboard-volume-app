@@ -15,11 +15,9 @@ class InputHandler;
 class TrayApp : public QObject
 {
     Q_OBJECT
-public:
-    explicit TrayApp(Config *config,
-                     VolumeController *volumeCtrl,
-                     InputHandler *inputHandler,
-                     QObject *parent = nullptr);
+  public:
+    explicit TrayApp(Config* config, VolumeController* volumeCtrl, InputHandler* inputHandler,
+                     QObject* parent = nullptr);
 
     // Return the name of the currently selected audio app (may be empty).
     QString currentApp() const;
@@ -27,33 +25,34 @@ public:
     // Rebuild the tray menu — call after language change.
     void rebuildMenu();
 
-signals:
-    void appChanged(const QString &name);
+  signals:
+    void appChanged(const QString& name);
     void deviceChangeRequested();
     void settingsChanged();
     void osdPreviewRequested(int screenIdx, int x, int y);
     void osdPreviewFinished();
-    void osdStylePreviewRequested(const QString &colorBg, const QString &colorText,
-                                  const QString &colorBar, int opacity);
+    void osdStylePreviewRequested(const QString& colorBg, const QString& colorText,
+                                  const QString& colorBar, int opacity);
+    void osdScalePreviewRequested(double scale);
     void osdPreviewHeldRequested(int screenIdx, int x, int y);
     void osdPreviewReleased(int timeoutMs);
 
-private slots:
+  private slots:
     void onRefresh();
-    void onAppSelected(const QString &name);
+    void onAppSelected(const QString& name);
     void openSettings();
     void openAppSelector();
 
-private:
+  private:
     void buildMenu();
     void populateAppList();
 
-    Config           *m_config;
-    VolumeController *m_volumeCtrl;
-    InputHandler     *m_inputHandler;
+    Config* m_config;
+    VolumeController* m_volumeCtrl;
+    InputHandler* m_inputHandler;
 
-    QSystemTrayIcon  *m_tray      = nullptr;
-    QMenu            *m_menu      = nullptr;
-    QActionGroup     *m_appGroup  = nullptr;
-    QMap<QString, QAction *> m_appActions;
+    QSystemTrayIcon* m_tray = nullptr;
+    QMenu* m_menu = nullptr;
+    QActionGroup* m_appGroup = nullptr;
+    QMap<QString, QAction*> m_appActions;
 };

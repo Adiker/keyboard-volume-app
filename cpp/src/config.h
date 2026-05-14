@@ -33,6 +33,12 @@ struct OsdConfig
     // First Playing player wins; then first Paused; then noPlayer().
     QStringList trackedPlayers = {QStringLiteral("spotify"), QStringLiteral("youtube"),
                                   QStringLiteral("strawberry"), QStringLiteral("harmonoid")};
+
+    // ── Media controls (play/pause/next/prev buttons in progress row) ─────────
+    bool mediaControlsEnabled = true; // show media control buttons (default ON)
+
+    // ── OSD scale ─────────────────────────────────────────────────────────────
+    double osdScale = 1.0; // overall OSD scale factor, clamped 0.5–3.0
 };
 
 // ─── Hotkeys ──────────────────────────────────────────────────────────────────

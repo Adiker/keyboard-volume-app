@@ -10,6 +10,7 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
@@ -330,6 +331,15 @@ void SettingsDialog::buildUi()
     m_opacity->setValue(osd.opacity);
     form->addRow(::tr(QStringLiteral("settings.opacity")), m_opacity);
 
+    // OSD scale
+    m_osdScale = new QDoubleSpinBox(this);
+    m_osdScale->setRange(0.5, 3.0);
+    m_osdScale->setSingleStep(0.1);
+    m_osdScale->setDecimals(1);
+    m_osdScale->setSuffix(QStringLiteral("x"));
+    m_osdScale->setValue(osd.osdScale);
+    form->addRow(::tr(QStringLiteral("settings.osd_scale")), m_osdScale);
+
     // Auto-switch profile
     m_autoProfile = new QCheckBox(::tr(QStringLiteral("settings.auto_profile_switch")), this);
     m_autoProfile->setChecked(m_config->autoProfileSwitch());
@@ -381,6 +391,11 @@ void SettingsDialog::buildUi()
         ::tr(QStringLiteral("settings.progress.tracked_players_hint")));
     progressForm->addRow(::tr(QStringLiteral("settings.progress.tracked_players")),
                          m_trackedPlayers);
+
+    m_mediaControlsEnabled =
+        new QCheckBox(::tr(QStringLiteral("settings.progress.media_controls")), this);
+    m_mediaControlsEnabled->setChecked(osd.mediaControlsEnabled);
+    progressForm->addRow(QString(), m_mediaControlsEnabled);
 
     layout->addLayout(progressForm);
 
@@ -461,6 +476,8 @@ void SettingsDialog::buildUi()
             [this](const QString&) { emitStylePreview(); });
     connect(m_opacity, QOverload<int>::of(&QSpinBox::valueChanged), this,
             [this](int) { emitStylePreview(); });
+    connect(m_osdScale, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [this](double) { emitStylePreview(); });
 }
 
 void SettingsDialog::onPreviewPressed()
@@ -481,6 +498,7 @@ void SettingsDialog::emitPositionPreview()
 
 void SettingsDialog::emitStylePreview()
 {
+    emit scalePreview(m_osdScale->value());
     emit stylePreview(m_colorBg->color(), m_colorText->color(), m_colorBar->color(),
                       m_opacity->value());
     emitPositionPreview();
@@ -513,6 +531,8 @@ void SettingsDialog::saveAndAccept()
         }
         osd.trackedPlayers = players;
     }
+    osd.mediaControlsEnabled = m_mediaControlsEnabled->isChecked();
+    osd.osdScale = std::clamp(m_osdScale->value(), 0.5, 3.0);
     m_config->setOsd(osd);
 
     m_config->setVolumeStep(m_step->value());

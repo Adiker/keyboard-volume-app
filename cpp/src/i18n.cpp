@@ -93,8 +93,11 @@ static const QMap<QString, QMap<QString, QString>>& strings()
               QStringLiteral("Tracked players (priority order):")},
              {QStringLiteral("settings.progress.tracked_players_hint"),
               QStringLiteral("Comma-separated substrings, e.g. spotify, youtube")},
+             {QStringLiteral("settings.progress.media_controls"),
+              QStringLiteral("Show media controls (play/pause/next/prev)")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("OSD Preview")},
+             {QStringLiteral("settings.osd_scale"), QStringLiteral("OSD scale:")},
              // app selector
              {QStringLiteral("app_selector.title"), QStringLiteral("Default application")},
              {QStringLiteral("app_selector.subtitle"),
@@ -229,8 +232,12 @@ static const QMap<QString, QMap<QString, QString>>& strings()
               QStringLiteral("Obserwowane odtwarzacze (kolejno\u015b\u0107 priorytetu):")},
              {QStringLiteral("settings.progress.tracked_players_hint"),
               QStringLiteral("Podci\u0105gi oddzielone przecinkami, np. spotify, youtube")},
+             {QStringLiteral("settings.progress.media_controls"),
+              QStringLiteral(
+                  "Poka\u017c przyciski sterowania (play/pause/nast\u0119pny/poprzedni)")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("Podgl\u0105d OSD")},
+             {QStringLiteral("settings.osd_scale"), QStringLiteral("Skala OSD:")},
              // app selector
              {QStringLiteral("app_selector.title"), QStringLiteral("Domy\u015blna aplikacja")},
              {QStringLiteral("app_selector.subtitle"),

@@ -45,6 +45,10 @@ class MprisClient : public QObject
         QString displayName; // lowercase suffix, e.g. "spotify"
         QString status;      // "Playing" / "Paused" / "Stopped"
         bool canSeek = false;
+        bool canGoNext = false;
+        bool canGoPrevious = false;
+        bool canPause = false;
+        bool canPlay = false;
         qint64 lengthUs = 0; // 0 = unknown / live stream
         QString trackId;     // ObjectPath — required for SetPosition
         QString title;
@@ -78,6 +82,10 @@ class MprisClient : public QObject
     void setPosition(qint64 positionUs);
     // Seek relative (µs, may be negative). No-op when canSeek==false.
     void seekBy(qint64 deltaUs);
+    // Playback control — async D-Bus calls to the active player.
+    void playPause(); // PlayPause(); no-op when no active player
+    void next();      // Next(); no-op when !canGoNext
+    void previous();  // Previous(); fallback to setPosition(0) when !canGoPrevious
 
     // Called by MprisPlayerProxy — not for external use.
     void onPropertiesChanged(const QString& service, const QString& interface,
@@ -97,6 +105,10 @@ class MprisClient : public QObject
         QString displayName;
         QString status; // "Playing" / "Paused" / "Stopped"
         bool canSeek = false;
+        bool canGoNext = false;
+        bool canGoPrevious = false;
+        bool canPause = false;
+        bool canPlay = false;
         qint64 lengthUs = 0;
         QString trackId;
         QString title;

@@ -118,7 +118,9 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
     "progress_interactive": true,
     "progress_poll_ms": 500,
     "progress_label_mode": "both",
-    "tracked_players": ["spotify", "vlc", "strawberry", "harmonoid", "youtube"]
+    "tracked_players": ["spotify", "vlc", "strawberry", "harmonoid", "youtube"],
+    "media_controls_enabled": true,
+    "osd_scale": 1.0
   },
   "volume_step": 5,
   "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
@@ -148,7 +150,7 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 
 Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113). Scroll bindings use object form such as `{ "type": "rel", "code": 8, "direction": 1 }` for `EV_REL / REL_WHEEL`.
 
-**OSD playback progress config.** `progress_enabled` is the master toggle. `progress_interactive` allows OSD seek controls when the active MPRIS player is seekable. `progress_poll_ms` is clamped to `200..2000` because many players do not emit position changes. `progress_label_mode` is one of `app`, `track`, or `both`. `tracked_players` is a priority list matched case-insensitively against MPRIS service names.
+**OSD playback progress config.** `progress_enabled` is the master toggle. `progress_interactive` allows OSD seek controls when the active MPRIS player is seekable. `progress_poll_ms` is clamped to `200..2000` because many players do not emit position changes. `progress_label_mode` is one of `app`, `track`, or `both`. `tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling.
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
 - `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; }`
@@ -276,7 +278,12 @@ Key repeat events (`ev.value == 2`) are handled alongside regular press events (
 
 ### `cpp/src/osdwindow.h/cpp` — `OSDWindow`
 
-Frameless, always-on-top Qt widget. Base size is 220×70 px for volume only; when `OsdConfig::progressEnabled` and an active MPRIS track are both present, it expands to 220×112 px with a progress row.
+Frameless, always-on-top Qt widget. Three height modes (all dimensions scale via `scaled()`):
+- `OSD_H_BASE = 70` — volume only
+- `OSD_H_PROGRESS = 112` — volume + progress row (no controls)
+- `OSD_H_CONTROLS = 138` — volume + progress row + media controls row
+
+Width is `OSD_W = 220` px. All constants are logical base values — `scaled(int base)` multiplies by `OsdConfig::osdScale` (0.5–3.0, default 1.0) and rounds.
 
 `showVolume(app, volume, muted)` — main display call, starts the auto-hide timer.  
 After `show()`, position is also set via `QWindow::setPosition()` for XWayland compatibility.
@@ -288,6 +295,13 @@ Progress row API:
 - `updatePosition(positionUs)` maps the position to the progress bar's 0-1000 range and updates the elapsed/total time label.
 - `eventFilter()` handles click/drag seeking on the progress bar. It emits `seekStarted()`, repeated `seekRequested(positionUs)`, applies the release coordinate as the final seek target, and emits `seekFinished()` on release/cancel. Always clear `m_seeking` via `finishSeeking()` before returning through interaction guards, otherwise `MprisClient` polling can remain suspended.
 - `progressLabelMode` controls whether the main label shows the app, track, or app plus track row.
+
+Media controls row (inside `m_progressRow`, below the progress bar):
+- `setMediaControlsEnabled(bool)` — shows/hides `m_controlsRow` (⏮ prev / ⏵⏸ play-pause / ⏭ next buttons) and calls `applySize()` to resize the window. Called from `reloadStyles()`.
+- `updatePlaybackStatus(status)` — switches the play/pause button glyph: `\u23F5` (▶) when Paused/Stopped, `\u23F8` (⏸) when Playing. Connected from `MprisClient::playbackStatusChanged`.
+- Clicking the buttons emits `playPauseRequested()`, `previousRequested()`, `nextRequested()` — wired to `MprisClient::playPause`, `previous`, `next` in `main.cpp`.
+- Button styling: transparent background, OSD text color, hover = bar color; applied in `applyColorStyles()`.
+- `applySize()` uses three-way logic: base / progress / progress+controls.
 
 ### `cpp/src/mprisclient.h/cpp` — `MprisClient`
 
@@ -305,6 +319,13 @@ Signals:
 - `positionChanged(qint64 positionUs)` — position polled from active player (only when `progressEnabled`)
 - `playbackStatusChanged(QString status)` — Playing/Paused/Stopped state changed
 - `noPlayer()` — no tracked player available on the session bus
+
+`PlayerInfo` includes playback capability flags: `canGoNext`, `canGoPrevious`, `canPause`, `canPlay` — read from D-Bus properties `CanGoNext`, `CanGoPrevious`, `CanPause`, `CanPlay` during initial fetch and `PropertiesChanged` updates.
+
+Playback control slots (async D-Bus calls to the active player, no-op when no active player):
+- `playPause()` — calls `org.mpris.MediaPlayer2.Player.PlayPause()`
+- `next()` — calls `Next()`; no-op when `!canGoNext`
+- `previous()` — calls `Previous()`; falls back to `setPosition(0)` (restart track) when `!canGoPrevious`
 
 ### `cpp/src/trayapp.h/cpp` — `TrayApp`
 
@@ -455,6 +476,16 @@ Window focus change (X11/XWayland)
                             ├─ matchBinaryToApp(binary) → PipeWire app name
                             ├─ Config::findProfileByApp(app) → auto_switch profile
                             └─► effectiveApp() overrides volume target until focus changes
+
+OSD media control button click
+    └─► OSDWindow emits playPauseRequested() / nextRequested() / previousRequested()
+            └─► MprisClient::playPause() / next() / previous() [main thread]
+                    ├─ playPause → async D-Bus call PlayPause() to active player
+                    ├─ next     → async D-Bus call Next() (no-op if !canGoNext)
+                    └─ previous → async D-Bus call Previous() (or setPosition(0) fallback)
+
+MprisClient::playbackStatusChanged(status)
+    └─► OSDWindow::updatePlaybackStatus(status) — switches ⏵/⏸ glyph on play-pause button
 ```
 
 ---
