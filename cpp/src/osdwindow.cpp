@@ -19,6 +19,132 @@
 #include <QWindow>
 #include <QPaintEvent>
 
+// ─── MarqueeLabel ─────────────────────────────────────────────────────────────
+// QLabel that scrolls its text horizontally when the text is wider than the
+// widget.  State machine: pause 1.5 s → scroll left → pause 1 s → reset.
+// No Q_OBJECT needed — uses a lambda slot on the timer.
+class MarqueeLabel : public QLabel
+{
+  public:
+    explicit MarqueeLabel(QWidget* parent = nullptr) : QLabel(parent)
+    {
+        m_timer = new QTimer(this);
+        m_timer->setInterval(30); // ~33 fps
+        QObject::connect(m_timer, &QTimer::timeout, m_timer, [this] { tick(); });
+    }
+
+  protected:
+    void paintEvent(QPaintEvent* event) override
+    {
+        // Detect text changes (QLabel::setText is not virtual).
+        const QString cur = text();
+        if (cur != m_lastText)
+        {
+            m_lastText = cur;
+            reset();
+        }
+
+        const int textW = fontMetrics().horizontalAdvance(cur);
+        if (textW <= width())
+        {
+            // Text fits — stop any animation and let QLabel render normally.
+            if (m_timer->isActive()) reset();
+            QLabel::paintEvent(event);
+            return;
+        }
+
+        // Text overflows — clip and draw at current scroll offset.
+        if (!m_timer->isActive())
+        {
+            m_state = PauseStart;
+            m_pauseMs = 0;
+            m_timer->start();
+        }
+        QPainter p(this);
+        p.setClipRect(rect());
+        p.setPen(palette().color(QPalette::WindowText));
+        p.setFont(font());
+        p.drawText(QRect(-m_offset, 0, textW, height()), Qt::AlignVCenter | Qt::AlignLeft, cur);
+    }
+
+    void resizeEvent(QResizeEvent* event) override
+    {
+        QLabel::resizeEvent(event);
+        reset();
+    }
+
+    void hideEvent(QHideEvent* event) override
+    {
+        QLabel::hideEvent(event);
+        m_timer->stop(); // no wakeups while invisible
+    }
+
+    void showEvent(QShowEvent* event) override
+    {
+        QLabel::showEvent(event);
+        reset(); // restart from the beginning when the label reappears
+    }
+
+  private:
+    void tick()
+    {
+        const int textW = fontMetrics().horizontalAdvance(text());
+        const int maxOff = textW - width();
+        if (maxOff <= 0)
+        {
+            reset();
+            return;
+        }
+        switch (m_state)
+        {
+        case PauseStart:
+            m_pauseMs += 30;
+            if (m_pauseMs >= 1500) m_state = Scrolling;
+            break;
+        case Scrolling:
+            ++m_offset;
+            if (m_offset >= maxOff)
+            {
+                m_offset = maxOff;
+                m_state = PauseEnd;
+                m_pauseMs = 0;
+            }
+            break;
+        case PauseEnd:
+            m_pauseMs += 30;
+            if (m_pauseMs >= 1000)
+            {
+                m_offset = 0;
+                m_state = PauseStart;
+                m_pauseMs = 0;
+            }
+            break;
+        }
+        update();
+    }
+
+    void reset()
+    {
+        m_timer->stop();
+        m_offset = 0;
+        m_state = PauseStart;
+        m_pauseMs = 0;
+        update();
+    }
+
+    enum State
+    {
+        PauseStart,
+        Scrolling,
+        PauseEnd
+    };
+    QTimer* m_timer = nullptr;
+    int m_offset = 0;
+    int m_pauseMs = 0;
+    State m_state = PauseStart;
+    QString m_lastText;
+};
+
 static constexpr int OSD_W = 220;
 static constexpr int OSD_H_BASE = 70;      // volume only
 static constexpr int OSD_H_PROGRESS = 112; // volume + progress row
@@ -45,7 +171,7 @@ void OSDWindow::buildUi()
     layout->setSpacing(4);
 
     // ── Volume row ────────────────────────────────────────────────────────────
-    m_labelName = new QLabel(this);
+    m_labelName = new MarqueeLabel(this);
     m_labelName->setAlignment(Qt::AlignCenter);
     m_labelName->setObjectName(QStringLiteral("name_label"));
 
@@ -70,7 +196,7 @@ void OSDWindow::buildUi()
     pLayout->setContentsMargins(0, 2, 0, 0);
     pLayout->setSpacing(2);
 
-    m_labelTrack = new QLabel(m_progressRow);
+    m_labelTrack = new MarqueeLabel(m_progressRow);
     m_labelTrack->setAlignment(Qt::AlignCenter);
     m_labelTrack->setObjectName(QStringLiteral("track_label"));
 
