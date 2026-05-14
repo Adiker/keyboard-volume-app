@@ -94,10 +94,13 @@ jobs:
             ninja-build \
             pkg-config \
             qt6-base-dev \
+            qt6-base-dev-tools \
+            libqt6dbus6 \
             libgtest-dev \
             libevdev-dev \
             libpulse-dev \
-            libpipewire-0.3-dev
+            libpipewire-0.3-dev \
+            dbus
 
       - name: Configure
         run: >
@@ -112,4 +115,11 @@ jobs:
         run: cmake --build cpp/build-${{ matrix.build_type }}
 
       - name: Test
-        run: ctest --test-dir cpp/build-${{ matrix.build_type }} --output-on-failure
+        run: |
+          # Run tests that don't need D-Bus directly
+          ctest --test-dir cpp/build-${{ matrix.build_type }} --output-on-failure \
+            --exclude-regex test_mprisclient
+          # Run test_mprisclient under dbus-run-session
+          dbus-run-session -- ctest \
+            --test-dir cpp/build-${{ matrix.build_type }} --output-on-failure \
+            -R test_mprisclient

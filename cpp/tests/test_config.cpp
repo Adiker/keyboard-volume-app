@@ -728,3 +728,139 @@ TEST(ConfigHotkeys, ShowHotkeyMissingInOldFileDefaultsToZero)
     Config config(tmp.path());
     EXPECT_FALSE(config.defaultProfile().hotkeys.show.isAssigned());
 }
+
+// ─── OSD progress fields ───────────────────────────────────────────────────────
+
+TEST(ConfigOsdProgress, DefaultsAreOff)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+    const OsdConfig osd = config.osd();
+    EXPECT_FALSE(osd.progressEnabled);
+    EXPECT_TRUE(osd.progressInteractive);
+    EXPECT_EQ(osd.progressPollMs, 500);
+    EXPECT_EQ(osd.progressLabelMode.toStdString(), "app");
+    EXPECT_EQ(osd.trackedPlayers.size(), 4);
+    EXPECT_EQ(osd.trackedPlayers[0].toStdString(), "spotify");
+    EXPECT_EQ(osd.trackedPlayers[1].toStdString(), "youtube");
+    EXPECT_EQ(osd.trackedPlayers[2].toStdString(), "strawberry");
+    EXPECT_EQ(osd.trackedPlayers[3].toStdString(), "harmonoid");
+}
+
+TEST(ConfigOsdProgress, RoundTrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OsdConfig osd = config.osd();
+    osd.progressEnabled = true;
+    osd.progressInteractive = false;
+    osd.progressPollMs = 800;
+    osd.progressLabelMode = QStringLiteral("track");
+    osd.trackedPlayers = {QStringLiteral("strawberry"), QStringLiteral("spotify")};
+    config.setOsd(osd);
+
+    Config config2(tmp.path());
+    const OsdConfig osd2 = config2.osd();
+    EXPECT_TRUE(osd2.progressEnabled);
+    EXPECT_FALSE(osd2.progressInteractive);
+    EXPECT_EQ(osd2.progressPollMs, 800);
+    EXPECT_EQ(osd2.progressLabelMode.toStdString(), "track");
+    ASSERT_EQ(osd2.trackedPlayers.size(), 2);
+    EXPECT_EQ(osd2.trackedPlayers[0].toStdString(), "strawberry");
+    EXPECT_EQ(osd2.trackedPlayers[1].toStdString(), "spotify");
+}
+
+TEST(ConfigOsdProgress, PollMsClampedOnLoad)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    // Below minimum (200)
+    {
+        QFile f(tmp.path() + QStringLiteral("/config.json"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        QJsonObject osdObj{{QStringLiteral("progress_poll_ms"), 50}};
+        QJsonObject root{{QStringLiteral("osd"), osdObj}};
+        f.write(QJsonDocument(root).toJson());
+        f.close();
+    }
+    EXPECT_EQ(Config(tmp.path()).osd().progressPollMs, 200);
+
+    // Above maximum (2000)
+    {
+        QFile f(tmp.path() + QStringLiteral("/config.json"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        QJsonObject osdObj{{QStringLiteral("progress_poll_ms"), 9999}};
+        QJsonObject root{{QStringLiteral("osd"), osdObj}};
+        f.write(QJsonDocument(root).toJson());
+        f.close();
+    }
+    EXPECT_EQ(Config(tmp.path()).osd().progressPollMs, 2000);
+}
+
+TEST(ConfigOsdProgress, LabelModeValidation)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    auto writeMode = [&](const QString& mode)
+    {
+        QFile f(tmp.path() + QStringLiteral("/config.json"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        QJsonObject osdObj{{QStringLiteral("progress_label_mode"), mode}};
+        QJsonObject root{{QStringLiteral("osd"), osdObj}};
+        f.write(QJsonDocument(root).toJson());
+        f.close();
+    };
+
+    writeMode(QStringLiteral("both"));
+    EXPECT_EQ(Config(tmp.path()).osd().progressLabelMode.toStdString(), "both");
+
+    writeMode(QStringLiteral("track"));
+    EXPECT_EQ(Config(tmp.path()).osd().progressLabelMode.toStdString(), "track");
+
+    writeMode(QStringLiteral("invalid_value"));
+    EXPECT_EQ(Config(tmp.path()).osd().progressLabelMode.toStdString(), "app");
+}
+
+TEST(ConfigOsdProgress, MigrateOldConfigGetsDefaults)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    // Old config without any progress fields — deepMerge should supply defaults
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject osdObj{{QStringLiteral("x"), 100}, {QStringLiteral("y"), 200}};
+    QJsonObject root{{QStringLiteral("osd"), osdObj}};
+    f.write(QJsonDocument(root).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    const OsdConfig osd = config.osd();
+    EXPECT_EQ(osd.x, 100);
+    EXPECT_EQ(osd.y, 200);
+    EXPECT_FALSE(osd.progressEnabled);
+    EXPECT_EQ(osd.progressPollMs, 500);
+    EXPECT_EQ(osd.trackedPlayers.size(), 4);
+}
+
+TEST(ConfigOsdProgress, EmptyTrackedPlayersArrayIsPreserved)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    // Empty tracked_players array means "do not track any MPRIS players".
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject osdObj{{QStringLiteral("tracked_players"), QJsonArray{}}};
+    QJsonObject root{{QStringLiteral("osd"), osdObj}};
+    f.write(QJsonDocument(root).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    EXPECT_TRUE(config.osd().trackedPlayers.isEmpty());
+}

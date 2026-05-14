@@ -20,6 +20,19 @@ struct OsdConfig
     QString colorBg = QStringLiteral("#1A1A1A");
     QString colorText = QStringLiteral("#FFFFFF");
     QString colorBar = QStringLiteral("#0078D7");
+
+    // ── Progress bar (MPRIS playback position) ────────────────────────────────
+    bool progressEnabled = false;    // master toggle (default OFF)
+    bool progressInteractive = true; // allow click + drag to seek
+    int progressPollMs = 500;        // position poll interval, 200–2000 ms
+    // "app"   — show audio app name (legacy behaviour)
+    // "track" — show track title / artist
+    // "both"  — show "<app> — <title>"
+    QString progressLabelMode = QStringLiteral("app");
+    // Priority-ordered list of MPRIS service name substrings to track.
+    // First Playing player wins; then first Paused; then noPlayer().
+    QStringList trackedPlayers = {QStringLiteral("spotify"), QStringLiteral("youtube"),
+                                  QStringLiteral("strawberry"), QStringLiteral("harmonoid")};
 };
 
 // ─── Hotkeys ──────────────────────────────────────────────────────────────────
