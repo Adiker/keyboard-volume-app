@@ -118,6 +118,13 @@ QJsonObject Config::defaultJson()
              {QStringLiteral("color_bg"), QStringLiteral("#1A1A1A")},
              {QStringLiteral("color_text"), QStringLiteral("#FFFFFF")},
              {QStringLiteral("color_bar"), QStringLiteral("#0078D7")},
+             {QStringLiteral("progress_enabled"), false},
+             {QStringLiteral("progress_interactive"), true},
+             {QStringLiteral("progress_poll_ms"), 500},
+             {QStringLiteral("progress_label_mode"), QStringLiteral("app")},
+             {QStringLiteral("tracked_players"),
+              QJsonArray{QStringLiteral("spotify"), QStringLiteral("youtube"),
+                         QStringLiteral("strawberry"), QStringLiteral("harmonoid")}},
          }},
         {QStringLiteral("hotkeys"),
          QJsonObject{
@@ -544,12 +551,30 @@ OsdConfig Config::osd() const
     c.colorBg = o[QStringLiteral("color_bg")].toString(QStringLiteral("#1A1A1A"));
     c.colorText = o[QStringLiteral("color_text")].toString(QStringLiteral("#FFFFFF"));
     c.colorBar = o[QStringLiteral("color_bar")].toString(QStringLiteral("#0078D7"));
+    c.progressEnabled = o[QStringLiteral("progress_enabled")].toBool(false);
+    c.progressInteractive = o[QStringLiteral("progress_interactive")].toBool(true);
+    c.progressPollMs = std::clamp(o[QStringLiteral("progress_poll_ms")].toInt(500), 200, 2000);
+    const QString lm = o[QStringLiteral("progress_label_mode")].toString(QStringLiteral("app"));
+    c.progressLabelMode =
+        (lm == QLatin1String("track") || lm == QLatin1String("both")) ? lm : QStringLiteral("app");
+    const QJsonArray tp = o[QStringLiteral("tracked_players")].toArray();
+    if (o.contains(QStringLiteral("tracked_players")))
+    {
+        c.trackedPlayers.clear();
+        for (const QJsonValue& v : tp)
+        {
+            const QString s = v.toString().trimmed().toLower();
+            if (!s.isEmpty()) c.trackedPlayers.append(s);
+        }
+    }
     return c;
 }
 
 void Config::setOsd(const OsdConfig& c)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
+    QJsonArray tp;
+    for (const QString& s : c.trackedPlayers) tp.append(s);
     m_data[QStringLiteral("osd")] = QJsonObject{
         {QStringLiteral("screen"), c.screen},
         {QStringLiteral("x"), c.x},
@@ -559,6 +584,11 @@ void Config::setOsd(const OsdConfig& c)
         {QStringLiteral("color_bg"), c.colorBg},
         {QStringLiteral("color_text"), c.colorText},
         {QStringLiteral("color_bar"), c.colorBar},
+        {QStringLiteral("progress_enabled"), c.progressEnabled},
+        {QStringLiteral("progress_interactive"), c.progressInteractive},
+        {QStringLiteral("progress_poll_ms"), std::clamp(c.progressPollMs, 200, 2000)},
+        {QStringLiteral("progress_label_mode"), c.progressLabelMode},
+        {QStringLiteral("tracked_players"), tp},
     };
     saveUnlocked();
 }

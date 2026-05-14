@@ -104,3 +104,28 @@ target_link_libraries(test_inputhandler PRIVATE
     PkgConfig::LIBEVDEV
 )
 add_test(NAME test_inputhandler COMMAND test_inputhandler)
+
+# ─── test_mprisclient (requires session D-Bus; skipped automatically otherwise) ─
+find_package(Qt6 QUIET COMPONENTS DBus)
+if(Qt6DBus_FOUND)
+    add_executable(test_mprisclient
+        test_mprisclient.cpp
+        ../src/mprisclient.cpp
+        ../src/config.cpp
+    )
+    target_include_directories(test_mprisclient PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    )
+    target_link_libraries(test_mprisclient PRIVATE
+        GTest::gtest
+        Qt6::Core
+        Qt6::DBus
+        Qt6::Test
+    )
+    # Tests skip themselves via GTEST_SKIP() when D-Bus is unavailable.
+    # In CI, wrap with: dbus-run-session -- ctest -R test_mprisclient
+    add_test(NAME test_mprisclient COMMAND test_mprisclient)
+    message(STATUS "test_mprisclient: enabled (Qt6::DBus found)")
+else()
+    message(STATUS "test_mprisclient: SKIPPED (Qt6::DBus not found)")
+endif()
