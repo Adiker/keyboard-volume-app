@@ -296,6 +296,13 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** `cpp/src/mprisclient.{h,cpp}` (sloty playPause/next/previous, pola canGoNext/canGoPrevious), `cpp/src/osdwindow.{h,cpp}` (OSD_H_CONTROLS=138, scaled(), controls row, sygnały playPauseRequested/nextRequested/previousRequested, updatePlaybackStatus, setMediaControlsEnabled), `cpp/src/config.{h,cpp}` (OsdConfig: mediaControlsEnabled, osdScale), `cpp/src/settingsdialog.{h,cpp}` (m_mediaControlsEnabled QCheckBox, m_osdScale QDoubleSpinBox), `cpp/src/main.cpp` (4 nowe połączenia sygnałów), `cpp/src/i18n.cpp` (2 nowe klucze), `cpp/tests/test_config.cpp` (5 nowych testów), `cpp/tests/test_mprisclient.cpp` (5 nowych testów + rozszerzenie FakeMprisPlayerAdaptor).
 **Status:** Zrealizowane (branch `feature/dbus-progress-enabled`).
 
+### 32. Przyciski sterowania odtwarzaniem na OSD + skalowanie OSD ✓
+
+**Problem:** OSD pasek postępu nie daje możliwości zmiany utworu ani pausowania bez przełączania na okno playera. Rozmiar OSD był stały (220×70/112 px) bez możliwości dopasowania do rozdzielczości i preferencji użytkownika.
+**Rekomendacja:** Dodać wiersz przycisków ⏮/⏵⏸/⏭ do OSD (poniżej paska postępu) i konfigurowalny współczynnik skali OSD (0.5–3.0x) w Ustawieniach.
+**Pliki:** `cpp/src/mprisclient.{h,cpp}` (sloty playPause/next/previous, pola canGoNext/canGoPrevious), `cpp/src/osdwindow.{h,cpp}` (OSD_H_CONTROLS=138, scaled(), controls row, sygnały playPauseRequested/nextRequested/previousRequested, updatePlaybackStatus, setMediaControlsEnabled), `cpp/src/config.{h,cpp}` (OsdConfig: mediaControlsEnabled, osdScale), `cpp/src/settingsdialog.{h,cpp}` (m_mediaControlsEnabled QCheckBox, m_osdScale QDoubleSpinBox), `cpp/src/main.cpp` (4 nowe połączenia sygnałów), `cpp/src/i18n.cpp` (2 nowe klucze), `cpp/tests/test_config.cpp` (5 nowych testów), `cpp/tests/test_mprisclient.cpp` (5 nowych testów + rozszerzenie FakeMprisPlayerAdaptor).
+**Status:** Zrealizowane (branch `feature/dbus-progress-enabled`).
+
 ---
 
 ## Weryfikacja (dla każdej zmiany)
