@@ -599,14 +599,15 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
         return static_cast<qint64>(ratio * m_trackLengthUs);
     };
 
-    auto applySeekPosition = [this, &posFromMouseX](int mouseX)
+    // Update the OSD display only — no D-Bus call. Used during press and drag
+    // to show the seek preview without spamming SetPosition to the player.
+    auto previewSeekPosition = [this, &posFromMouseX](int mouseX)
     {
         const qint64 posUs = posFromMouseX(mouseX);
         const int val = static_cast<int>(posUs * 1000LL / m_trackLengthUs);
         m_progressBar->setValue(val);
         m_labelTime->setText(
             QStringLiteral("%1 / %2").arg(formatTime(posUs), formatTime(m_trackLengthUs)));
-        emit seekRequested(posUs);
     };
 
     if (m_seeking)
@@ -616,8 +617,15 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
             auto* me = static_cast<QMouseEvent*>(event);
             if (me->button() == Qt::LeftButton)
             {
+                // Commit the seek exactly once on release. Using the release
+                // coordinate (not the press coordinate) so drag-to-seek always
+                // commits at the position the user chose.
                 if (m_canSeek && m_trackLengthUs > 0 && m_config->osd().progressInteractive)
-                    applySeekPosition(me->position().toPoint().x());
+                {
+                    const qint64 posUs = posFromMouseX(me->position().toPoint().x());
+                    previewSeekPosition(me->position().toPoint().x());
+                    emit seekRequested(posUs);
+                }
                 finishSeeking();
                 return true;
             }
@@ -638,7 +646,8 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
         {
             m_seeking = true;
             emit seekStarted();
-            applySeekPosition(me->position().toPoint().x());
+            // Show visual preview immediately on press — no D-Bus call yet.
+            previewSeekPosition(me->position().toPoint().x());
             return true;
         }
     }
@@ -647,7 +656,8 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
         auto* me = static_cast<QMouseEvent*>(event);
         if (me->buttons() & Qt::LeftButton)
         {
-            applySeekPosition(me->position().toPoint().x());
+            // Update preview during drag — still no D-Bus call until release.
+            previewSeekPosition(me->position().toPoint().x());
             return true;
         }
         finishSeeking();
