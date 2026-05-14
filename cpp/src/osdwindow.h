@@ -8,6 +8,7 @@
 #endif
 
 class QLabel;
+class QMouseEvent;
 class QProgressBar;
 class QScreen;
 class Config;
@@ -67,8 +68,7 @@ class OSDWindow : public QWidget
     // disappears). No-op when progressEnabled == false.
     void setProgressVisible(bool on);
 
-    // Update track metadata. canSeek == false disables the bar interaction
-    // (visual only in this PR; seek wired in PR 3).
+    // Update track metadata. canSeek == false disables bar interaction.
     // lengthUs == 0 → live stream mode (bar greyed out, time shows "LIVE").
     void updateTrack(const QString& title, const QString& artist, qint64 lengthUs, bool canSeek);
 
@@ -76,13 +76,18 @@ class OSDWindow : public QWidget
     void updatePosition(qint64 positionUs);
 
   signals:
-    // Emitted when the user clicks / drags the seek bar (wired in PR 3).
+    // Emitted when the user starts a seek drag — caller should suspend polling.
+    void seekStarted();
+    // Emitted when the user releases the seek bar — caller should resume polling.
+    void seekFinished();
+    // Emitted on press and every drag move with the target position in µs.
     void seekRequested(qint64 positionUs);
 
   protected:
     void paintEvent(QPaintEvent* event) override;
     void enterEvent(QEnterEvent* event) override;
     void leaveEvent(QEvent* event) override;
+    bool eventFilter(QObject* obj, QEvent* event) override;
 
   private:
     // ── Volume row ───────────────────────────────────────────────────────────
@@ -106,6 +111,7 @@ class OSDWindow : public QWidget
     bool m_progressVisible = false;
     qint64 m_trackLengthUs = 0;
     bool m_canSeek = false;
+    bool m_seeking = false; // true while user is dragging the seek bar
     QString m_trackTitle;
     QString m_trackArtist;
     QString m_currentAppName; // last app name passed to showVolume()
@@ -130,6 +136,7 @@ class OSDWindow : public QWidget
 
     // Update m_labelName text based on progressLabelMode + cached track info.
     void refreshNameLabel();
+    void finishSeeking();
 
     // Format microseconds → "m:ss".
     static QString formatTime(qint64 us);

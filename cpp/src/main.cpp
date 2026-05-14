@@ -160,6 +160,11 @@ class App : public QObject
         connect(m_mpris, &MprisClient::noPlayer, m_osd,
                 [this]() { m_osd->setProgressVisible(false); });
 
+        // OSDWindow seek interaction → MprisClient
+        connect(m_osd, &OSDWindow::seekStarted, m_mpris, [this]() { m_mpris->setSeeking(true); });
+        connect(m_osd, &OSDWindow::seekFinished, m_mpris, [this]() { m_mpris->setSeeking(false); });
+        connect(m_osd, &OSDWindow::seekRequested, m_mpris, &MprisClient::setPosition);
+
         // Settings change → reload MprisClient config
         connect(m_tray, &TrayApp::settingsChanged, m_mpris, &MprisClient::reload);
     }
