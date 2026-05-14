@@ -10,6 +10,12 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDebug>
+#include <QFile>
+#include <QFileInfo>
+#include <QUrl>
+
+#include <audioproperties.h>
+#include <fileref.h>
 
 static constexpr const char* MPRIS_PREFIX = "org.mpris.MediaPlayer2.";
 static constexpr const char* MPRIS_PATH = "/org/mpris/MediaPlayer2";
@@ -65,15 +71,50 @@ static QString serviceDisplayName(const QString& service)
     return service.toLower();
 }
 
+// Unwrap a QDBusVariant wrapper if present, returning the inner QVariant.
+// QtDBus auto-demarshals a{sv} signal parameters leaving variant values wrapped
+// in QDBusVariant. Calling e.g. .toLongLong() on such a wrapper returns 0.
+// This mirrors the pattern already used in kvctl.cpp::variantToText().
+static QVariant unwrapDBusVariant(const QVariant& v)
+{
+    if (v.userType() == qMetaTypeId<QDBusVariant>())
+        return qvariant_cast<QDBusVariant>(v).variant();
+    return v;
+}
+
 static QVariantMap variantMapFromDBusArg(const QVariant& v)
 {
-    if (v.canConvert<QDBusArgument>())
+    // Unwrap a QDBusVariant wrapper before attempting QDBusArgument conversion.
+    const QVariant inner = unwrapDBusVariant(v);
+    if (inner.canConvert<QDBusArgument>())
     {
         QVariantMap m;
-        v.value<QDBusArgument>() >> m;
+        inner.value<QDBusArgument>() >> m;
         return m;
     }
-    return v.toMap();
+    return inner.toMap();
+}
+
+static qint64 localAudioDurationUs(const QString& urlText)
+{
+    const QUrl url(urlText);
+    if (!url.isValid() || !url.isLocalFile()) return 0;
+
+    const QString path = url.toLocalFile();
+    if (!QFileInfo::exists(path)) return 0;
+
+    const QByteArray encodedPath = QFile::encodeName(path);
+    TagLib::FileRef file(encodedPath.constData(), true, TagLib::AudioProperties::Accurate);
+    if (file.isNull() || !file.audioProperties()) return 0;
+
+    const int durationMs = file.audioProperties()->lengthInMilliseconds();
+    if (durationMs <= 0) return 0;
+    return static_cast<qint64>(durationMs) * 1000LL;
+}
+
+static bool isHarmonoidService(const QString& service)
+{
+    return serviceDisplayName(service).contains(QStringLiteral("harmonoid"));
 }
 
 // ─── MprisClient ──────────────────────────────────────────────────────────────
@@ -253,13 +294,46 @@ void MprisClient::fetchAllProperties(const QString& service)
 void MprisClient::applyProperties(const QString& service, const QVariantMap& props)
 {
     if (!m_players.contains(service)) return;
+
+    // Fast path: Harmonoid (and some other players) send Position via PropertiesChanged
+    // at very high frequency (~12/sec). If Position is the only changed property, emit
+    // positionChanged directly and skip the expensive reevaluateActive() call entirely —
+    // nothing about player state has changed.
+    // Throttle: emit at most once per m_pollMs ms to avoid hammering the OSD (which
+    // repaints the label and progress bar on every positionChanged signal).
+    if (props.size() == 1 && props.contains(QStringLiteral("Position")))
+    {
+        const qint64 pos = unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
+        if (m_hasActive && m_active.service == service && pos >= 0 && !m_seeking)
+        {
+            if (!m_positionThrottle.isValid() || m_positionThrottle.hasExpired(m_pollMs))
+            {
+                m_positionThrottle.restart();
+                emit positionChanged(pos);
+            }
+        }
+        return;
+    }
+
     KnownPlayer& kp = m_players[service];
+    const bool wasActivePlayer = m_hasActive && m_active.service == service;
+    bool hasBundledPosition = false;
+    qint64 bundledPosition = -1;
 
     if (props.contains(QStringLiteral("PlaybackStatus")))
-        kp.status = props[QStringLiteral("PlaybackStatus")].toString();
+        kp.status = unwrapDBusVariant(props[QStringLiteral("PlaybackStatus")]).toString();
 
     if (props.contains(QStringLiteral("CanSeek")))
-        kp.canSeek = props[QStringLiteral("CanSeek")].toBool();
+        kp.canSeek = unwrapDBusVariant(props[QStringLiteral("CanSeek")]).toBool();
+
+    if (props.contains(QStringLiteral("CanGoNext")))
+        kp.canGoNext = unwrapDBusVariant(props[QStringLiteral("CanGoNext")]).toBool();
+    if (props.contains(QStringLiteral("CanGoPrevious")))
+        kp.canGoPrevious = unwrapDBusVariant(props[QStringLiteral("CanGoPrevious")]).toBool();
+    if (props.contains(QStringLiteral("CanPause")))
+        kp.canPause = unwrapDBusVariant(props[QStringLiteral("CanPause")]).toBool();
+    if (props.contains(QStringLiteral("CanPlay")))
+        kp.canPlay = unwrapDBusVariant(props[QStringLiteral("CanPlay")]).toBool();
 
     if (props.contains(QStringLiteral("CanGoNext")))
         kp.canGoNext = props[QStringLiteral("CanGoNext")].toBool();
@@ -272,11 +346,15 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
 
     if (props.contains(QStringLiteral("Metadata")))
     {
+        // variantMapFromDBusArg already handles QDBusVariant wrapping for the outer
+        // Metadata container. The individual values inside the a{sv} metadata dict may
+        // also arrive wrapped in QDBusVariant when delivered via PropertiesChanged
+        // signals (as opposed to GetAll replies). Unwrap each value before reading.
         const QVariantMap meta = variantMapFromDBusArg(props[QStringLiteral("Metadata")]);
 
-        kp.title = meta.value(QStringLiteral("xesam:title")).toString();
+        kp.title = unwrapDBusVariant(meta.value(QStringLiteral("xesam:title"))).toString();
 
-        const QVariant artistVar = meta.value(QStringLiteral("xesam:artist"));
+        const QVariant artistVar = unwrapDBusVariant(meta.value(QStringLiteral("xesam:artist")));
         if (artistVar.canConvert<QStringList>())
         {
             const QStringList al = artistVar.toStringList();
@@ -287,16 +365,40 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
             kp.artist = artistVar.toString();
         }
 
-        kp.lengthUs = meta.value(QStringLiteral("mpris:length")).toLongLong();
+        kp.lengthUs = unwrapDBusVariant(meta.value(QStringLiteral("mpris:length"))).toLongLong();
 
-        const QVariant tidVar = meta.value(QStringLiteral("mpris:trackid"));
+        const QVariant urlVar = unwrapDBusVariant(meta.value(QStringLiteral("xesam:url")));
+        if (isHarmonoidService(service))
+        {
+            const qint64 fileLengthUs = localAudioDurationUs(urlVar.toString());
+            if (fileLengthUs > 0) kp.lengthUs = fileLengthUs;
+        }
+
+        const QVariant tidVar = unwrapDBusVariant(meta.value(QStringLiteral("mpris:trackid")));
         if (tidVar.canConvert<QDBusObjectPath>())
             kp.trackId = tidVar.value<QDBusObjectPath>().path();
         else
             kp.trackId = tidVar.toString();
     }
 
+    // Also handle Position when it arrives alongside other properties (e.g. during
+    // track-change signals that bundle Position with Metadata). Defer emission until
+    // after reevaluateActive() so trackChanged reaches the OSD before the new
+    // position; updateTrack() resets the progress bar.
+    if (props.contains(QStringLiteral("Position")))
+    {
+        bundledPosition = unwrapDBusVariant(props[QStringLiteral("Position")]).toLongLong();
+        hasBundledPosition = bundledPosition >= 0;
+    }
+
     reevaluateActive();
+
+    if (hasBundledPosition && wasActivePlayer && m_hasActive && m_active.service == service &&
+        !m_seeking)
+    {
+        m_positionThrottle.restart();
+        emit positionChanged(bundledPosition);
+    }
 }
 
 int MprisClient::priorityOf(const QString& service) const
@@ -440,6 +542,12 @@ void MprisClient::pollPosition()
     if (!m_hasActive || m_seeking) return;
     if (!m_config->osd().progressEnabled) return;
     if (m_active.status != QLatin1String("Playing")) return;
+
+    // Skip the D-Bus round-trip if the active player already pushed a fresh Position
+    // update via PropertiesChanged within this poll window (e.g. Harmonoid). The
+    // throttle timer was restarted when we last emitted from the PropertiesChanged path,
+    // so if it hasn't expired yet we have nothing to gain from polling.
+    if (m_positionThrottle.isValid() && !m_positionThrottle.hasExpired(m_pollMs)) return;
 
     const QString service = m_active.service;
     QDBusMessage msg = QDBusMessage::createMethodCall(
