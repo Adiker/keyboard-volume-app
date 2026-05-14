@@ -12,9 +12,19 @@ class QProgressBar;
 class QScreen;
 class Config;
 
-// Frameless always-on-top OSD overlay (220×70 px).
+// Frameless always-on-top OSD overlay.
+// Base size: 220×70 (volume only).
+// Expanded size: 220×112 (volume + progress row).
+//
 // Background is drawn manually in paintEvent — Qt skips stylesheet background
 // painting on translucent top-level windows (WA_TranslucentBackground).
+//
+// Progress row (optional, controlled by OsdConfig::progressEnabled):
+//   - Track label  — title / app name / both, per progressLabelMode
+//   - QProgressBar — 0–1000 range for sub-second precision
+//   - Time label   — "m:ss / m:ss"  (or "LIVE" for streams)
+//
+// Hover over the OSD suspends the hide timer so the user can read / seek.
 class OSDWindow : public QWidget
 {
     Q_OBJECT
@@ -48,10 +58,34 @@ class OSDWindow : public QWidget
     // HAVE_LAYER_SHELL_QT is not defined.
     void initLayerShell();
 
+    // ── Progress row API ─────────────────────────────────────────────────────
+    // Enable / disable the progress row (reads OsdConfig::progressEnabled).
+    // Call after config changes.
+    void setProgressEnabled(bool on);
+
+    // Show or hide the progress row at runtime (e.g. when a player appears /
+    // disappears). No-op when progressEnabled == false.
+    void setProgressVisible(bool on);
+
+    // Update track metadata. canSeek == false disables the bar interaction
+    // (visual only in this PR; seek wired in PR 3).
+    // lengthUs == 0 → live stream mode (bar greyed out, time shows "LIVE").
+    void updateTrack(const QString& title, const QString& artist, qint64 lengthUs, bool canSeek);
+
+    // Update playback position. Ignored when no track is loaded or during drag.
+    void updatePosition(qint64 positionUs);
+
+  signals:
+    // Emitted when the user clicks / drags the seek bar (wired in PR 3).
+    void seekRequested(qint64 positionUs);
+
   protected:
     void paintEvent(QPaintEvent* event) override;
+    void enterEvent(QEnterEvent* event) override;
+    void leaveEvent(QEvent* event) override;
 
   private:
+    // ── Volume row ───────────────────────────────────────────────────────────
     Config* m_config;
     QLabel* m_labelName = nullptr;
     QProgressBar* m_bar = nullptr;
@@ -59,16 +93,44 @@ class OSDWindow : public QWidget
     QTimer* m_hideTimer = nullptr;
     QColor m_bgColor;
     bool m_previewMode = false;
+    bool m_previewHeld = false;
+    int m_previewTimeoutMs = 1500;
+
+    // ── Progress row ─────────────────────────────────────────────────────────
+    QWidget* m_progressRow = nullptr; // container — show/hide as a unit
+    QLabel* m_labelTrack = nullptr;
+    QProgressBar* m_progressBar = nullptr;
+    QLabel* m_labelTime = nullptr;
+
+    bool m_progressEnabled = false;
+    bool m_progressVisible = false;
+    qint64 m_trackLengthUs = 0;
+    bool m_canSeek = false;
+    QString m_trackTitle;
+    QString m_trackArtist;
+    QString m_currentAppName; // last app name passed to showVolume()
+
+    // ── Layer-shell ──────────────────────────────────────────────────────────
     bool m_layerShellActive = false;
-    QScreen* m_lsScreen = nullptr; // last output assigned to the layer surface
+    QScreen* m_lsScreen = nullptr;
 #ifdef HAVE_LAYER_SHELL_QT
-    LayerShellQt::Window* m_lsWindow = nullptr; // owned by QWindow, not by OSDWindow
+    LayerShellQt::Window* m_lsWindow = nullptr;
 #endif
 
+    // ── Helpers ──────────────────────────────────────────────────────────────
     void buildUi();
     void applyStyles();
     void applyColorStyles(const QString& colorBg, const QString& colorText, const QString& colorBar,
                           int opacity);
     void positionWindow(int absX, int absY);
     std::pair<int, int> absPos() const;
+
+    // Resize OSD and re-apply position (handles both X11 and layer-shell).
+    void applySize();
+
+    // Update m_labelName text based on progressLabelMode + cached track info.
+    void refreshNameLabel();
+
+    // Format microseconds → "m:ss".
+    static QString formatTime(qint64 us);
 };
