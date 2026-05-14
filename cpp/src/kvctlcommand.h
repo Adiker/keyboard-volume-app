@@ -27,7 +27,8 @@ struct KvCtlCommand
         Apps,
         Step,
         Profiles,
-        Scenes
+        Scenes,
+        ProgressEnabled
     };
 
     Action action = Action::Refresh;

@@ -267,6 +267,11 @@ class App : public QObject
     {
         m_dbus = new DbusInterface(m_config.get(), m_volumeCtrl, m_tray, this);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProfiles);
+        connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProgressEnabled);
+        connect(m_dbus, &DbusInterface::progressEnabledChanged, m_osd,
+                [this](bool) { m_osd->reloadStyles(); });
+        connect(m_dbus, &DbusInterface::progressEnabledChanged, m_mpris,
+                [this](bool) { m_mpris->reload(); });
 
         auto bus = QDBusConnection::sessionBus();
 

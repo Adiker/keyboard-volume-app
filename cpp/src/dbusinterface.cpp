@@ -32,6 +32,7 @@ DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, TrayA
 {
     m_activeApp = m_tray->currentApp();
     m_volumeStep = m_config->volumeStep();
+    m_progressEnabled = m_config->osd().progressEnabled;
     m_profilesProp = buildProfilesProp();
     m_scenesProp = buildScenesProp();
 
@@ -114,6 +115,31 @@ void DbusInterface::setVolumeStep(int step)
 {
     m_config->setVolumeStep(step);
     m_volumeStep = m_config->volumeStep();
+}
+
+bool DbusInterface::progressEnabled() const
+{
+    return m_config->osd().progressEnabled;
+}
+
+void DbusInterface::setProgressEnabled(bool on)
+{
+    const bool current = progressEnabled();
+    if (current == on)
+    {
+        if (m_progressEnabled != current)
+        {
+            m_progressEnabled = current;
+            emit progressEnabledChanged(m_progressEnabled);
+        }
+        return;
+    }
+
+    OsdConfig osd = m_config->osd();
+    osd.progressEnabled = on;
+    m_config->setOsd(osd);
+    m_progressEnabled = progressEnabled();
+    emit progressEnabledChanged(m_progressEnabled);
 }
 
 void DbusInterface::VolumeUp()
@@ -237,6 +263,14 @@ void DbusInterface::reloadProfiles()
     if (freshScenes == m_scenesProp) return;
     m_scenesProp = freshScenes;
     emit scenesChanged(m_scenesProp);
+}
+
+void DbusInterface::reloadProgressEnabled()
+{
+    const bool current = progressEnabled();
+    if (m_progressEnabled == current) return;
+    m_progressEnabled = current;
+    emit progressEnabledChanged(m_progressEnabled);
 }
 
 void DbusInterface::VolumeUpProfile(const QString& profileId)
