@@ -15,10 +15,13 @@
 #include <QDBusAbstractAdaptor>
 #include <QDBusMessage>
 #include <QDBusObjectPath>
+#include <QDataStream>
 #include <QEventLoop>
+#include <QFile>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantMap>
 
 #include "config.h"
@@ -54,6 +57,41 @@ static bool waitFor(std::function<bool()> pred, int maxMs = 2000)
         loop.exec();
     }
     return pred();
+}
+
+static bool writeSilentWav(const QString& path, int durationMs)
+{
+    constexpr quint16 channels = 1;
+    constexpr quint32 sampleRate = 44100;
+    constexpr quint16 bitsPerSample = 16;
+    const quint16 blockAlign = channels * bitsPerSample / 8;
+    const quint32 byteRate = sampleRate * blockAlign;
+    const quint32 sampleCount = sampleRate * durationMs / 1000;
+    const quint32 dataSize = sampleCount * blockAlign;
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+
+    QDataStream out(&file);
+    out.setByteOrder(QDataStream::LittleEndian);
+    out.writeRawData("RIFF", 4);
+    out << quint32(36 + dataSize);
+    out.writeRawData("WAVE", 4);
+    out.writeRawData("fmt ", 4);
+    out << quint32(16);
+    out << quint16(1);
+    out << channels;
+    out << sampleRate;
+    out << byteRate;
+    out << blockAlign;
+    out << bitsPerSample;
+    out.writeRawData("data", 4);
+    out << dataSize;
+
+    QByteArray silence;
+    silence.resize(static_cast<qsizetype>(dataSize));
+    silence.fill('\0');
+    return file.write(silence) == silence.size();
 }
 
 // ─── Fake MPRIS player adaptor ────────────────────────────────────────────────
@@ -108,16 +146,55 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
     void setMetadata(const QString& title, const QString& artist, qint64 lengthUs,
                      const QString& trackId)
     {
+        setMetadataWithUrl(title, artist, lengthUs, trackId, QString{});
+    }
+
+    void setMetadataWithUrl(const QString& title, const QString& artist, qint64 lengthUs,
+                            const QString& trackId, const QString& url)
+    {
         m_metadata[QStringLiteral("xesam:title")] = title;
         m_metadata[QStringLiteral("xesam:artist")] = QStringList{artist};
         m_metadata[QStringLiteral("mpris:length")] = lengthUs;
         m_metadata[QStringLiteral("mpris:trackid")] = QVariant::fromValue(QDBusObjectPath(trackId));
+        if (url.isEmpty())
+            m_metadata.remove(QStringLiteral("xesam:url"));
+        else
+            m_metadata[QStringLiteral("xesam:url")] = url;
         emitPropertiesChanged({{QStringLiteral("Metadata"), m_metadata}});
     }
 
     void setPosition(qlonglong pos)
     {
         m_position = pos;
+    }
+
+    void setCanGoNext(bool v)
+    {
+        m_canGoNext = v;
+        emitPropertiesChanged({{QStringLiteral("CanGoNext"), v}});
+    }
+    void setCanGoPrevious(bool v)
+    {
+        m_canGoPrevious = v;
+        emitPropertiesChanged({{QStringLiteral("CanGoPrevious"), v}});
+    }
+
+    // Simulate Harmonoid-style high-frequency Position updates via PropertiesChanged.
+    void emitPositionChanged(qint64 pos)
+    {
+        emitPropertiesChanged({{QStringLiteral("Position"), pos}});
+    }
+
+    void emitMetadataAndPositionChanged(const QString& title, const QString& artist,
+                                        qint64 lengthUs, const QString& trackId, qint64 pos)
+    {
+        m_metadata[QStringLiteral("xesam:title")] = title;
+        m_metadata[QStringLiteral("xesam:artist")] = QStringList{artist};
+        m_metadata[QStringLiteral("mpris:length")] = lengthUs;
+        m_metadata[QStringLiteral("mpris:trackid")] = QVariant::fromValue(QDBusObjectPath(trackId));
+        m_position = pos;
+        emitPropertiesChanged(
+            {{QStringLiteral("Metadata"), m_metadata}, {QStringLiteral("Position"), pos}});
     }
 
     void emitSeeked(qint64 pos)
@@ -556,6 +633,244 @@ TEST_F(MprisClientTest, PollPausesWhenProgressDisabled)
 
     QCoreApplication::processEvents(QEventLoop::AllEvents, 600);
     EXPECT_EQ(spy.count(), 0);
+}
+
+TEST_F(MprisClientTest, PlayPauseCallsDBusMethod)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    client.playPause();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->playPauseCalled; }));
+}
+
+TEST_F(MprisClientTest, NextCallsDBusMethodWhenCanGoNext)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    // CanGoNext defaults to true in FakeMprisPlayerAdaptor
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+    ASSERT_TRUE(waitFor([&] { return client.activePlayer().canGoNext; }));
+
+    client.next();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->nextCalled; }));
+}
+
+TEST_F(MprisClientTest, NextIsNoOpWhenCanNotGoNext)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setCanGoNext(false); // Set before client starts so initial fetch sees false
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    client.next();
+
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 300);
+    EXPECT_FALSE(fp.player->nextCalled);
+}
+
+TEST_F(MprisClientTest, PreviousCallsDBusMethodWhenCanGoPrevious)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    // CanGoPrevious defaults to true in FakeMprisPlayerAdaptor
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+    ASSERT_TRUE(waitFor([&] { return client.activePlayer().canGoPrevious; }));
+
+    client.previous();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->previousCalled; }));
+}
+
+TEST_F(MprisClientTest, PreviousFallsBackToSetPositionZeroWhenCanNotGoPrevious)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setCanGoPrevious(false); // Set before client starts so initial fetch sees false
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    client.previous();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->setPositionCalled; }));
+    EXPECT_EQ(fp.player->setPositionPos, 0LL);
+}
+
+// ─── Harmonoid-style Position via PropertiesChanged ───────────────────────────
+
+// Players like Harmonoid send Position via PropertiesChanged at high frequency
+// (~12/sec) instead of relying on client polling. The client should emit
+// positionChanged directly without calling reevaluateActive.
+TEST_F(MprisClientTest, PositionViaPropertiesChangedEmitsPositionChanged)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Song"), QStringLiteral("Artist"), 200000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    QSignalSpy posSpy(&client, &MprisClient::positionChanged);
+
+    fp.player->emitPositionChanged(42000000LL);
+
+    const bool got = waitFor([&] { return posSpy.count() > 0; }, 2000);
+    ASSERT_TRUE(got) << "positionChanged not emitted for Position-only PropertiesChanged";
+    EXPECT_EQ(posSpy.first().first().toLongLong(), 42000000LL);
+}
+
+// Position-only PropertiesChanged must NOT trigger trackChanged — the track has
+// not changed, only the playback position. reevaluateActive should be skipped.
+TEST_F(MprisClientTest, PositionOnlyPropertiesChangedDoesNotEmitTrackChanged)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Song"), QStringLiteral("Artist"), 200000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
+    QSignalSpy posSpy(&client, &MprisClient::positionChanged);
+
+    fp.player->emitPositionChanged(10000000LL);
+
+    // Give the signal time to arrive and be processed.
+    waitFor([&] { return posSpy.count() > 0; }, 1000);
+
+    EXPECT_EQ(trackSpy.count(), 0) << "trackChanged must not fire for Position-only update";
+    EXPECT_GT(posSpy.count(), 0) << "positionChanged must fire for Position-only update";
+}
+
+TEST_F(MprisClientTest, BundledMetadataAndPositionEmitsTrackBeforePosition)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Song"), QStringLiteral("Artist"), 200000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    QStringList events;
+    qint64 emittedPosition = -1;
+    QObject::connect(&client, &MprisClient::trackChanged, &client,
+                     [&events](const QString&, const QString&, qint64, bool)
+                     { events.append(QStringLiteral("track")); });
+    QObject::connect(&client, &MprisClient::positionChanged, &client,
+                     [&events, &emittedPosition](qint64 pos)
+                     {
+                         events.append(QStringLiteral("position"));
+                         emittedPosition = pos;
+                     });
+
+    fp.player->emitMetadataAndPositionChanged(QStringLiteral("Next Song"), QStringLiteral("Artist"),
+                                              210000000LL, QStringLiteral("/t/2"), 12000000LL);
+
+    ASSERT_TRUE(waitFor(
+        [&]
+        {
+            return events.contains(QStringLiteral("track")) &&
+                   events.contains(QStringLiteral("position"));
+        }))
+        << "bundled Metadata+Position update did not emit both track and position";
+    ASSERT_GE(events.size(), 2);
+    EXPECT_EQ(events.at(0), QStringLiteral("track"));
+    EXPECT_EQ(events.at(1), QStringLiteral("position"));
+    EXPECT_EQ(emittedPosition, 12000000LL);
+}
+
+TEST_F(MprisClientTest, HarmonoidLocalFileDurationOverridesStaleMprisLength)
+{
+    SKIP_IF_NO_DBUS();
+
+    const QString wavPath = m_tmpDir->path() + QStringLiteral("/real-duration.wav");
+    ASSERT_TRUE(writeSilentWav(wavPath, 3000));
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+
+    MprisClient client(m_config.get());
+    QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
+
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+    trackSpy.clear();
+
+    fp.player->setMetadataWithUrl(QStringLiteral("Superstar"), QStringLiteral("Jamelia"),
+                                  169456734LL, QStringLiteral("/t/stale"),
+                                  QUrl::fromLocalFile(wavPath).toString());
+
+    const bool got = waitFor([&] { return trackSpy.count() > 0; }, 2000);
+    ASSERT_TRUE(got) << "trackChanged not emitted after Harmonoid local file metadata";
+    EXPECT_EQ(trackSpy.last().at(2).toLongLong(), 3000000LL);
+}
+
+// Metadata values delivered via PropertiesChanged may arrive wrapped in
+// QDBusVariant. Verify that mpris:length is correctly extracted so the OSD
+// progress bar shows the right total time (regression test for Harmonoid).
+TEST_F(MprisClientTest, MetadataLengthExtractedCorrectlyViaPropertiesChanged)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+
+    MprisClient client(m_config.get());
+
+    QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
+
+    // Send metadata via PropertiesChanged (the path that may wrap values in QDBusVariant).
+    fp.player->setMetadata(QStringLiteral("Liberty City"), QStringLiteral("Seryoga"), 147401588LL,
+                           QStringLiteral("/t/abc"));
+
+    const bool got = waitFor([&] { return trackSpy.count() > 0; }, 2000);
+    ASSERT_TRUE(got) << "trackChanged not emitted after setMetadata";
+
+    // The length must arrive correctly — if QDBusVariant unwrapping is broken,
+    // toLongLong() returns 0 and the OSD treats the track as a live stream.
+    const qint64 emittedLength = trackSpy.first().at(2).toLongLong();
+    EXPECT_EQ(emittedLength, 147401588LL)
+        << "mpris:length was not correctly unwrapped from QDBusVariant";
 }
 
 #include "test_mprisclient.moc"

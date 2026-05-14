@@ -15,6 +15,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBEVDEV  REQUIRED IMPORTED_TARGET libevdev)
 pkg_check_modules(LIBPULSE  REQUIRED IMPORTED_TARGET libpulse)
 pkg_check_modules(LIBPIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
+pkg_check_modules(TAGLIB    REQUIRED IMPORTED_TARGET taglib)
 pkg_check_modules(XCB       REQUIRED IMPORTED_TARGET xcb)
 
 # Sources
@@ -59,6 +60,7 @@ target_link_libraries(keyboard-volume-app PRIVATE
     PkgConfig::LIBEVDEV
     PkgConfig::LIBPULSE
     PkgConfig::LIBPIPEWIRE
+    PkgConfig::TAGLIB
     PkgConfig::XCB
 )
 

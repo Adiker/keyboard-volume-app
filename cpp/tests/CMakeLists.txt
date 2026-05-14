@@ -8,6 +8,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBPULSE  REQUIRED IMPORTED_TARGET libpulse)
 pkg_check_modules(LIBEVDEV  REQUIRED IMPORTED_TARGET libevdev)
 pkg_check_modules(LIBPIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
+pkg_check_modules(TAGLIB    REQUIRED IMPORTED_TARGET taglib)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -121,6 +122,7 @@ if(Qt6DBus_FOUND)
         Qt6::Core
         Qt6::DBus
         Qt6::Test
+        PkgConfig::TAGLIB
     )
     # Tests skip themselves via GTEST_SKIP() when D-Bus is unavailable.
     # In CI, wrap with: dbus-run-session -- ctest -R test_mprisclient

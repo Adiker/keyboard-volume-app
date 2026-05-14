@@ -100,6 +100,7 @@ jobs:
             libevdev-dev \
             libpulse-dev \
             libpipewire-0.3-dev \
+            libtag1-dev \
             dbus
 
       - name: Configure
