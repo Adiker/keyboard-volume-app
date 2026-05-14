@@ -65,6 +65,8 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
 
     Q_PROPERTY(QString PlaybackStatus READ playbackStatus)
     Q_PROPERTY(bool CanSeek READ canSeek)
+    Q_PROPERTY(bool CanGoNext READ canGoNext)
+    Q_PROPERTY(bool CanGoPrevious READ canGoPrevious)
     Q_PROPERTY(bool CanControl READ canControl)
     Q_PROPERTY(QVariantMap Metadata READ metadata)
     Q_PROPERTY(qlonglong Position READ position)
@@ -79,6 +81,14 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
     bool canSeek() const
     {
         return m_canSeek;
+    }
+    bool canGoNext() const
+    {
+        return m_canGoNext;
+    }
+    bool canGoPrevious() const
+    {
+        return m_canGoPrevious;
     }
     bool canControl() const
     {
@@ -120,6 +130,17 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
         m_position = pos;
     }
 
+    void setCanGoNext(bool v)
+    {
+        m_canGoNext = v;
+        emitPropertiesChanged({{QStringLiteral("CanGoNext"), v}});
+    }
+    void setCanGoPrevious(bool v)
+    {
+        m_canGoPrevious = v;
+        emitPropertiesChanged({{QStringLiteral("CanGoPrevious"), v}});
+    }
+
     void emitSeeked(qint64 pos)
     {
         // Emit via the dedicated connection so the signal has the correct sender.
@@ -133,13 +154,35 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
   signals:
     Q_SCRIPTABLE void Seeked(qint64 position);
 
+  public:
+    // Call-tracking flags — checked by tests after async D-Bus calls arrive.
+    bool playPauseCalled = false;
+    bool nextCalled = false;
+    bool previousCalled = false;
+    bool setPositionCalled = false;
+    qint64 setPositionPos = -1;
+
   public slots:
     Q_SCRIPTABLE void Play() {}
     Q_SCRIPTABLE void Pause() {}
+    Q_SCRIPTABLE void PlayPause()
+    {
+        playPauseCalled = true;
+    }
     Q_SCRIPTABLE void Stop() {}
-    Q_SCRIPTABLE void Next() {}
-    Q_SCRIPTABLE void Previous() {}
-    Q_SCRIPTABLE void SetPosition(const QDBusObjectPath&, qint64) {}
+    Q_SCRIPTABLE void Next()
+    {
+        nextCalled = true;
+    }
+    Q_SCRIPTABLE void Previous()
+    {
+        previousCalled = true;
+    }
+    Q_SCRIPTABLE void SetPosition(const QDBusObjectPath&, qint64 pos)
+    {
+        setPositionCalled = true;
+        setPositionPos = pos;
+    }
     Q_SCRIPTABLE void Seek(qint64) {}
 
   private:
@@ -156,6 +199,8 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
 
     QString m_status = QStringLiteral("Stopped");
     bool m_canSeek = true;
+    bool m_canGoNext = true;
+    bool m_canGoPrevious = true;
     QVariantMap m_metadata;
     qlonglong m_position = 0;
     QDBusConnection m_conn{QStringLiteral("unset")};
@@ -556,6 +601,99 @@ TEST_F(MprisClientTest, PollPausesWhenProgressDisabled)
 
     QCoreApplication::processEvents(QEventLoop::AllEvents, 600);
     EXPECT_EQ(spy.count(), 0);
+}
+
+TEST_F(MprisClientTest, PlayPauseCallsDBusMethod)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    client.playPause();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->playPauseCalled; }));
+}
+
+TEST_F(MprisClientTest, NextCallsDBusMethodWhenCanGoNext)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    // CanGoNext defaults to true in FakeMprisPlayerAdaptor
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+    ASSERT_TRUE(waitFor([&] { return client.activePlayer().canGoNext; }));
+
+    client.next();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->nextCalled; }));
+}
+
+TEST_F(MprisClientTest, NextIsNoOpWhenCanNotGoNext)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setCanGoNext(false); // Set before client starts so initial fetch sees false
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    client.next();
+
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 300);
+    EXPECT_FALSE(fp.player->nextCalled);
+}
+
+TEST_F(MprisClientTest, PreviousCallsDBusMethodWhenCanGoPrevious)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    // CanGoPrevious defaults to true in FakeMprisPlayerAdaptor
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+    ASSERT_TRUE(waitFor([&] { return client.activePlayer().canGoPrevious; }));
+
+    client.previous();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->previousCalled; }));
+}
+
+TEST_F(MprisClientTest, PreviousFallsBackToSetPositionZeroWhenCanNotGoPrevious)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setCanGoPrevious(false); // Set before client starts so initial fetch sees false
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    client.previous();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->setPositionCalled; }));
+    EXPECT_EQ(fp.player->setPositionPos, 0LL);
 }
 
 #include "test_mprisclient.moc"

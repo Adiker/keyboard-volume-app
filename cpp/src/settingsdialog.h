@@ -2,9 +2,11 @@
 #include "config.h" // Profile
 #include <QDialog>
 #include <QList>
+#include <QLineEdit>
 #include <QPushButton>
 
 class QSpinBox;
+class QDoubleSpinBox;
 class QComboBox;
 class QCheckBox;
 class QTableWidget;
@@ -113,6 +115,8 @@ class SettingsDialog : public QDialog
     // Emitted live as any color or opacity changes: (colorBg, colorText, colorBar, opacity)
     void stylePreview(const QString& colorBg, const QString& colorText, const QString& colorBar,
                       int opacity);
+    // Emitted live when the OSD scale spinbox changes.
+    void scalePreview(double scale);
     // Emitted while Preview button is held: (screenIdx, x, y)
     void previewHeldRequested(int screenIdx, int x, int y);
     // Emitted when Preview button released: (timeoutMs)
@@ -150,6 +154,17 @@ class SettingsDialog : public QDialog
     ColorButton* m_colorBar = nullptr;
     QSpinBox* m_opacity = nullptr;
     QCheckBox* m_autoProfile = nullptr;
+
+    // Progress / MPRIS section
+    QCheckBox* m_progressEnabled = nullptr;
+    QCheckBox* m_progressInteractive = nullptr;
+    QSpinBox* m_progressPollMs = nullptr;
+    QComboBox* m_progressLabelMode = nullptr;
+    QLineEdit* m_trackedPlayers = nullptr;
+    QCheckBox* m_mediaControlsEnabled = nullptr;
+
+    // OSD scale
+    QDoubleSpinBox* m_osdScale = nullptr;
 
     // Profiles section
     QTableWidget* m_profilesTable = nullptr;

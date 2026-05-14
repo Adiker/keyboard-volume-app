@@ -864,3 +864,74 @@ TEST(ConfigOsdProgress, EmptyTrackedPlayersArrayIsPreserved)
     Config config(tmp.path());
     EXPECT_TRUE(config.osd().trackedPlayers.isEmpty());
 }
+
+TEST(ConfigOsdProgress, MediaControlsDefaultOn)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+    EXPECT_TRUE(config.osd().mediaControlsEnabled);
+}
+
+TEST(ConfigOsdProgress, MediaControlsRoundTrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OsdConfig osd = config.osd();
+    osd.mediaControlsEnabled = false;
+    config.setOsd(osd);
+
+    Config config2(tmp.path());
+    EXPECT_FALSE(config2.osd().mediaControlsEnabled);
+}
+
+TEST(ConfigOsdProgress, OsdScaleDefaultOne)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+    EXPECT_DOUBLE_EQ(config.osd().osdScale, 1.0);
+}
+
+TEST(ConfigOsdProgress, OsdScaleRoundTrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OsdConfig osd = config.osd();
+    osd.osdScale = 1.5;
+    config.setOsd(osd);
+
+    Config config2(tmp.path());
+    EXPECT_DOUBLE_EQ(config2.osd().osdScale, 1.5);
+}
+
+TEST(ConfigOsdProgress, OsdScaleClamped)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    // Write a config with out-of-range scale values
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject osdObj{{QStringLiteral("osd_scale"), 10.0}};
+    QJsonObject root{{QStringLiteral("osd"), osdObj}};
+    f.write(QJsonDocument(root).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    EXPECT_DOUBLE_EQ(config.osd().osdScale, 3.0); // clamped to max
+
+    QFile f2(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f2.open(QIODevice::WriteOnly));
+    QJsonObject osdObj2{{QStringLiteral("osd_scale"), 0.1}};
+    QJsonObject root2{{QStringLiteral("osd"), osdObj2}};
+    f2.write(QJsonDocument(root2).toJson());
+    f2.close();
+
+    Config config3(tmp.path());
+    EXPECT_DOUBLE_EQ(config3.osd().osdScale, 0.5); // clamped to min
+}

@@ -128,6 +128,7 @@ void TrayApp::openSettings()
     SettingsDialog dlg(m_config, m_inputHandler);
     connect(&dlg, &SettingsDialog::positionPreview, this, &TrayApp::osdPreviewRequested);
     connect(&dlg, &SettingsDialog::stylePreview, this, &TrayApp::osdStylePreviewRequested);
+    connect(&dlg, &SettingsDialog::scalePreview, this, &TrayApp::osdScalePreviewRequested);
     connect(&dlg, &SettingsDialog::previewHeldRequested, this, &TrayApp::osdPreviewHeldRequested);
     connect(&dlg, &SettingsDialog::previewReleased, this, &TrayApp::osdPreviewReleased);
     connect(&dlg, &QDialog::finished, this, [this](int) { emit osdPreviewFinished(); });

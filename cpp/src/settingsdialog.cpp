@@ -10,9 +10,11 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
+#include <QLineEdit>
 #include <QDialogButtonBox>
 #include <QColorDialog>
 #include <QColor>
@@ -329,12 +331,73 @@ void SettingsDialog::buildUi()
     m_opacity->setValue(osd.opacity);
     form->addRow(::tr(QStringLiteral("settings.opacity")), m_opacity);
 
+    // OSD scale
+    m_osdScale = new QDoubleSpinBox(this);
+    m_osdScale->setRange(0.5, 3.0);
+    m_osdScale->setSingleStep(0.1);
+    m_osdScale->setDecimals(1);
+    m_osdScale->setSuffix(QStringLiteral("x"));
+    m_osdScale->setValue(osd.osdScale);
+    form->addRow(::tr(QStringLiteral("settings.osd_scale")), m_osdScale);
+
     // Auto-switch profile
     m_autoProfile = new QCheckBox(::tr(QStringLiteral("settings.auto_profile_switch")), this);
     m_autoProfile->setChecked(m_config->autoProfileSwitch());
     form->addRow(QString(), m_autoProfile);
 
     layout->addLayout(form);
+
+    // ── Playback progress section ────────────────────────────────────────
+    QLabel* progressHeader = new QLabel(::tr(QStringLiteral("settings.progress.section")), this);
+    progressHeader->setStyleSheet(QStringLiteral("font-weight: bold; margin-top: 8px;"));
+    layout->addWidget(progressHeader);
+
+    QFormLayout* progressForm = new QFormLayout;
+    progressForm->setLabelAlignment(Qt::AlignRight);
+    progressForm->setSpacing(8);
+
+    m_progressEnabled = new QCheckBox(::tr(QStringLiteral("settings.progress.enabled")), this);
+    m_progressEnabled->setChecked(osd.progressEnabled);
+    progressForm->addRow(QString(), m_progressEnabled);
+
+    m_progressInteractive =
+        new QCheckBox(::tr(QStringLiteral("settings.progress.interactive")), this);
+    m_progressInteractive->setChecked(osd.progressInteractive);
+    progressForm->addRow(QString(), m_progressInteractive);
+
+    m_progressPollMs = new QSpinBox(this);
+    m_progressPollMs->setRange(200, 2000);
+    m_progressPollMs->setSingleStep(100);
+    m_progressPollMs->setSuffix(QStringLiteral(" ms"));
+    m_progressPollMs->setValue(osd.progressPollMs);
+    progressForm->addRow(::tr(QStringLiteral("settings.progress.poll_ms")), m_progressPollMs);
+
+    m_progressLabelMode = new QComboBox(this);
+    m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_app")),
+                                 QStringLiteral("app"));
+    m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_track")),
+                                 QStringLiteral("track"));
+    m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_both")),
+                                 QStringLiteral("both"));
+    {
+        int idx = m_progressLabelMode->findData(osd.progressLabelMode);
+        if (idx >= 0) m_progressLabelMode->setCurrentIndex(idx);
+    }
+    progressForm->addRow(::tr(QStringLiteral("settings.progress.label_mode")), m_progressLabelMode);
+
+    m_trackedPlayers = new QLineEdit(this);
+    m_trackedPlayers->setText(osd.trackedPlayers.join(QStringLiteral(", ")));
+    m_trackedPlayers->setPlaceholderText(
+        ::tr(QStringLiteral("settings.progress.tracked_players_hint")));
+    progressForm->addRow(::tr(QStringLiteral("settings.progress.tracked_players")),
+                         m_trackedPlayers);
+
+    m_mediaControlsEnabled =
+        new QCheckBox(::tr(QStringLiteral("settings.progress.media_controls")), this);
+    m_mediaControlsEnabled->setChecked(osd.mediaControlsEnabled);
+    progressForm->addRow(QString(), m_mediaControlsEnabled);
+
+    layout->addLayout(progressForm);
 
     // ── Profiles section ────────────────────────────────────────────────
     QLabel* profilesHeader = new QLabel(::tr(QStringLiteral("settings.profiles.section")), this);
@@ -413,6 +476,8 @@ void SettingsDialog::buildUi()
             [this](const QString&) { emitStylePreview(); });
     connect(m_opacity, QOverload<int>::of(&QSpinBox::valueChanged), this,
             [this](int) { emitStylePreview(); });
+    connect(m_osdScale, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            [this](double) { emitStylePreview(); });
 }
 
 void SettingsDialog::onPreviewPressed()
@@ -433,6 +498,7 @@ void SettingsDialog::emitPositionPreview()
 
 void SettingsDialog::emitStylePreview()
 {
+    emit scalePreview(m_osdScale->value());
     emit stylePreview(m_colorBg->color(), m_colorText->color(), m_colorBar->color(),
                       m_opacity->value());
     emitPositionPreview();
@@ -447,6 +513,28 @@ void SettingsDialog::saveAndAccept()
     m_config->updateOsd(m_screen->currentData().toInt(), m_timeout->value(), m_osdX->value(),
                         m_osdY->value(), m_opacity->value(), m_colorBg->color(),
                         m_colorText->color(), m_colorBar->color());
+
+    // Progress / MPRIS fields — read current OsdConfig, patch, write back
+    OsdConfig osd = m_config->osd();
+    osd.progressEnabled = m_progressEnabled->isChecked();
+    osd.progressInteractive = m_progressInteractive->isChecked();
+    osd.progressPollMs = m_progressPollMs->value();
+    osd.progressLabelMode = m_progressLabelMode->currentData().toString();
+    {
+        QStringList players;
+        const QStringList raw =
+            m_trackedPlayers->text().split(QLatin1Char(','), Qt::SkipEmptyParts);
+        for (const QString& s : raw)
+        {
+            const QString t = s.trimmed().toLower();
+            if (!t.isEmpty()) players.append(t);
+        }
+        osd.trackedPlayers = players;
+    }
+    osd.mediaControlsEnabled = m_mediaControlsEnabled->isChecked();
+    osd.osdScale = std::clamp(m_osdScale->value(), 0.5, 3.0);
+    m_config->setOsd(osd);
+
     m_config->setVolumeStep(m_step->value());
     m_config->setAutoProfileSwitch(m_autoProfile->isChecked());
     if (!m_profiles.isEmpty()) m_config->setProfiles(m_profiles);

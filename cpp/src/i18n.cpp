@@ -77,8 +77,27 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              // auto profile switch
              {QStringLiteral("settings.auto_profile_switch"),
               QStringLiteral("Auto-switch profile by focused window")},
+             // progress / MPRIS
+             {QStringLiteral("settings.progress.section"), QStringLiteral("Playback progress")},
+             {QStringLiteral("settings.progress.enabled"),
+              QStringLiteral("Show playback progress bar")},
+             {QStringLiteral("settings.progress.interactive"),
+              QStringLiteral("Allow seeking by clicking the bar")},
+             {QStringLiteral("settings.progress.poll_ms"),
+              QStringLiteral("Position poll interval:")},
+             {QStringLiteral("settings.progress.label_mode"), QStringLiteral("Track label:")},
+             {QStringLiteral("settings.progress.label_app"), QStringLiteral("App name")},
+             {QStringLiteral("settings.progress.label_track"), QStringLiteral("Track title")},
+             {QStringLiteral("settings.progress.label_both"), QStringLiteral("Both")},
+             {QStringLiteral("settings.progress.tracked_players"),
+              QStringLiteral("Tracked players (priority order):")},
+             {QStringLiteral("settings.progress.tracked_players_hint"),
+              QStringLiteral("Comma-separated substrings, e.g. spotify, youtube")},
+             {QStringLiteral("settings.progress.media_controls"),
+              QStringLiteral("Show media controls (play/pause/next/prev)")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("OSD Preview")},
+             {QStringLiteral("settings.osd_scale"), QStringLiteral("OSD scale:")},
              // app selector
              {QStringLiteral("app_selector.title"), QStringLiteral("Default application")},
              {QStringLiteral("app_selector.subtitle"),
@@ -195,8 +214,30 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              // auto profile switch
              {QStringLiteral("settings.auto_profile_switch"),
               QStringLiteral("Auto-prze\u0142\u0105czanie profilu wg aktywnego okna")},
+             // progress / MPRIS
+             {QStringLiteral("settings.progress.section"),
+              QStringLiteral("Post\u0119p odtwarzania")},
+             {QStringLiteral("settings.progress.enabled"),
+              QStringLiteral("Pokazuj pasek post\u0119pu odtwarzania")},
+             {QStringLiteral("settings.progress.interactive"),
+              QStringLiteral("Zezwalaj na przewijanie klikni\u0119ciem paska")},
+             {QStringLiteral("settings.progress.poll_ms"),
+              QStringLiteral("Cz\u0119stotliwo\u015b\u0107 odpytywania pozycji:")},
+             {QStringLiteral("settings.progress.label_mode"),
+              QStringLiteral("Etykieta \u015bcie\u017cki:")},
+             {QStringLiteral("settings.progress.label_app"), QStringLiteral("Nazwa aplikacji")},
+             {QStringLiteral("settings.progress.label_track"), QStringLiteral("Tytu\u0142 utworu")},
+             {QStringLiteral("settings.progress.label_both"), QStringLiteral("Oba")},
+             {QStringLiteral("settings.progress.tracked_players"),
+              QStringLiteral("Obserwowane odtwarzacze (kolejno\u015b\u0107 priorytetu):")},
+             {QStringLiteral("settings.progress.tracked_players_hint"),
+              QStringLiteral("Podci\u0105gi oddzielone przecinkami, np. spotify, youtube")},
+             {QStringLiteral("settings.progress.media_controls"),
+              QStringLiteral(
+                  "Poka\u017c przyciski sterowania (play/pause/nast\u0119pny/poprzedni)")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("Podgl\u0105d OSD")},
+             {QStringLiteral("settings.osd_scale"), QStringLiteral("Skala OSD:")},
              // app selector
              {QStringLiteral("app_selector.title"), QStringLiteral("Domy\u015blna aplikacja")},
              {QStringLiteral("app_selector.subtitle"),

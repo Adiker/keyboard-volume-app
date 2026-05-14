@@ -142,6 +142,7 @@ class App : public QObject
                 [this](int s, int x, int y) { m_osd->showPreview(s, x, y); });
         connect(m_tray, &TrayApp::osdPreviewFinished, m_osd, &OSDWindow::hidePreview);
         connect(m_tray, &TrayApp::osdStylePreviewRequested, m_osd, &OSDWindow::applyPreviewColors);
+        connect(m_tray, &TrayApp::osdScalePreviewRequested, m_osd, &OSDWindow::applyPreviewScale);
         connect(m_tray, &TrayApp::osdPreviewHeldRequested, m_osd, &OSDWindow::showPreviewHeld);
         connect(m_tray, &TrayApp::osdPreviewReleased, m_osd, &OSDWindow::releasePreview);
 
@@ -159,6 +160,20 @@ class App : public QObject
         connect(m_mpris, &MprisClient::positionChanged, m_osd, &OSDWindow::updatePosition);
         connect(m_mpris, &MprisClient::noPlayer, m_osd,
                 [this]() { m_osd->setProgressVisible(false); });
+
+        // OSDWindow seek interaction → MprisClient
+        connect(m_osd, &OSDWindow::seekStarted, m_mpris, [this]() { m_mpris->setSeeking(true); });
+        connect(m_osd, &OSDWindow::seekFinished, m_mpris, [this]() { m_mpris->setSeeking(false); });
+        connect(m_osd, &OSDWindow::seekRequested, m_mpris, &MprisClient::setPosition);
+
+        // OSDWindow media control buttons → MprisClient
+        connect(m_osd, &OSDWindow::playPauseRequested, m_mpris, &MprisClient::playPause);
+        connect(m_osd, &OSDWindow::nextRequested, m_mpris, &MprisClient::next);
+        connect(m_osd, &OSDWindow::previousRequested, m_mpris, &MprisClient::previous);
+
+        // MprisClient playback status → OSDWindow play/pause button icon
+        connect(m_mpris, &MprisClient::playbackStatusChanged, m_osd,
+                &OSDWindow::updatePlaybackStatus);
 
         // Settings change → reload MprisClient config
         connect(m_tray, &TrayApp::settingsChanged, m_mpris, &MprisClient::reload);
@@ -262,6 +277,11 @@ class App : public QObject
     {
         m_dbus = new DbusInterface(m_config.get(), m_volumeCtrl, m_tray, this);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProfiles);
+        connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProgressEnabled);
+        connect(m_dbus, &DbusInterface::progressEnabledChanged, m_osd,
+                [this](bool) { m_osd->reloadStyles(); });
+        connect(m_dbus, &DbusInterface::progressEnabledChanged, m_mpris,
+                [this](bool) { m_mpris->reload(); });
 
         auto bus = QDBusConnection::sessionBus();
 

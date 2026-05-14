@@ -261,6 +261,15 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
     if (props.contains(QStringLiteral("CanSeek")))
         kp.canSeek = props[QStringLiteral("CanSeek")].toBool();
 
+    if (props.contains(QStringLiteral("CanGoNext")))
+        kp.canGoNext = props[QStringLiteral("CanGoNext")].toBool();
+    if (props.contains(QStringLiteral("CanGoPrevious")))
+        kp.canGoPrevious = props[QStringLiteral("CanGoPrevious")].toBool();
+    if (props.contains(QStringLiteral("CanPause")))
+        kp.canPause = props[QStringLiteral("CanPause")].toBool();
+    if (props.contains(QStringLiteral("CanPlay")))
+        kp.canPlay = props[QStringLiteral("CanPlay")].toBool();
+
     if (props.contains(QStringLiteral("Metadata")))
     {
         const QVariantMap meta = variantMapFromDBusArg(props[QStringLiteral("Metadata")]);
@@ -349,6 +358,8 @@ void MprisClient::reevaluateActive(bool forceTrackChanged)
     }
 
     const bool serviceChanged = !m_hasActive || m_active.service != chosen->service;
+    // canGoNext/canGoPrevious are intentionally excluded: toggling these at playlist
+    // boundaries must not trigger trackChanged, which would reset the OSD progress bar.
     const bool trackChanged =
         serviceChanged || m_active.title != chosen->title || m_active.artist != chosen->artist ||
         m_active.lengthUs != chosen->lengthUs || m_active.canSeek != chosen->canSeek ||
@@ -360,6 +371,10 @@ void MprisClient::reevaluateActive(bool forceTrackChanged)
     m_active.displayName = chosen->displayName;
     m_active.status = chosen->status;
     m_active.canSeek = chosen->canSeek;
+    m_active.canGoNext = chosen->canGoNext;
+    m_active.canGoPrevious = chosen->canGoPrevious;
+    m_active.canPause = chosen->canPause;
+    m_active.canPlay = chosen->canPlay;
     m_active.lengthUs = chosen->lengthUs;
     m_active.trackId = chosen->trackId;
     m_active.title = chosen->title;
@@ -385,6 +400,39 @@ void MprisClient::reevaluateActive(bool forceTrackChanged)
             m_pollTimer->stop();
         }
     }
+}
+
+void MprisClient::playPause()
+{
+    if (!m_hasActive) return;
+    QDBusMessage msg = QDBusMessage::createMethodCall(m_active.service, QLatin1String(MPRIS_PATH),
+                                                      QLatin1String(MPRIS_PLAYER_IFACE),
+                                                      QStringLiteral("PlayPause"));
+    m_bus.asyncCall(msg);
+}
+
+void MprisClient::next()
+{
+    if (!m_hasActive || !m_active.canGoNext) return;
+    QDBusMessage msg =
+        QDBusMessage::createMethodCall(m_active.service, QLatin1String(MPRIS_PATH),
+                                       QLatin1String(MPRIS_PLAYER_IFACE), QStringLiteral("Next"));
+    m_bus.asyncCall(msg);
+}
+
+void MprisClient::previous()
+{
+    if (!m_hasActive) return;
+    if (!m_active.canGoPrevious)
+    {
+        // Fallback: restart the current track
+        setPosition(0);
+        return;
+    }
+    QDBusMessage msg = QDBusMessage::createMethodCall(m_active.service, QLatin1String(MPRIS_PATH),
+                                                      QLatin1String(MPRIS_PLAYER_IFACE),
+                                                      QStringLiteral("Previous"));
+    m_bus.asyncCall(msg);
 }
 
 void MprisClient::pollPosition()
