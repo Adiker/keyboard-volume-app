@@ -315,7 +315,16 @@ Selection is deterministic: filter by `Config::osd().trackedPlayers`, sort by th
 
 Harmonoid-specific guards: Harmonoid can push high-frequency `Position` via `PropertiesChanged` while an async `Get(Position)` poll briefly returns stale `0`; suppress Harmonoid poll replies that jump backwards by more than ~2s from the last accepted position. Harmonoid may also send transient incomplete metadata; keep the existing track identity/local TagLib duration when the same track briefly lacks URL, title/artist, or length. For live diagnosis, run with `KVA_DEBUG_PROGRESS=1` to log MPRIS→OSD progress decisions.
 
+`PlayerInfo` struct: `service` (D-Bus name), `displayName`, `status` (`Playing`/`Paused`/`Stopped`), `canSeek`, `lengthUs`, `trackId`, `title`, `artist`.
+
 `PlayerInfo` includes playback capability flags: `canGoNext`, `canGoPrevious`, `canPause`, `canPlay` — read from D-Bus properties `CanGoNext`, `CanGoPrevious`, `CanPause`, `CanPlay` during initial fetch and `PropertiesChanged` updates.
+
+Signals:
+- `activePlayerChanged(PlayerInfo)` — new active player selected or lost
+- `trackChanged(title, artist, lengthUs, canSeek)` — track metadata updated
+- `positionChanged(qint64 positionUs)` — position polled from active player (only when `progressEnabled`)
+- `playbackStatusChanged(QString status)` — Playing/Paused/Stopped state changed
+- `noPlayer()` — no tracked player available on the session bus
 
 Playback control slots (async D-Bus calls to the active player, no-op when no active player):
 - `playPause()` — calls `org.mpris.MediaPlayer2.Player.PlayPause()`
