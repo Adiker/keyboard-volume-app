@@ -141,6 +141,7 @@ class OSDWindow : public QWidget
     bool m_progressVisible = false;
     bool m_mediaControlsEnabled = true;
     qint64 m_trackLengthUs = 0;
+    qint64 m_lastPositionUs = 0;
     bool m_canSeek = false;
     bool m_seeking = false; // true while user is dragging the seek bar
     QString m_trackTitle;

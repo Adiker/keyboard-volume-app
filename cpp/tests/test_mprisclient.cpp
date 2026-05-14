@@ -207,6 +207,12 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
             {{QStringLiteral("Metadata"), m_metadata}, {QStringLiteral("Position"), pos}});
     }
 
+    void emitEmptyMetadataChanged()
+    {
+        m_metadata.clear();
+        emitPropertiesChanged({{QStringLiteral("Metadata"), m_metadata}});
+    }
+
     void emitSeeked(qint64 pos)
     {
         // Emit via the dedicated connection so the signal has the correct sender.
@@ -814,6 +820,41 @@ TEST_F(MprisClientTest, PositionOnlyPropertiesChangedDoesNotEmitTrackChanged)
     EXPECT_GT(posSpy.count(), 0) << "positionChanged must fire for Position-only update";
 }
 
+TEST_F(MprisClientTest, HarmonoidStalePollZeroDoesNotOverridePushedPosition)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Song"), QStringLiteral("Artist"), 200000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    OsdConfig osd = m_config->osd();
+    osd.progressEnabled = true;
+    osd.progressPollMs = 200;
+    m_config->setOsd(osd);
+    client.reload();
+    fp.player->setPosition(0);
+
+    QSignalSpy posSpy(&client, &MprisClient::positionChanged);
+    fp.player->emitPositionChanged(63311019LL);
+
+    ASSERT_TRUE(waitFor([&] { return posSpy.count() > 0; }, 2000));
+    EXPECT_EQ(posSpy.last().first().toLongLong(), 63311019LL);
+    posSpy.clear();
+
+    QEventLoop loop;
+    QTimer::singleShot(500, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    for (const QList<QVariant>& args : posSpy)
+        EXPECT_NE(args.first().toLongLong(), 0LL)
+            << "stale polled zero must not reset Harmonoid progress";
+}
+
 TEST_F(MprisClientTest, BundledMetadataAndPositionEmitsTrackBeforePosition)
 {
     SKIP_IF_NO_DBUS();
@@ -877,6 +918,71 @@ TEST_F(MprisClientTest, HarmonoidLocalFileDurationOverridesStaleMprisLength)
     const bool got = waitFor([&] { return trackSpy.count() > 0; }, 2000);
     ASSERT_TRUE(got) << "trackChanged not emitted after Harmonoid local file metadata";
     EXPECT_EQ(trackSpy.last().at(2).toLongLong(), 3000000LL);
+}
+
+TEST_F(MprisClientTest, HarmonoidKeepsLocalDurationWhenLaterMetadataLacksUrl)
+{
+    SKIP_IF_NO_DBUS();
+
+    const QString wavPath = m_tmpDir->path() + QStringLiteral("/real-duration.wav");
+    ASSERT_TRUE(writeSilentWav(wavPath, 3000));
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+
+    MprisClient client(m_config.get());
+    QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
+
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+    trackSpy.clear();
+
+    fp.player->setMetadataWithUrl(QStringLiteral("Superstar"), QStringLiteral("Jamelia"),
+                                  169456734LL, QStringLiteral("/t/stable"),
+                                  QUrl::fromLocalFile(wavPath).toString());
+
+    ASSERT_TRUE(waitFor([&] { return trackSpy.count() > 0; }, 2000));
+    EXPECT_EQ(trackSpy.last().at(2).toLongLong(), 3000000LL);
+    trackSpy.clear();
+
+    fp.player->setMetadata(QStringLiteral("Superstar"), QStringLiteral("Jamelia"), 169456734LL,
+                           QStringLiteral("/t/stable"));
+
+    QEventLoop loop;
+    QTimer::singleShot(300, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    EXPECT_EQ(trackSpy.count(), 0)
+        << "same Harmonoid track must not reset progress when later metadata lacks URL";
+    EXPECT_EQ(client.activePlayer().lengthUs, 3000000LL);
+}
+
+TEST_F(MprisClientTest, HarmonoidIgnoresTransientEmptyMetadataForCurrentTrack)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("harmonoid"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+
+    MprisClient client(m_config.get());
+    QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
+
+    fp.player->setMetadata(QStringLiteral("Superstar"), QStringLiteral("Jamelia"), 3000000LL,
+                           QStringLiteral("/t/stable"));
+
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+    ASSERT_TRUE(waitFor([&] { return trackSpy.count() > 0; }, 2000));
+    trackSpy.clear();
+
+    fp.player->emitEmptyMetadataChanged();
+
+    QEventLoop loop;
+    QTimer::singleShot(300, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    EXPECT_EQ(trackSpy.count(), 0)
+        << "transient empty Harmonoid metadata must not reset the active progress row";
+    EXPECT_EQ(client.activePlayer().title, QStringLiteral("Superstar"));
+    EXPECT_EQ(client.activePlayer().lengthUs, 3000000LL);
 }
 
 // Metadata values delivered via PropertiesChanged may arrive wrapped in

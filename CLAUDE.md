@@ -296,9 +296,7 @@ Progress row API:
 - `eventFilter()` handles click/drag seeking on the progress bar. It emits `seekStarted()`, repeated `seekRequested(positionUs)`, applies the release coordinate as the final seek target, and emits `seekFinished()` on release/cancel. Always clear `m_seeking` via `finishSeeking()` before returning through interaction guards, otherwise `MprisClient` polling can remain suspended.
 - `progressLabelMode` controls whether the main label shows the app, track, or app plus track row.
 
-
 App and track labels use `MarqueeLabel` (inner class in `osdwindow.cpp`): when the text exceeds the widget width, it pauses 1.5 s, scrolls left at ~33 fps, pauses 1 s at the end, then resets. Short text that fits displays statically. No config option — always active for both labels.
-
 
 Media controls row (inside `m_progressRow`, below the progress bar):
 - `setMediaControlsEnabled(bool)` — shows/hides `m_controlsRow` (⏮ prev / ⏵⏸ play-pause / ⏭ next buttons) and calls `applySize()` to resize the window. Called from `reloadStyles()`.
@@ -315,14 +313,7 @@ Selection is deterministic: filter by `Config::osd().trackedPlayers`, sort by th
 
 `MprisClient` lives in the main Qt thread only. All D-Bus reads are async via QtDBus; do not call it from `PaWorker` or `InputHandler`. It may keep active-player and metadata state current while progress is disabled, but it must not poll `Position` unless `Config::osd().progressEnabled` is true.
 
-`PlayerInfo` struct: `service` (D-Bus name), `displayName`, `status` (`Playing`/`Paused`/`Stopped`), `canSeek`, `lengthUs`, `trackId`, `title`, `artist`.
-
-Signals:
-- `activePlayerChanged(PlayerInfo)` — new active player selected or lost
-- `trackChanged(title, artist, lengthUs, canSeek)` — track metadata updated
-- `positionChanged(qint64 positionUs)` — position polled from active player (only when `progressEnabled`)
-- `playbackStatusChanged(QString status)` — Playing/Paused/Stopped state changed
-- `noPlayer()` — no tracked player available on the session bus
+Harmonoid-specific guards: Harmonoid can push high-frequency `Position` via `PropertiesChanged` while an async `Get(Position)` poll briefly returns stale `0`; suppress Harmonoid poll replies that jump backwards by more than ~2s from the last accepted position. Harmonoid may also send transient incomplete metadata; keep the existing track identity/local TagLib duration when the same track briefly lacks URL, title/artist, or length. For live diagnosis, run with `KVA_DEBUG_PROGRESS=1` to log MPRIS→OSD progress decisions.
 
 `PlayerInfo` includes playback capability flags: `canGoNext`, `canGoPrevious`, `canPause`, `canPlay` — read from D-Bus properties `CanGoNext`, `CanGoPrevious`, `CanPause`, `CanPlay` during initial fetch and `PropertiesChanged` updates.
 

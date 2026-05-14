@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 find_package(GTest REQUIRED)
-find_package(Qt6 REQUIRED COMPONENTS Core Test)
+find_package(Qt6 REQUIRED COMPONENTS Core Test Widgets)
 
 # For smoke tests that link against full source files:
 find_package(PkgConfig REQUIRED)
@@ -105,6 +105,23 @@ target_link_libraries(test_inputhandler PRIVATE
     PkgConfig::LIBEVDEV
 )
 add_test(NAME test_inputhandler COMMAND test_inputhandler)
+
+# ─── test_osdwindow ────────────────────────────────────────────────────────────
+add_executable(test_osdwindow
+    test_osdwindow.cpp
+    ../src/osdwindow.cpp
+    ../src/config.cpp
+    ../src/i18n.cpp
+)
+target_include_directories(test_osdwindow PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(test_osdwindow PRIVATE
+    GTest::gtest
+    Qt6::Core
+    Qt6::Widgets
+)
+add_test(NAME test_osdwindow COMMAND test_osdwindow)
 
 # ─── test_mprisclient (requires session D-Bus; skipped automatically otherwise) ─
 find_package(Qt6 QUIET COMPONENTS DBus)
