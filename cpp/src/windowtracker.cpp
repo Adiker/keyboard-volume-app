@@ -106,6 +106,7 @@ struct WaylandState
     wl_registry* registry = nullptr;
     zwlr_foreign_toplevel_manager_v1* manager = nullptr;
     QList<WaylandToplevel*> toplevels;
+    WaylandToplevel* focusedToplevel = nullptr;
     QString lastFocusedApp;
     bool managerFinished = false;
 };
@@ -163,10 +164,12 @@ void handleToplevelDone(void* data, zwlr_foreign_toplevel_handle_v1*)
     auto* toplevel = static_cast<WaylandToplevel*>(data);
     if (toplevel->activated)
     {
+        toplevel->state->focusedToplevel = toplevel;
         emitFocusedApp(toplevel->state, toplevel->appId);
     }
-    else if (toplevel->state->lastFocusedApp == toplevel->appId)
+    else if (toplevel->state->focusedToplevel == toplevel)
     {
+        toplevel->state->focusedToplevel = nullptr;
         emitFocusedApp(toplevel->state, {});
     }
 }
@@ -176,8 +179,9 @@ void handleToplevelClosed(void* data, zwlr_foreign_toplevel_handle_v1*)
     auto* toplevel = static_cast<WaylandToplevel*>(data);
     WaylandState* state = toplevel->state;
 
-    if (toplevel->activated && state->lastFocusedApp == toplevel->appId)
+    if (state->focusedToplevel == toplevel)
     {
+        state->focusedToplevel = nullptr;
         emitFocusedApp(state, {});
     }
 
