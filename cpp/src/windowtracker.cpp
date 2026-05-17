@@ -1,6 +1,5 @@
 #include "windowtracker.h"
 
-#include <QByteArray>
 #include <QFile>
 #include <QList>
 #include <QString>
@@ -10,7 +9,6 @@
 #include <algorithm>
 #include <cstring>
 #include <cstdlib>
-#include <utility>
 
 #ifdef HAVE_WAYLAND_FOREIGN_TOPLEVEL
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
@@ -166,6 +164,10 @@ void handleToplevelDone(void* data, zwlr_foreign_toplevel_handle_v1*)
     if (toplevel->activated)
     {
         emitFocusedApp(toplevel->state, toplevel->appId);
+    }
+    else if (toplevel->state->lastFocusedApp == toplevel->appId)
+    {
+        emitFocusedApp(toplevel->state, {});
     }
 }
 
