@@ -417,13 +417,13 @@ An `auto_switch` checkbox (per-profile) controls whether the profile participate
 
 ### `cpp/src/windowtracker.h/cpp` — `WindowTracker`
 
-Runs in a dedicated `QThread`, polling XCB every 500ms for the active window via `_NET_ACTIVE_WINDOW`. Reads `_NET_WM_PID` from the focused window, then resolves the PID to a binary name via `/proc/PID/comm`. Emits `focusedBinaryChanged(QString)` when the binary changes.
+Runs in a dedicated `QThread` with two runtime-selected backends. On Wayland compositors exposing `zwlr_foreign_toplevel_management_unstable_v1`, it listens for foreign-toplevel `app_id` and `state` updates and emits after `done()` when the activated toplevel changes. Otherwise it falls back to polling XCB every 500ms for `_NET_ACTIVE_WINDOW`, reading `_NET_WM_PID`, and resolving the PID to a binary name via `/proc/PID/comm`. Emits `focusedBinaryChanged(QString)` when the focused app changes.
 
 `App` receives the signal, matches the binary name against the PipeWire app cache (case-insensitive `contains` check against both `AudioApp::name` and `AudioApp::binary`), checks for an `auto_switch=true` profile whose `app` field matches, and overrides the volume target via `effectiveApp()`. When the focus moves to a window with no matching audio app, the fallback profile-resolved app is used instead.
 
 Thread-safety: `WindowTracker::start()` sets `m_running = true` (atomic) before calling `QThread::start()`, avoiding a race where `stop()`'s `m_running = false` could be overwritten if `run()` hadn't yet entered its polling loop.
 
-**Limitation:** XCB requires X11/XWayland. On pure Wayland without XWayland the tracker fails gracefully with an error log — the app continues to work normally, just without auto-switching.
+**Limitation:** Wayland focus tracking depends on `zwlr_foreign_toplevel_management_unstable_v1` (wlroots-compatible compositors). On unsupported pure Wayland sessions without XWayland, the tracker fails gracefully with an error log — the app continues to work normally, just without auto-switching.
 
 ### `cpp/src/i18n.h/cpp`
 
@@ -501,7 +501,7 @@ MprisClient::playbackStatusChanged(status)
 | Main | Qt event loop | UI, signals, OSD updates, D-Bus dispatch |
 | `InputHandler` | `QThread` | evdev polling with `epoll()` (50ms timeout) |
 | `KeyCaptureThread` | `QThread` | One-shot key capture for hotkey rebinding |
-| `WindowTracker` | `QThread` | XCB active-window polling (500ms interval) for auto-profile switching |
+| `WindowTracker` | `QThread` | Wayland foreign-toplevel events or XCB active-window polling for auto-profile switching |
 | `PaWorker` | `QThread` (via `moveToThread`) | All PulseAudio/libpipewire operations |
 
 D-Bus calls arrive on the main thread and are forwarded to `VolumeController` (which posts to `PaWorker`). `DbusInterface` property reads are served from main-thread caches — no blocking.

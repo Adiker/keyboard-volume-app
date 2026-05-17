@@ -226,10 +226,10 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 
 ### 29. WindowTracker na czystym Waylandzie (wlr-foreign-toplevel)
 
-**Problem:** Tryb Follow Focus (#16) działa wyłącznie na X11/XWayland przez `_NET_ACTIVE_WINDOW` via XCB. Na czystym Waylandzie bez XWayland (Sway, Hyprland, GNOME Wayland) `WindowTracker` kończy pracę z błędem i auto-przełączanie profili nie funkcjonuje. Jest to znane ograniczenie wymienione w #16.
-**Rekomendacja:** Dodać backend Wayland do `WindowTracker` oparty na protokole `zwlr_foreign_toplevel_management_unstable_v1`. Protokół dostarcza eventy `toplevel_activated` z `app_id` (odpowiednik nazwy binarki). Wykrywać backend w runtime: XCB gdy `DISPLAY` dostępne, fallback do Wayland gdy `WAYLAND_DISPLAY` i protokół obecny w `wl_registry`. Zachować ten sam publiczny sygnał `focusedBinaryChanged(QString)` — `App::onFocusedBinaryChanged()` w `main.cpp` nie wymaga zmian. Opcjonalnie: trzeci backend D-Bus dla KDE Plasma (`org.kde.KWin`).
-**Pliki:** `cpp/src/windowtracker.h`, `cpp/src/windowtracker.cpp`, `cpp/CMakeLists.txt`
-**Status:** Planowane.
+**Problem:** Tryb Follow Focus (#16) działał wyłącznie na X11/XWayland przez `_NET_ACTIVE_WINDOW` via XCB. Na czystym Waylandzie bez XWayland (Sway, Hyprland, GNOME Wayland) `WindowTracker` kończył pracę z błędem i auto-przełączanie profili nie funkcjonowało.
+**Rekomendacja:** Dodać backend Wayland do `WindowTracker` oparty na protokole `zwlr_foreign_toplevel_management_unstable_v1`. Protokół dostarcza `app_id` oraz `state` z flagą `activated`; emisja następuje po `done()`, żeby traktować zmianę jako atomową. Zachować ten sam publiczny sygnał `focusedBinaryChanged(QString)` — `App::onFocusedBinaryChanged()` w `main.cpp` nie wymaga zmian. Opcjonalnie: trzeci backend D-Bus dla KDE Plasma (`org.kde.KWin`).
+**Pliki:** `cpp/protocols/wlr-foreign-toplevel-management-unstable-v1.xml`, `cpp/src/windowtracker.h`, `cpp/src/windowtracker.cpp`, `cpp/CMakeLists.txt`, `.github/workflows/ci.yml`
+**Status:** Zrealizowane. `WindowTracker` wybiera w runtime backend Wayland, gdy `WAYLAND_DISPLAY` jest ustawione i registry wystawia `zwlr_foreign_toplevel_manager_v1`; w przeciwnym razie używa dotychczasowego XCB fallbacku, jeśli dostępny jest `DISPLAY`. Kod protokołu jest generowany przez `wayland-scanner` z vendored XML tylko gdy obecne są `wayland-client` i scanner (`HAVE_WAYLAND_FOREIGN_TOPLEVEL`). Pętla Wayland używa fd z `wl_display_get_fd()` i `poll()` z timeoutem 50ms, a XCB polling 500ms pozostał bez zmian.
 
 ---
 

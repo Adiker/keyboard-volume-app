@@ -101,6 +101,7 @@ jobs:
             libpulse-dev \
             libpipewire-0.3-dev \
             libtag1-dev \
+            libwayland-dev \
             dbus
 
       - name: Configure
