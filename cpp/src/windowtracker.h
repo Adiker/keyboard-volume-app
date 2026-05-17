@@ -3,10 +3,6 @@
 #include <QString>
 #include <atomic>
 
-struct xcb_connection_t;
-using xcb_atom_t = unsigned int;
-using xcb_window_t = unsigned int;
-
 class WindowTracker : public QThread
 {
     Q_OBJECT
@@ -25,8 +21,16 @@ class WindowTracker : public QThread
     void run() override;
 
   private:
-    QString windowToBinary(xcb_connection_t* conn, xcb_window_t win, xcb_atom_t pidAtom) const;
+    enum class Backend
+    {
+        None,
+        Xcb,
+        WaylandForeignToplevel,
+    };
 
-    xcb_connection_t* m_conn = nullptr;
+    Backend chooseBackend() const;
+    void runXcb();
+    void runWayland();
+
     std::atomic<bool> m_running{false};
 };

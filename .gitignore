@@ -23,6 +23,7 @@ env/
 ENV/
 
 # C++ / CMake
+/build/
 cpp/build/
 cpp/build-*/
 cpp/build_tidy/

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(keyboard-volume-app VERSION 0.1.0 LANGUAGES CXX)
+project(keyboard-volume-app VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -64,12 +64,46 @@ target_link_libraries(keyboard-volume-app PRIVATE
     PkgConfig::XCB
 )
 
-# Optional: wayland-client for pre-QApplication zwlr_layer_shell_v1 probe
+# Optional: wayland-client for protocol probes and native Wayland backends
 pkg_check_modules(WAYLAND_CLIENT IMPORTED_TARGET wayland-client)
 if(WAYLAND_CLIENT_FOUND)
     target_compile_definitions(keyboard-volume-app PRIVATE HAVE_WAYLAND_CLIENT)
     target_link_libraries(keyboard-volume-app PRIVATE PkgConfig::WAYLAND_CLIENT)
     message(STATUS "wayland-client: Wayland protocol probe enabled")
+
+    find_program(WAYLAND_SCANNER_EXECUTABLE NAMES wayland-scanner)
+    if(WAYLAND_SCANNER_EXECUTABLE)
+        set(WLR_FOREIGN_TOPLEVEL_PROTOCOL
+            "${CMAKE_CURRENT_SOURCE_DIR}/protocols/wlr-foreign-toplevel-management-unstable-v1.xml")
+        set(WLR_FOREIGN_TOPLEVEL_HEADER
+            "${CMAKE_CURRENT_BINARY_DIR}/wlr-foreign-toplevel-management-unstable-v1-client-protocol.h")
+        set(WLR_FOREIGN_TOPLEVEL_CODE
+            "${CMAKE_CURRENT_BINARY_DIR}/wlr-foreign-toplevel-management-unstable-v1-protocol.c")
+
+        add_custom_command(
+            OUTPUT "${WLR_FOREIGN_TOPLEVEL_HEADER}"
+            COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" client-header
+                    "${WLR_FOREIGN_TOPLEVEL_PROTOCOL}"
+                    "${WLR_FOREIGN_TOPLEVEL_HEADER}"
+            DEPENDS "${WLR_FOREIGN_TOPLEVEL_PROTOCOL}"
+            VERBATIM)
+        add_custom_command(
+            OUTPUT "${WLR_FOREIGN_TOPLEVEL_CODE}"
+            COMMAND "${WAYLAND_SCANNER_EXECUTABLE}" private-code
+                    "${WLR_FOREIGN_TOPLEVEL_PROTOCOL}"
+                    "${WLR_FOREIGN_TOPLEVEL_CODE}"
+            DEPENDS "${WLR_FOREIGN_TOPLEVEL_PROTOCOL}"
+            VERBATIM)
+
+        target_sources(keyboard-volume-app PRIVATE
+            "${WLR_FOREIGN_TOPLEVEL_HEADER}"
+            "${WLR_FOREIGN_TOPLEVEL_CODE}")
+        target_include_directories(keyboard-volume-app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+        target_compile_definitions(keyboard-volume-app PRIVATE HAVE_WAYLAND_FOREIGN_TOPLEVEL)
+        message(STATUS "wlr-foreign-toplevel: WindowTracker Wayland backend enabled")
+    else()
+        message(STATUS "wayland-scanner: NOT found — WindowTracker Wayland backend disabled")
+    endif()
 else()
     message(STATUS "wayland-client: NOT found — XCB fallback always used on Wayland sessions")
 endif()
