@@ -52,7 +52,7 @@ keyboard-volume-app/
 │       ├── kvctl.cpp            # kv-ctl command-line D-Bus client
 │       ├── kvctlcommand.h/cpp   # kv-ctl parser shared with tests
 │       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (fd, libevdev*, uinput)
-│       ├── windowtracker.h/cpp  # XCB window-focus monitor for auto-profile switching
+│       ├── windowtracker.h/cpp  # Window focus monitor (X11 + Wayland backends) for auto-profile switching
 │       ├── screenutils.h        # Header-only: centerDialogOnScreenAt() for multi-monitor XWayland
 │       ├── audioapp.h           # AudioApp struct (display name, PA index, muted, volume)
 │       └── waylandstate.h       # Declares global extern bool g_nativeWayland for LayerShellQt OSD routing
