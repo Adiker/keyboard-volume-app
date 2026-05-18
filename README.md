@@ -281,6 +281,8 @@ keyboard-volume-app/
 ├── cpp/
 │   ├── CMakeLists.txt
 │   ├── resources.qrc            # Qt resource manifest (embeds icon)
+│   ├── protocols/               # Custom Wayland protocol XML definitions
+│   │   └── wlr-foreign-toplevel-management-unstable-v1.xml
 │   ├── src/
 │       ├── main.cpp             # Entry point, wires all modules together
 │       ├── config.h/cpp         # JSON config read/write
@@ -296,13 +298,16 @@ keyboard-volume-app/
 │       ├── firstrunwizard.h/cpp  # First-run wizard (language + device + app)
 │       ├── dbusinterface.h/cpp   # D-Bus VolumeControl interface
 │       ├── mprisinterface.h/cpp  # MPRIS v2 adaptor
+│       ├── mprisclient.h/cpp     # MPRIS consumer for player metadata/progress
 │       ├── kvctl.cpp             # kv-ctl D-Bus CLI client
 │       ├── kvctlcommand.h/cpp    # kv-ctl command parser
 │       ├── pwutils.h/cpp         # PipeWire client listing utility
 │       ├── applistwidget.h/cpp   # Reusable PW app list widget
 │       ├── appselectordialog.h/cpp  # Dialog for changing default audio app
+│       ├── windowtracker.h/cpp   # Window focus monitor (X11 + Wayland backends)
 │       ├── screenutils.h         # Header-only multi-monitor dialog centering
-│       └── audioapp.h           # AudioApp struct
+│       ├── audioapp.h           # AudioApp struct
+│       └── waylandstate.h       # Declares global extern bool g_nativeWayland
 │   └── tests/
 │       ├── CMakeLists.txt
 │       ├── test_config.cpp
@@ -310,7 +315,9 @@ keyboard-volume-app/
 │       ├── test_kvctlcommand.cpp
 │       ├── test_inputhandler.cpp
 │       ├── test_pwutils.cpp
-│       └── test_volumecontroller.cpp
+│       ├── test_volumecontroller.cpp
+│       ├── test_mprisclient.cpp
+│       └── test_osdwindow.cpp
 ├── deploy/
 │   └── keyboard-volume-app.service  # systemd user service
 ├── pkg/
@@ -319,6 +326,7 @@ keyboard-volume-app/
 ├── resources/
 │   ├── icon.png
 │   └── keyboard-volume-app.desktop  # Desktop entry for distribution
+├── .clang-format                # Code formatting configuration
 ├── LICENSE
 ├── AGENTS.md
 ├── CLAUDE.md
@@ -614,6 +622,8 @@ keyboard-volume-app/
 ├── cpp/
 │   ├── CMakeLists.txt
 │   ├── resources.qrc            # Manifest zasobów Qt (osadza ikonę)
+│   ├── protocols/               # XML definicje protokołów Wayland
+│   │   └── wlr-foreign-toplevel-management-unstable-v1.xml
 │   ├── src/
 │       ├── main.cpp             # Punkt wejścia, łączy wszystkie moduły
 │       ├── config.h/cpp         # Odczyt i zapis konfiguracji JSON
@@ -629,14 +639,16 @@ keyboard-volume-app/
 │       ├── firstrunwizard.h/cpp  # Asystent pierwszego uruchomienia
 │       ├── dbusinterface.h/cpp   # Interfejs D-Bus VolumeControl
 │       ├── mprisinterface.h/cpp  # Adaptor MPRIS v2
+│       ├── mprisclient.h/cpp     # Klient MPRIS dla metadanych/postępu zewnętrznego odtwarzacza
 │       ├── kvctl.cpp             # Klient CLI D-Bus kv-ctl
 │       ├── kvctlcommand.h/cpp    # Parser komend kv-ctl
 │       ├── pwutils.h/cpp         # Narzędzie do listowania klientów PipeWire
 │       ├── applistwidget.h/cpp   # Reusable widget listy aplikacji PW
 │       ├── appselectordialog.h/cpp  # Dialog zmiany domyślnej aplikacji audio
-│       ├── windowtracker.h/cpp    # Monitor aktywnego okna X11 dla auto-przełączania profili
+│       ├── windowtracker.h/cpp    # Monitor aktywnego okna (X11 + Wayland) dla auto-przełączania profili
 │       ├── screenutils.h         # Header-only centrowanie dialogów na właściwym monitorze
-│       └── audioapp.h           # Struct AudioApp
+│       ├── audioapp.h           # Struct AudioApp
+│       └── waylandstate.h       # Deklaracja globalnej zmiennej g_nativeWayland
 │   └── tests/
 │       ├── CMakeLists.txt
 │       ├── test_config.cpp
@@ -644,7 +656,9 @@ keyboard-volume-app/
 │       ├── test_kvctlcommand.cpp
 │       ├── test_inputhandler.cpp
 │       ├── test_pwutils.cpp
-│       └── test_volumecontroller.cpp
+│       ├── test_volumecontroller.cpp
+│       ├── test_mprisclient.cpp
+│       └── test_osdwindow.cpp
 ├── deploy/
 │   └── keyboard-volume-app.service  # Usługa systemd user
 ├── pkg/
@@ -653,6 +667,7 @@ keyboard-volume-app/
 ├── resources/
 │   ├── icon.png
 │   └── keyboard-volume-app.desktop  # Wpis .desktop do dystrybucji
+├── .clang-format                # Konfiguracja formatowania kodu
 ├── LICENSE
 ├── AGENTS.md
 ├── CLAUDE.md
