@@ -302,7 +302,8 @@ keyboard-volume-app/
 │       ├── applistwidget.h/cpp   # Reusable PW app list widget
 │       ├── appselectordialog.h/cpp  # Dialog for changing default audio app
 │       ├── screenutils.h         # Header-only multi-monitor dialog centering
-│       └── audioapp.h           # AudioApp struct
+│       ├── audioapp.h           # AudioApp struct
+│       └── waylandstate.h       # Declares global extern bool g_nativeWayland
 │   └── tests/
 │       ├── CMakeLists.txt
 │       ├── test_config.cpp
@@ -310,7 +311,9 @@ keyboard-volume-app/
 │       ├── test_kvctlcommand.cpp
 │       ├── test_inputhandler.cpp
 │       ├── test_pwutils.cpp
-│       └── test_volumecontroller.cpp
+│       ├── test_volumecontroller.cpp
+│       ├── test_mprisclient.cpp
+│       └── test_osdwindow.cpp
 ├── deploy/
 │   └── keyboard-volume-app.service  # systemd user service
 ├── pkg/
@@ -636,7 +639,8 @@ keyboard-volume-app/
 │       ├── appselectordialog.h/cpp  # Dialog zmiany domyślnej aplikacji audio
 │       ├── windowtracker.h/cpp    # Monitor aktywnego okna X11 dla auto-przełączania profili
 │       ├── screenutils.h         # Header-only centrowanie dialogów na właściwym monitorze
-│       └── audioapp.h           # Struct AudioApp
+│       ├── audioapp.h           # Struct AudioApp
+│       └── waylandstate.h       # Deklaracja globalnej zmiennej g_nativeWayland
 │   └── tests/
 │       ├── CMakeLists.txt
 │       ├── test_config.cpp
@@ -644,7 +648,9 @@ keyboard-volume-app/
 │       ├── test_kvctlcommand.cpp
 │       ├── test_inputhandler.cpp
 │       ├── test_pwutils.cpp
-│       └── test_volumecontroller.cpp
+│       ├── test_volumecontroller.cpp
+│       ├── test_mprisclient.cpp
+│       └── test_osdwindow.cpp
 ├── deploy/
 │   └── keyboard-volume-app.service  # Usługa systemd user
 ├── pkg/

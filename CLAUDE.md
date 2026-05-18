@@ -52,7 +52,8 @@ keyboard-volume-app/
 │       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (fd, libevdev*, uinput)
 │       ├── windowtracker.h/cpp  # XCB window-focus monitor for auto-profile switching
 │       ├── screenutils.h        # Header-only: centerDialogOnScreenAt() for multi-monitor XWayland
-│       └── audioapp.h           # AudioApp struct (display name, PA index, muted, volume)
+│       ├── audioapp.h           # AudioApp struct (display name, PA index, muted, volume)
+│       └── waylandstate.h       # Declares global extern bool g_nativeWayland for LayerShellQt OSD routing
 ├── pkg/
 │   └── arch/
 │       └── PKGBUILD             # Arch Linux package (keyboard-volume-app-git)
@@ -429,6 +430,10 @@ Thread-safety: `WindowTracker::start()` sets `m_running = true` (atomic) before 
 
 Static string tables for `en` and `pl`. `tr(key)` falls back to English if a key is missing in the current language.
 
+### `cpp/src/waylandstate.h`
+
+Declares the global boolean `g_nativeWayland` (`extern bool g_nativeWayland;`). It is initialized in `main()` before `QApplication` construction and is read-only thereafter. If `true`, the OSD uses native Wayland layer-shell for positioning; if `false`, it falls back to X11/XWayland window positioning via `move()` / `QWindow::setPosition()`.
+
 ---
 
 ## Signal Flow
@@ -602,6 +607,7 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
 - `test_mprisclient` — 13 tests (MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards)
+- `test_osdwindow` — 1 test (OSDWindow progress-row metadata update and position preservation regressions)
 
 Run locally: `cd cpp/build && ctest -E test_mprisclient --output-on-failure` and `cd cpp/build && dbus-run-session -- ctest -R test_mprisclient --output-on-failure`.
 
