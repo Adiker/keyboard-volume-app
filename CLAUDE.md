@@ -29,6 +29,8 @@ keyboard-volume-app/
 ├── cpp/
 │   ├── CMakeLists.txt           # CMake build (Qt6, libevdev, libpulse, libpipewire, DBus)
 │   ├── resources.qrc            # Qt resource file — embeds icon.png
+│   ├── protocols/               # Wayland protocol XML definitions for window-tracker
+│   │   └── wlr-foreign-toplevel-management-unstable-v1.xml
 │   └── src/
 │       ├── main.cpp             # Entry point; App class wires all modules
 │       ├── config.h/cpp         # JSON config r/w (XDG config dir via QStandardPaths)
@@ -62,6 +64,7 @@ keyboard-volume-app/
 │   └── keyboard-volume-app.desktop  # Desktop entry (distribution copy, no hardcoded paths)
 ├── deploy/
 │   └── keyboard-volume-app.service  # systemd user service unit
+├── .clang-format                # C++ code formatting style guidelines
 └── LICENSE                      # GPL-2.0-or-later
 ```
 

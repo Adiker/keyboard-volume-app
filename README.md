@@ -281,6 +281,8 @@ keyboard-volume-app/
 ├── cpp/
 │   ├── CMakeLists.txt
 │   ├── resources.qrc            # Qt resource manifest (embeds icon)
+│   ├── protocols/               # Custom Wayland protocol XML definitions
+│   │   └── wlr-foreign-toplevel-management-unstable-v1.xml
 │   ├── src/
 │       ├── main.cpp             # Entry point, wires all modules together
 │       ├── config.h/cpp         # JSON config read/write
@@ -322,6 +324,7 @@ keyboard-volume-app/
 ├── resources/
 │   ├── icon.png
 │   └── keyboard-volume-app.desktop  # Desktop entry for distribution
+├── .clang-format                # Code formatting configuration
 ├── LICENSE
 ├── AGENTS.md
 ├── CLAUDE.md
@@ -617,6 +620,8 @@ keyboard-volume-app/
 ├── cpp/
 │   ├── CMakeLists.txt
 │   ├── resources.qrc            # Manifest zasobów Qt (osadza ikonę)
+│   ├── protocols/               # XML definicje protokołów Wayland
+│   │   └── wlr-foreign-toplevel-management-unstable-v1.xml
 │   ├── src/
 │       ├── main.cpp             # Punkt wejścia, łączy wszystkie moduły
 │       ├── config.h/cpp         # Odczyt i zapis konfiguracji JSON
@@ -659,6 +664,7 @@ keyboard-volume-app/
 ├── resources/
 │   ├── icon.png
 │   └── keyboard-volume-app.desktop  # Wpis .desktop do dystrybucji
+├── .clang-format                # Konfiguracja formatowania kodu
 ├── LICENSE
 ├── AGENTS.md
 ├── CLAUDE.md
