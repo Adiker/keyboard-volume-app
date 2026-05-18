@@ -298,11 +298,13 @@ keyboard-volume-app/
 │       ├── firstrunwizard.h/cpp  # First-run wizard (language + device + app)
 │       ├── dbusinterface.h/cpp   # D-Bus VolumeControl interface
 │       ├── mprisinterface.h/cpp  # MPRIS v2 adaptor
+│       ├── mprisclient.h/cpp     # MPRIS consumer for player metadata/progress
 │       ├── kvctl.cpp             # kv-ctl D-Bus CLI client
 │       ├── kvctlcommand.h/cpp    # kv-ctl command parser
 │       ├── pwutils.h/cpp         # PipeWire client listing utility
 │       ├── applistwidget.h/cpp   # Reusable PW app list widget
 │       ├── appselectordialog.h/cpp  # Dialog for changing default audio app
+│       ├── windowtracker.h/cpp   # Window focus monitor (X11 + Wayland backends)
 │       ├── screenutils.h         # Header-only multi-monitor dialog centering
 │       ├── audioapp.h           # AudioApp struct
 │       └── waylandstate.h       # Declares global extern bool g_nativeWayland
@@ -637,12 +639,13 @@ keyboard-volume-app/
 │       ├── firstrunwizard.h/cpp  # Asystent pierwszego uruchomienia
 │       ├── dbusinterface.h/cpp   # Interfejs D-Bus VolumeControl
 │       ├── mprisinterface.h/cpp  # Adaptor MPRIS v2
+│       ├── mprisclient.h/cpp     # Klient MPRIS dla metadanych/postępu zewnętrznego odtwarzacza
 │       ├── kvctl.cpp             # Klient CLI D-Bus kv-ctl
 │       ├── kvctlcommand.h/cpp    # Parser komend kv-ctl
 │       ├── pwutils.h/cpp         # Narzędzie do listowania klientów PipeWire
 │       ├── applistwidget.h/cpp   # Reusable widget listy aplikacji PW
 │       ├── appselectordialog.h/cpp  # Dialog zmiany domyślnej aplikacji audio
-│       ├── windowtracker.h/cpp    # Monitor aktywnego okna X11 dla auto-przełączania profili
+│       ├── windowtracker.h/cpp    # Monitor aktywnego okna (X11 + Wayland) dla auto-przełączania profili
 │       ├── screenutils.h         # Header-only centrowanie dialogów na właściwym monitorze
 │       ├── audioapp.h           # Struct AudioApp
 │       └── waylandstate.h       # Deklaracja globalnej zmiennej g_nativeWayland
