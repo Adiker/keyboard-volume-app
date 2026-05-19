@@ -96,8 +96,8 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("settings.progress.media_controls"),
               QStringLiteral("Show media controls (play/pause/next/prev)")},
              {QStringLiteral("settings.progress.expose_mpris"),
-              QStringLiteral(
-                  "Expose fake MPRIS player endpoint (may interfere with Discord Music Presence and similar apps)")},
+              QStringLiteral("Expose fake MPRIS player endpoint (may interfere with Discord Music "
+                             "Presence and similar apps)")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("OSD Preview")},
              {QStringLiteral("settings.osd_scale"), QStringLiteral("OSD scale:")},
@@ -239,8 +239,8 @@ static const QMap<QString, QMap<QString, QString>>& strings()
               QStringLiteral(
                   "Poka\u017c przyciski sterowania (play/pause/nast\u0119pny/poprzedni)")},
              {QStringLiteral("settings.progress.expose_mpris"),
-              QStringLiteral(
-                  "Eksponuj fa\u0142szywy endpoint MPRIS (mo\u017ce kolidowa\u0107 z Discord Music Presence i podobnymi aplikacjami)")},
+              QStringLiteral("Eksponuj fa\u0142szywy endpoint MPRIS (mo\u017ce kolidowa\u0107 z "
+                             "Discord Music Presence i podobnymi aplikacjami)")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("Podgl\u0105d OSD")},
              {QStringLiteral("settings.osd_scale"), QStringLiteral("Skala OSD:")},

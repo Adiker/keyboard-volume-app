@@ -282,8 +282,7 @@ class App : public QObject
                                    QDBusConnection::ExportScriptableSignals |
                                    QDBusConnection::ExportScriptableProperties))
         {
-            if (!bus.registerService(
-                    QStringLiteral("org.mpris.MediaPlayer2.keyboardvolumeapp")))
+            if (!bus.registerService(QStringLiteral("org.mpris.MediaPlayer2.keyboardvolumeapp")))
             {
                 qWarning() << "MPRIS: failed to register service";
                 bus.unregisterObject(QStringLiteral("/org/mpris/MediaPlayer2"));
@@ -341,8 +340,7 @@ class App : public QObject
         m_mprisEndpoint = new QObject(this);
         new MprisRootAdaptor(m_dbus, m_mprisEndpoint);
         new MprisPlayerAdaptor(m_dbus, m_mprisEndpoint);
-        if (m_config->osd().exposeMpris)
-            registerMprisEndpoint();
+        if (m_config->osd().exposeMpris) registerMprisEndpoint();
     }
 
     void initWindowTracker()

@@ -397,8 +397,7 @@ void SettingsDialog::buildUi()
     m_mediaControlsEnabled->setChecked(osd.mediaControlsEnabled);
     progressForm->addRow(QString(), m_mediaControlsEnabled);
 
-    m_exposeMpris =
-        new QCheckBox(::tr(QStringLiteral("settings.progress.expose_mpris")), this);
+    m_exposeMpris = new QCheckBox(::tr(QStringLiteral("settings.progress.expose_mpris")), this);
     m_exposeMpris->setChecked(osd.exposeMpris);
     progressForm->addRow(QString(), m_exposeMpris);
 
