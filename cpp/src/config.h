@@ -37,6 +37,9 @@ struct OsdConfig
     // ── Media controls (play/pause/next/prev buttons in progress row) ─────────
     bool mediaControlsEnabled = true; // show media control buttons (default ON)
 
+    // ── MPRIS fake endpoint ────────────────────────────────────────────────────
+    bool exposeMpris = false; // register org.mpris.MediaPlayer2.keyboardvolumeapp (default OFF)
+
     // ── OSD scale ─────────────────────────────────────────────────────────────
     double osdScale = 1.0; // overall OSD scale factor, clamped 0.5–3.0
 };

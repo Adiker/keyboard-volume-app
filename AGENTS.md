@@ -80,12 +80,13 @@ The app registers two D-Bus services on the session bus:
 | Service | Object path | Interface |
 |---|---|---|
 | `org.keyboardvolumeapp` | `/org/keyboardvolumeapp` | `org.keyboardvolumeapp.VolumeControl` |
-| `org.mpris.MediaPlayer2.keyboardvolumeapp` | `/org/mpris/MediaPlayer2` | `org.mpris.MediaPlayer2` + `.Player` |
+| `org.mpris.MediaPlayer2.keyboardvolumeapp` *(opt-in, default OFF)* | `/org/mpris/MediaPlayer2` | `org.mpris.MediaPlayer2` + `.Player` |
 
 - **`DbusInterface`** — `QObject` with `Q_CLASSINFO`, registered directly. Caches volume/mute/active-app/apps from `VolumeController`/`TrayApp` signals. D-Bus setters delegate to `VolumeController` async.
 - **MPRIS** — separate `QObject` endpoint with `MprisRootAdaptor` and `MprisPlayerAdaptor` (`QDBusAbstractAdaptor` subclasses). **Must include `ExportAdaptors` flag** when registering — Qt6 auto-detects adaptor children.
+- **MPRIS registration is conditional** on `OsdConfig::exposeMpris` (default `false`). The adaptors and endpoint `QObject` are always created in `initDbus()`, but the D-Bus service is only registered when the option is enabled. `App::registerMprisEndpoint()` / `App::unregisterMprisEndpoint()` handle the toggle at runtime; `m_mprisRegistered` tracks state. `App::onMprisExposureChanged()` is wired to `TrayApp::settingsChanged` so the change takes effect immediately without a restart.
 - **`QDBusConnection::sessionBus()` returns by value** in Qt6 (not `&`). Write `auto bus = QDBusConnection::sessionBus();`, not `auto &bus`.
-- `cleanup()` unregisters both objects and services via `bus.unregisterObject()` / `bus.unregisterService()`.
+- `cleanup()` calls `unregisterMprisEndpoint()` (no-op if not registered); `org.keyboardvolumeapp` is always unregistered unconditionally.
 - `Qt6::DBus` is a separate CMake component — requires `find_package(Qt6 REQUIRED COMPONENTS ... DBus)`.
 - The MPRIS `Volume` property maps to `DbusInterface::volume()`. `PlaybackStatus` is always `"Stopped"`. Play/Pause/Next/Previous are no-ops. `Quit` → `qApp->quit()`.
 
