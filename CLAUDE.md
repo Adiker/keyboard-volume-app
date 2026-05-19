@@ -124,6 +124,7 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
     "progress_label_mode": "both",
     "tracked_players": ["spotify", "vlc", "strawberry", "harmonoid", "youtube"],
     "media_controls_enabled": true,
+    "expose_mpris": false,
     "osd_scale": 1.0
   },
   "volume_step": 5,
@@ -154,7 +155,7 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 
 Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113). Scroll bindings use object form such as `{ "type": "rel", "code": 8, "direction": 1 }` for `EV_REL / REL_WHEEL`.
 
-**OSD playback progress config.** `progress_enabled` is the master toggle. `progress_interactive` allows OSD seek controls when the active MPRIS player is seekable. `progress_poll_ms` is clamped to `200..2000` because many players do not emit position changes. `progress_label_mode` is one of `app`, `track`, or `both`. `tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling.
+**OSD playback progress config.** `progress_enabled` is the master toggle. `progress_interactive` allows OSD seek controls when the active MPRIS player is seekable. `progress_poll_ms` is clamped to `200..2000` because many players do not emit position changes. `progress_label_mode` is one of `app`, `track`, or `both`. `tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling.
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
 - `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; }`
@@ -394,7 +395,9 @@ Exit codes: `0` success, `1` usage, `2` daemon unavailable, `3` D-Bus error, `4`
 - **`MprisRootAdaptor`** — `org.mpris.MediaPlayer2`: `Identity`="Keyboard Volume App", `CanQuit`=true, `Quit` → `qApp->quit()`.
 - **`MprisPlayerAdaptor`** — `org.mpris.MediaPlayer2.Player`: `Volume` (R/W, delegates to `DbusInterface`), `PlaybackStatus`="Stopped", `CanControl`=true, `Metadata` with `xesam:title`=active app name. Play/Pause/Next/Previous are no-ops.
 
-Enables integration with KDE Connect, Plasma widgets, and other MPRIS-aware tools.
+**Registration is controlled by `OsdConfig::exposeMpris` (default `false`).** The adaptors and their parent `QObject` are always created in `App::initDbus()`, but the D-Bus object and service are only registered when `exposeMpris` is `true`. `App::registerMprisEndpoint()` / `App::unregisterMprisEndpoint()` handle the toggle; `App::onMprisExposureChanged()` is wired to `TrayApp::settingsChanged` for live enable/disable without restart. The setting is exposed in Settings → Playback progress as a checkbox. This default-off behaviour prevents false-positive detection by apps like discord-music-presence that expect a fully compliant MPRIS player.
+
+Enables integration with KDE Connect, Plasma widgets, and other MPRIS-aware tools when opted in.
 
 Settings dialog with live OSD position and color preview, a **Playback progress** section, and a **Profiles** section. Playback progress controls patch `OsdConfig` through `Config::setOsd()`: `progressEnabled` checkbox, `progressInteractive` checkbox, `progressPollMs` spinbox (`200..2000`), `progressLabelMode` combo (`app` / `track` / `both`), and comma-separated `trackedPlayers`. `TrayApp::settingsChanged` is wired to `OSDWindow::reloadStyles()` and `MprisClient::reload()`, so enabling progress in the GUI refreshes the current active track immediately.
 

@@ -162,6 +162,7 @@ class SettingsDialog : public QDialog
     QComboBox* m_progressLabelMode = nullptr;
     QLineEdit* m_trackedPlayers = nullptr;
     QCheckBox* m_mediaControlsEnabled = nullptr;
+    QCheckBox* m_exposeMpris = nullptr;
 
     // OSD scale
     QDoubleSpinBox* m_osdScale = nullptr;

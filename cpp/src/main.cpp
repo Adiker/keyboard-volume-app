@@ -107,8 +107,7 @@ class App : public QObject
         auto bus = QDBusConnection::sessionBus();
         bus.unregisterObject(QStringLiteral("/org/keyboardvolumeapp"));
         bus.unregisterService(QStringLiteral("org.keyboardvolumeapp"));
-        bus.unregisterObject(QStringLiteral("/org/mpris/MediaPlayer2"));
-        bus.unregisterService(QStringLiteral("org.mpris.MediaPlayer2.keyboardvolumeapp"));
+        unregisterMprisEndpoint();
     }
 
   private:
@@ -273,11 +272,53 @@ class App : public QObject
         }
     }
 
+    void registerMprisEndpoint()
+    {
+        if (m_mprisRegistered) return;
+        auto bus = QDBusConnection::sessionBus();
+        if (bus.registerObject(QStringLiteral("/org/mpris/MediaPlayer2"), m_mprisEndpoint,
+                               QDBusConnection::ExportAdaptors |
+                                   QDBusConnection::ExportScriptableSlots |
+                                   QDBusConnection::ExportScriptableSignals |
+                                   QDBusConnection::ExportScriptableProperties))
+        {
+            if (!bus.registerService(QStringLiteral("org.mpris.MediaPlayer2.keyboardvolumeapp")))
+            {
+                qWarning() << "MPRIS: failed to register service";
+                bus.unregisterObject(QStringLiteral("/org/mpris/MediaPlayer2"));
+                return;
+            }
+            m_mprisRegistered = true;
+        }
+        else
+        {
+            qWarning() << "MPRIS: failed to register object";
+        }
+    }
+
+    void unregisterMprisEndpoint()
+    {
+        if (!m_mprisRegistered) return;
+        auto bus = QDBusConnection::sessionBus();
+        bus.unregisterObject(QStringLiteral("/org/mpris/MediaPlayer2"));
+        bus.unregisterService(QStringLiteral("org.mpris.MediaPlayer2.keyboardvolumeapp"));
+        m_mprisRegistered = false;
+    }
+
+    void onMprisExposureChanged()
+    {
+        if (m_config->osd().exposeMpris)
+            registerMprisEndpoint();
+        else
+            unregisterMprisEndpoint();
+    }
+
     void initDbus()
     {
         m_dbus = new DbusInterface(m_config.get(), m_volumeCtrl, m_tray, this);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProfiles);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProgressEnabled);
+        connect(m_tray, &TrayApp::settingsChanged, this, &App::onMprisExposureChanged);
         connect(m_dbus, &DbusInterface::progressEnabledChanged, m_osd,
                 [this](bool) { m_osd->reloadStyles(); });
         connect(m_dbus, &DbusInterface::progressEnabledChanged, m_mpris,
@@ -285,7 +326,7 @@ class App : public QObject
 
         auto bus = QDBusConnection::sessionBus();
 
-        // Custom interface
+        // Custom interface (always active)
         if (bus.registerObject(QStringLiteral("/org/keyboardvolumeapp"), m_dbus,
                                QDBusConnection::ExportScriptableSignals |
                                    QDBusConnection::ExportScriptableProperties |
@@ -294,18 +335,12 @@ class App : public QObject
             bus.registerService(QStringLiteral("org.keyboardvolumeapp"));
         }
 
-        // MPRIS interface
+        // MPRIS interface — create adaptors always, but only register the D-Bus
+        // service when expose_mpris is enabled (default: off)
         m_mprisEndpoint = new QObject(this);
         new MprisRootAdaptor(m_dbus, m_mprisEndpoint);
         new MprisPlayerAdaptor(m_dbus, m_mprisEndpoint);
-        if (bus.registerObject(QStringLiteral("/org/mpris/MediaPlayer2"), m_mprisEndpoint,
-                               QDBusConnection::ExportAdaptors |
-                                   QDBusConnection::ExportScriptableSlots |
-                                   QDBusConnection::ExportScriptableSignals |
-                                   QDBusConnection::ExportScriptableProperties))
-        {
-            bus.registerService(QStringLiteral("org.mpris.MediaPlayer2.keyboardvolumeapp"));
-        }
+        if (m_config->osd().exposeMpris) registerMprisEndpoint();
     }
 
     void initWindowTracker()
@@ -395,6 +430,7 @@ class App : public QObject
 
     DbusInterface* m_dbus = nullptr;
     QObject* m_mprisEndpoint = nullptr;
+    bool m_mprisRegistered = false;
 
     WindowTracker* m_windowTracker = nullptr;
     QList<AudioApp> m_appCache;

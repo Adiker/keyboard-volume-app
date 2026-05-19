@@ -126,6 +126,7 @@ QJsonObject Config::defaultJson()
               QJsonArray{QStringLiteral("spotify"), QStringLiteral("youtube"),
                          QStringLiteral("strawberry"), QStringLiteral("harmonoid")}},
              {QStringLiteral("media_controls_enabled"), true},
+             {QStringLiteral("expose_mpris"), false},
              {QStringLiteral("osd_scale"), 1.0},
          }},
         {QStringLiteral("hotkeys"),
@@ -570,6 +571,7 @@ OsdConfig Config::osd() const
         }
     }
     c.mediaControlsEnabled = o[QStringLiteral("media_controls_enabled")].toBool(true);
+    c.exposeMpris = o[QStringLiteral("expose_mpris")].toBool(false);
     c.osdScale = std::clamp(o[QStringLiteral("osd_scale")].toDouble(1.0), 0.5, 3.0);
     return c;
 }
@@ -594,6 +596,7 @@ void Config::setOsd(const OsdConfig& c)
         {QStringLiteral("progress_label_mode"), c.progressLabelMode},
         {QStringLiteral("tracked_players"), tp},
         {QStringLiteral("media_controls_enabled"), c.mediaControlsEnabled},
+        {QStringLiteral("expose_mpris"), c.exposeMpris},
         {QStringLiteral("osd_scale"), std::clamp(c.osdScale, 0.5, 3.0)},
     };
     saveUnlocked();
