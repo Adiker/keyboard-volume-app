@@ -406,6 +406,12 @@ Profiles use a `QTableWidget` (`Name | App | Modifiers | VolUp | VolDown | Mute 
 
 `HotkeyCapture` stops `InputHandler` during capture (releases the grabbed device) and restarts it after. Right-clicking a `HotkeyCapture` button opens a context menu with **Unassign** (`settings.hotkey.unassign`) that resets its binding to `HotkeyBinding{}` (unassigned).
 
+`HotkeyCapture::keyDisplayName(const HotkeyBinding&)` converts a binding to a user-facing string (used in both button labels and the profiles table). Includes `<libevdev/libevdev.h>` in `settingsdialog.cpp` (no header change needed). Three-level fallback for `EV_KEY` bindings:
+1. **Friendly-name map** (~95 entries, Title Case) — media keys, F1–F24, special/editing keys, arrows, modifiers, numpad, app-launch keys. Format: `"Volume Up (115)"`.
+2. **libevdev symbolic name** — `libevdev_event_code_get_name(EV_KEY, code)`, strip the 4-char `"KEY_"` prefix. Format: `"Q (16)"`, `"F13 (183)"`.
+3. **Generic fallback** — `"Key (N)"` for codes unknown to libevdev.
+`EV_REL` bindings display as `"Wheel Up"` / `"Wheel Down"` / `"Wheel Right"` / `"Wheel Left"` (or generic `"REL N ±1"`) — unchanged. Unassigned bindings display as `"-"` — unchanged.
+
 **`KeyCaptureDialog`** has two parallel capture paths:
 - evdev thread (`KeyCaptureThread`) — catches media/Consumer-Control keys
 - Qt `keyPressEvent` + `nativeScanCode()` — catches regular keyboard keys (evdev code = X11 keycode − 8)

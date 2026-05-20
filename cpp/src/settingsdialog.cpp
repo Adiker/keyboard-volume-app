@@ -28,7 +28,8 @@
 #include <QHeaderView>
 #include <QStringList>
 
-#include <linux/input.h> // KEY_* constants
+#include <linux/input.h>    // KEY_* constants
+#include <libevdev/libevdev.h> // libevdev_event_code_get_name()
 
 // ─── ColorButton ──────────────────────────────────────────────────────────────
 ColorButton::ColorButton(const QString& hexColor, QWidget* parent) : QPushButton(parent)
@@ -140,18 +141,33 @@ void KeyCaptureDialog::closeEvent(QCloseEvent* event)
 }
 
 // ─── HotkeyCapture ────────────────────────────────────────────────────────────
-// Map of evdev KEY_* codes → display names (minimal subset used for hotkeys)
+// Human-readable names for commonly assigned EV_KEY codes.
+// All other codes fall back to libevdev_event_code_get_name() (strip "KEY_").
 static const QMap<int, QString>& keyNames()
 {
     static const QMap<int, QString> m{
-        {KEY_VOLUMEUP, QStringLiteral("VOLUMEUP")},
-        {KEY_VOLUMEDOWN, QStringLiteral("VOLUMEDOWN")},
-        {KEY_MUTE, QStringLiteral("MUTE")},
-        {KEY_MEDIA, QStringLiteral("MEDIA")},
-        {KEY_PLAYPAUSE, QStringLiteral("PLAYPAUSE")},
-        {KEY_STOPCD, QStringLiteral("STOPCD")},
-        {KEY_NEXTSONG, QStringLiteral("NEXTSONG")},
-        {KEY_PREVIOUSSONG, QStringLiteral("PREVIOUSSONG")},
+        // Media / Consumer Control
+        {KEY_VOLUMEUP, QStringLiteral("Volume Up")},
+        {KEY_VOLUMEDOWN, QStringLiteral("Volume Down")},
+        {KEY_MUTE, QStringLiteral("Mute")},
+        {KEY_MICMUTE, QStringLiteral("Mic Mute")},
+        {KEY_MEDIA, QStringLiteral("Media")},
+        {KEY_PLAYPAUSE, QStringLiteral("Play / Pause")},
+        {KEY_PLAY, QStringLiteral("Play")},
+        {KEY_STOPCD, QStringLiteral("Stop")},
+        {KEY_NEXTSONG, QStringLiteral("Next Track")},
+        {KEY_PREVIOUSSONG, QStringLiteral("Prev Track")},
+        {KEY_REWIND, QStringLiteral("Rewind")},
+        {KEY_FASTFORWARD, QStringLiteral("Fast Forward")},
+        {KEY_RECORD, QStringLiteral("Record")},
+        {KEY_EJECTCD, QStringLiteral("Eject")},
+        // Brightness / keyboard backlight
+        {KEY_BRIGHTNESSUP, QStringLiteral("Brightness Up")},
+        {KEY_BRIGHTNESSDOWN, QStringLiteral("Brightness Down")},
+        {KEY_KBDILLUMUP, QStringLiteral("KB Light Up")},
+        {KEY_KBDILLUMDOWN, QStringLiteral("KB Light Down")},
+        {KEY_KBDILLUMTOGGLE, QStringLiteral("KB Light Toggle")},
+        // Function keys F1–F24
         {KEY_F1, QStringLiteral("F1")},
         {KEY_F2, QStringLiteral("F2")},
         {KEY_F3, QStringLiteral("F3")},
@@ -164,10 +180,92 @@ static const QMap<int, QString>& keyNames()
         {KEY_F10, QStringLiteral("F10")},
         {KEY_F11, QStringLiteral("F11")},
         {KEY_F12, QStringLiteral("F12")},
+        {KEY_F13, QStringLiteral("F13")},
+        {KEY_F14, QStringLiteral("F14")},
+        {KEY_F15, QStringLiteral("F15")},
+        {KEY_F16, QStringLiteral("F16")},
+        {KEY_F17, QStringLiteral("F17")},
+        {KEY_F18, QStringLiteral("F18")},
+        {KEY_F19, QStringLiteral("F19")},
+        {KEY_F20, QStringLiteral("F20")},
+        {KEY_F21, QStringLiteral("F21")},
+        {KEY_F22, QStringLiteral("F22")},
+        {KEY_F23, QStringLiteral("F23")},
+        {KEY_F24, QStringLiteral("F24")},
+        // Special / editing keys
+        {KEY_ESC, QStringLiteral("Escape")},
+        {KEY_TAB, QStringLiteral("Tab")},
+        {KEY_CAPSLOCK, QStringLiteral("Caps Lock")},
+        {KEY_BACKSPACE, QStringLiteral("Backspace")},
+        {KEY_ENTER, QStringLiteral("Enter")},
+        {KEY_KPENTER, QStringLiteral("Numpad Enter")},
+        {KEY_SPACE, QStringLiteral("Space")},
+        {KEY_INSERT, QStringLiteral("Insert")},
+        {KEY_DELETE, QStringLiteral("Delete")},
+        {KEY_HOME, QStringLiteral("Home")},
+        {KEY_END, QStringLiteral("End")},
+        {KEY_PAGEUP, QStringLiteral("Page Up")},
+        {KEY_PAGEDOWN, QStringLiteral("Page Down")},
+        {KEY_PAUSE, QStringLiteral("Pause")},
+        {KEY_PRINT, QStringLiteral("Print Screen")},
+        {KEY_SCROLLLOCK, QStringLiteral("Scroll Lock")},
+        {KEY_NUMLOCK, QStringLiteral("Num Lock")},
+        {KEY_SYSRQ, QStringLiteral("SysRq")},
+        // Arrow keys
+        {KEY_UP, QStringLiteral("Up")},
+        {KEY_DOWN, QStringLiteral("Down")},
+        {KEY_LEFT, QStringLiteral("Left")},
+        {KEY_RIGHT, QStringLiteral("Right")},
+        // Modifier keys
+        {KEY_LEFTSHIFT, QStringLiteral("Left Shift")},
+        {KEY_RIGHTSHIFT, QStringLiteral("Right Shift")},
+        {KEY_LEFTCTRL, QStringLiteral("Left Ctrl")},
+        {KEY_RIGHTCTRL, QStringLiteral("Right Ctrl")},
+        {KEY_LEFTALT, QStringLiteral("Left Alt")},
+        {KEY_RIGHTALT, QStringLiteral("Right Alt")},
+        {KEY_LEFTMETA, QStringLiteral("Left Meta")},
+        {KEY_RIGHTMETA, QStringLiteral("Right Meta")},
+        {KEY_COMPOSE, QStringLiteral("Compose")},
+        // Numpad
+        {KEY_KP0, QStringLiteral("Numpad 0")},
+        {KEY_KP1, QStringLiteral("Numpad 1")},
+        {KEY_KP2, QStringLiteral("Numpad 2")},
+        {KEY_KP3, QStringLiteral("Numpad 3")},
+        {KEY_KP4, QStringLiteral("Numpad 4")},
+        {KEY_KP5, QStringLiteral("Numpad 5")},
+        {KEY_KP6, QStringLiteral("Numpad 6")},
+        {KEY_KP7, QStringLiteral("Numpad 7")},
+        {KEY_KP8, QStringLiteral("Numpad 8")},
+        {KEY_KP9, QStringLiteral("Numpad 9")},
+        {KEY_KPMINUS, QStringLiteral("Numpad -")},
+        {KEY_KPPLUS, QStringLiteral("Numpad +")},
+        {KEY_KPASTERISK, QStringLiteral("Numpad *")},
+        {KEY_KPSLASH, QStringLiteral("Numpad /")},
+        {KEY_KPDOT, QStringLiteral("Numpad .")},
+        {KEY_KPEQUAL, QStringLiteral("Numpad =")},
+        // Application / shortcut keys
+        {KEY_MENU, QStringLiteral("Menu")},
+        {KEY_POWER, QStringLiteral("Power")},
+        {KEY_SLEEP, QStringLiteral("Sleep")},
+        {KEY_WAKEUP, QStringLiteral("Wake Up")},
+        {KEY_HOMEPAGE, QStringLiteral("Home Page")},
+        {KEY_MAIL, QStringLiteral("Mail")},
+        {KEY_CALC, QStringLiteral("Calculator")},
+        {KEY_SEARCH, QStringLiteral("Search")},
+        {KEY_BACK, QStringLiteral("Back")},
+        {KEY_FORWARD, QStringLiteral("Forward")},
+        {KEY_REFRESH, QStringLiteral("Refresh")},
+        {KEY_BOOKMARKS, QStringLiteral("Bookmarks")},
+        {KEY_COMPUTER, QStringLiteral("My Computer")},
+        {KEY_HELP, QStringLiteral("Help")},
     };
     return m;
 }
 
+// Returns a display string for a hotkey binding in the form "Name (code)".
+// EV_KEY codes: checked against the friendly-name map first, then libevdev
+// symbolic name (strip "KEY_" prefix), then generic "Key (N)" fallback.
+// EV_REL codes: "Wheel Up/Down/Left/Right" or "REL N ±1" (unchanged).
 QString HotkeyCapture::keyDisplayName(const HotkeyBinding& binding)
 {
     if (!binding.isAssigned()) return QStringLiteral("-");
@@ -182,15 +280,27 @@ QString HotkeyCapture::keyDisplayName(const HotkeyBinding& binding)
         return QStringLiteral("REL %1 %2").arg(binding.code).arg(binding.direction > 0 ? 1 : -1);
     }
 
-    auto it = keyNames().find(binding.code);
-    if (it != keyNames().end()) return it.value();
-    return QString::number(binding.code);
+    const int code = binding.code;
+
+    // Level 1: explicit friendly-name map
+    auto it = keyNames().find(code);
+    if (it != keyNames().end())
+        return QStringLiteral("%1 (%2)").arg(it.value()).arg(code);
+
+    // Level 2: libevdev symbolic name — strip the 4-char "KEY_" prefix
+    const char* evdevName =
+        libevdev_event_code_get_name(EV_KEY, static_cast<unsigned int>(code));
+    if (evdevName)
+        return QStringLiteral("%1 (%2)").arg(QString::fromLatin1(evdevName + 4)).arg(code);
+
+    // Level 3: completely unknown code
+    return QStringLiteral("Key (%1)").arg(code);
 }
 
 HotkeyCapture::HotkeyCapture(HotkeyBinding binding, InputHandler* inputHandler, QWidget* parent)
     : QPushButton(parent), m_binding(binding), m_inputHandler(inputHandler)
 {
-    setMinimumWidth(120);
+    setMinimumWidth(140);
     updateDisplay();
     connect(this, &QPushButton::clicked, this, &HotkeyCapture::capture);
     setContextMenuPolicy(Qt::ActionsContextMenu);
