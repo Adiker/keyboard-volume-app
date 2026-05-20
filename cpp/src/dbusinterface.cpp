@@ -1,7 +1,6 @@
 #include "dbusinterface.h"
 #include "config.h"
 #include "volumecontroller.h"
-#include "trayapp.h"
 #include "audioapp.h"
 
 #include <QDebug>
@@ -26,11 +25,10 @@ QVariant hotkeyBindingVariant(const HotkeyBinding& binding)
 
 } // namespace
 
-DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, TrayApp* tray,
-                             QObject* parent)
-    : QObject(parent), m_config(config), m_volumeCtrl(volumeCtrl), m_tray(tray)
+DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, QObject* parent)
+    : QObject(parent), m_config(config), m_volumeCtrl(volumeCtrl)
 {
-    m_activeApp = m_tray->currentApp();
+    m_activeApp = m_config->defaultProfile().app;
     m_volumeStep = m_config->volumeStep();
     m_progressEnabled = m_config->osd().progressEnabled;
     m_autoProfileSwitch = m_config->autoProfileSwitch();
@@ -65,35 +63,37 @@ DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, TrayA
                     emit appsUpdated();
                 }
             });
+}
 
-    connect(m_tray, &TrayApp::appChanged, this,
-            [this](const QString& name)
-            {
-                if (m_activeApp != name)
-                {
-                    m_activeApp = name;
-                    m_volume = 0.0;
-                    m_muted = false;
-                    emit activeAppChanged(m_activeApp);
-                }
-                reloadProfiles();
-            });
+void DbusInterface::onActiveAppChanged(const QString& name)
+{
+    if (m_activeApp != name)
+    {
+        m_activeApp = name;
+        m_volume = 0.0;
+        m_muted = false;
+        emit activeAppChanged(m_activeApp);
+    }
+    reloadProfiles();
 }
 
 void DbusInterface::setVolume(double vol)
 {
     vol = std::clamp(vol, 0.0, 1.0);
     if (m_activeApp.isEmpty()) return;
-    double delta = vol - m_volume;
-    if (qAbs(delta) < 0.0001) return;
-    m_volumeCtrl->changeVolume(m_activeApp, delta);
+    // Absolute set — the cached m_volume can be stale (e.g. on startup before
+    // the first volumeChanged signal, or after an external pavucontrol change),
+    // so computing a delta against it would overshoot or undershoot the target.
+    m_volumeCtrl->setVolume(m_activeApp, vol);
 }
 
 void DbusInterface::setMuted(bool muted)
 {
     if (m_activeApp.isEmpty()) return;
-    if (m_muted == muted) return;
-    m_volumeCtrl->toggleMute(m_activeApp);
+    // Absolute set — toggleMute() would flip whatever the real state is, which
+    // produces the wrong result whenever m_muted has drifted from the live
+    // sink-input state (e.g. external mute via pavucontrol or kv-ctl).
+    m_volumeCtrl->setMuted(m_activeApp, muted);
 }
 
 void DbusInterface::setActiveApp(const QString& name)

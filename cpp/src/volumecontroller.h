@@ -21,10 +21,12 @@ class VolumeController : public QObject
     QList<AudioApp> listApps(bool forceRefresh = false);
 
     // Async volume operations — result arrives via volumeChanged().
-    void changeVolume(const QString& appName, double delta);
-    void setVolume(const QString& appName, double targetVolume);
-    void toggleMute(const QString& appName);
-    void setMuted(const QString& appName, bool muted);
+    // Marked virtual purely so unit tests can mock them; production code never
+    // subclasses VolumeController.
+    virtual void changeVolume(const QString& appName, double delta);
+    virtual void setVolume(const QString& appName, double targetVolume);
+    virtual void toggleMute(const QString& appName);
+    virtual void setMuted(const QString& appName, bool muted);
     void toggleDucking(const QString& keepApp, double duckVolume);
 
     // Async read of the app's current volume — result arrives via volumeChanged().

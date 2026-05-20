@@ -123,6 +123,26 @@ target_link_libraries(test_osdwindow PRIVATE
 )
 add_test(NAME test_osdwindow COMMAND test_osdwindow)
 
+# ─── test_dbusinterface ──────────────────────────────────────────────────────
+add_executable(test_dbusinterface
+    test_dbusinterface.cpp
+    ../src/dbusinterface.cpp
+    ../src/config.cpp
+    ../src/volumecontroller.cpp
+    ../src/pwutils.cpp
+)
+target_include_directories(test_dbusinterface PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(test_dbusinterface PRIVATE
+    GTest::gtest_main
+    Qt6::Core
+    Qt6::Test
+    PkgConfig::LIBPULSE
+    PkgConfig::LIBPIPEWIRE
+)
+add_test(NAME test_dbusinterface COMMAND test_dbusinterface)
+
 # ─── test_mprisclient (requires session D-Bus; skipped automatically otherwise) ─
 find_package(Qt6 QUIET COMPONENTS DBus)
 if(Qt6DBus_FOUND)
