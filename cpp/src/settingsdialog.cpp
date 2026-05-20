@@ -286,10 +286,17 @@ QString HotkeyCapture::keyDisplayName(const HotkeyBinding& binding)
     auto it = keyNames().find(code);
     if (it != keyNames().end()) return QStringLiteral("%1 (%2)").arg(it.value()).arg(code);
 
-    // Level 2: libevdev symbolic name — strip the 4-char "KEY_" prefix
+    // Level 2: libevdev symbolic name — strip "KEY_" only; keep other prefixes
+    // (e.g. BTN_LEFT) intact to avoid collisions with real key names.
     const char* evdevName = libevdev_event_code_get_name(EV_KEY, static_cast<unsigned int>(code));
     if (evdevName)
-        return QStringLiteral("%1 (%2)").arg(QString::fromLatin1(evdevName + 4)).arg(code);
+    {
+        const QLatin1StringView sym(evdevName);
+        const QString display = sym.startsWith(QLatin1StringView("KEY_"))
+                                    ? QString::fromLatin1(evdevName + 4)
+                                    : QString::fromLatin1(evdevName);
+        return QStringLiteral("%1 (%2)").arg(display).arg(code);
+    }
 
     // Level 3: completely unknown code
     return QStringLiteral("Key (%1)").arg(code);
