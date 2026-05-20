@@ -20,7 +20,8 @@ KvCtlCommand::Field parseField(const QString& name)
     if (name == QStringLiteral("profiles")) return KvCtlCommand::Field::Profiles;
     if (name == QStringLiteral("scenes")) return KvCtlCommand::Field::Scenes;
     if (name == QStringLiteral("progress-enabled")) return KvCtlCommand::Field::ProgressEnabled;
-    if (name == QStringLiteral("auto-profile-switch")) return KvCtlCommand::Field::AutoProfileSwitch;
+    if (name == QStringLiteral("auto-profile-switch"))
+        return KvCtlCommand::Field::AutoProfileSwitch;
     return KvCtlCommand::Field::None;
 }
 

@@ -60,10 +60,14 @@ TEST(KvCtlCommand, RejectsProfileWhereUnsupported)
 TEST(KvCtlCommand, ParsesGetFields)
 {
     const QStringList fields = {
-        QStringLiteral("volume"),           QStringLiteral("muted"),
-        QStringLiteral("active-app"),       QStringLiteral("apps"),
-        QStringLiteral("step"),             QStringLiteral("profiles"),
-        QStringLiteral("scenes"),           QStringLiteral("progress-enabled"),
+        QStringLiteral("volume"),
+        QStringLiteral("muted"),
+        QStringLiteral("active-app"),
+        QStringLiteral("apps"),
+        QStringLiteral("step"),
+        QStringLiteral("profiles"),
+        QStringLiteral("scenes"),
+        QStringLiteral("progress-enabled"),
         QStringLiteral("auto-profile-switch"),
     };
 
