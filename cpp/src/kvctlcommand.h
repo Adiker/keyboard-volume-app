@@ -28,7 +28,8 @@ struct KvCtlCommand
         Step,
         Profiles,
         Scenes,
-        ProgressEnabled
+        ProgressEnabled,
+        AutoProfileSwitch
     };
 
     Action action = Action::Refresh;

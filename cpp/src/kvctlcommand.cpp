@@ -20,6 +20,8 @@ KvCtlCommand::Field parseField(const QString& name)
     if (name == QStringLiteral("profiles")) return KvCtlCommand::Field::Profiles;
     if (name == QStringLiteral("scenes")) return KvCtlCommand::Field::Scenes;
     if (name == QStringLiteral("progress-enabled")) return KvCtlCommand::Field::ProgressEnabled;
+    if (name == QStringLiteral("auto-profile-switch"))
+        return KvCtlCommand::Field::AutoProfileSwitch;
     return KvCtlCommand::Field::None;
 }
 
@@ -109,7 +111,8 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
 
         if (cmd.field != KvCtlCommand::Field::Volume && cmd.field != KvCtlCommand::Field::Muted &&
             cmd.field != KvCtlCommand::Field::ActiveApp && cmd.field != KvCtlCommand::Field::Step &&
-            cmd.field != KvCtlCommand::Field::ProgressEnabled)
+            cmd.field != KvCtlCommand::Field::ProgressEnabled &&
+            cmd.field != KvCtlCommand::Field::AutoProfileSwitch)
         {
             return fail(
                 QStringLiteral("unknown or read-only set field '%1'").arg(positionalArgs[1]));
@@ -123,19 +126,21 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
 
 QString kvCtlUsageText()
 {
-    return QStringLiteral("Usage:\n"
-                          "  kv-ctl up [--profile ID]\n"
-                          "  kv-ctl down [--profile ID]\n"
-                          "  kv-ctl mute [--profile ID]\n"
-                          "  kv-ctl duck [--profile ID]\n"
-                          "  kv-ctl show [--profile ID]\n"
-                          "  kv-ctl scene ID\n"
-                          "  kv-ctl refresh\n"
-                          "  kv-ctl get "
-                          "volume|muted|active-app|apps|step|profiles|scenes|progress-enabled\n"
-                          "  kv-ctl set volume VALUE\n"
-                          "  kv-ctl set muted true|false\n"
-                          "  kv-ctl set active-app NAME\n"
-                          "  kv-ctl set step VALUE\n"
-                          "  kv-ctl set progress-enabled true|false\n");
+    return QStringLiteral(
+        "Usage:\n"
+        "  kv-ctl up [--profile ID]\n"
+        "  kv-ctl down [--profile ID]\n"
+        "  kv-ctl mute [--profile ID]\n"
+        "  kv-ctl duck [--profile ID]\n"
+        "  kv-ctl show [--profile ID]\n"
+        "  kv-ctl scene ID\n"
+        "  kv-ctl refresh\n"
+        "  kv-ctl get "
+        "volume|muted|active-app|apps|step|profiles|scenes|progress-enabled|auto-profile-switch\n"
+        "  kv-ctl set volume VALUE\n"
+        "  kv-ctl set muted true|false\n"
+        "  kv-ctl set active-app NAME\n"
+        "  kv-ctl set step VALUE\n"
+        "  kv-ctl set progress-enabled true|false\n"
+        "  kv-ctl set auto-profile-switch true|false\n");
 }

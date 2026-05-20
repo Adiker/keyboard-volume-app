@@ -60,10 +60,15 @@ TEST(KvCtlCommand, RejectsProfileWhereUnsupported)
 TEST(KvCtlCommand, ParsesGetFields)
 {
     const QStringList fields = {
-        QStringLiteral("volume"),     QStringLiteral("muted"),
-        QStringLiteral("active-app"), QStringLiteral("apps"),
-        QStringLiteral("step"),       QStringLiteral("profiles"),
-        QStringLiteral("scenes"),     QStringLiteral("progress-enabled"),
+        QStringLiteral("volume"),
+        QStringLiteral("muted"),
+        QStringLiteral("active-app"),
+        QStringLiteral("apps"),
+        QStringLiteral("step"),
+        QStringLiteral("profiles"),
+        QStringLiteral("scenes"),
+        QStringLiteral("progress-enabled"),
+        QStringLiteral("auto-profile-switch"),
     };
 
     for (const QString& field : fields)
@@ -116,6 +121,20 @@ TEST(KvCtlCommand, ParsesSetFields)
     ASSERT_TRUE(progEnabled.ok) << progEnabled.error.toStdString();
     EXPECT_EQ(progEnabled.command.field, KvCtlCommand::Field::ProgressEnabled);
     EXPECT_EQ(progEnabled.command.value.toStdString(), "true");
+
+    auto autoSwitch = parseKvCtlCommand(
+        {QStringLiteral("set"), QStringLiteral("auto-profile-switch"), QStringLiteral("true")}, {},
+        false);
+    ASSERT_TRUE(autoSwitch.ok) << autoSwitch.error.toStdString();
+    EXPECT_EQ(autoSwitch.command.field, KvCtlCommand::Field::AutoProfileSwitch);
+    EXPECT_EQ(autoSwitch.command.value.toStdString(), "true");
+
+    auto autoSwitchFalse = parseKvCtlCommand(
+        {QStringLiteral("set"), QStringLiteral("auto-profile-switch"), QStringLiteral("false")}, {},
+        false);
+    ASSERT_TRUE(autoSwitchFalse.ok) << autoSwitchFalse.error.toStdString();
+    EXPECT_EQ(autoSwitchFalse.command.field, KvCtlCommand::Field::AutoProfileSwitch);
+    EXPECT_EQ(autoSwitchFalse.command.value.toStdString(), "false");
 }
 
 TEST(KvCtlCommand, RejectsBadCommands)

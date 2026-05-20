@@ -318,6 +318,9 @@ class App : public QObject
         m_dbus = new DbusInterface(m_config.get(), m_volumeCtrl, m_tray, this);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProfiles);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProgressEnabled);
+        connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadAutoProfileSwitch);
+        connect(m_dbus, &DbusInterface::autoProfileSwitchChanged, this,
+                &App::onAutoSwitchMaybeChanged);
         connect(m_tray, &TrayApp::settingsChanged, this, &App::onMprisExposureChanged);
         connect(m_dbus, &DbusInterface::progressEnabledChanged, m_osd,
                 [this](bool) { m_osd->reloadStyles(); });
