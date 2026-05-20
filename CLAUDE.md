@@ -377,7 +377,7 @@ Filters `/dev/input/event*` to show only devices exposing `KEY_VOLUMEUP`/`KEY_VO
 
 Exposes `org.keyboardvolumeapp.VolumeControl` on the D-Bus session bus (bus name `org.keyboardvolumeapp`, object path `/org/keyboardvolumeapp`).
 
-Caches volume/mute/app state by listening to `VolumeController::volumeChanged`, `VolumeController::appsReady`, and `TrayApp::appChanged`. D-Bus properties are `Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`, `Profiles`, `Scenes`, `ProgressEnabled`, and `AutoProfileSwitch`; setters delegate to `VolumeController`/`Config` async. `ProgressEnabled` reads current `Config::osd()` to avoid stale cache after GUI settings changes.
+Caches volume/mute/app state by listening to `VolumeController::volumeChanged` and `VolumeController::appsReady`; `App::initDbus()` wires `TrayApp::appChanged` to `DbusInterface::onActiveAppChanged()` so the tray drives active-app invalidation without `DbusInterface` having to depend on the GUI stack. D-Bus properties are `Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`, `Profiles`, `Scenes`, `ProgressEnabled`, and `AutoProfileSwitch`; setters delegate to `VolumeController`/`Config` async. The `Volume` and `Muted` property writers route to absolute setters on `VolumeController` (`setVolume(app, target, vol_min, vol_max)` / `setMuted(app, muted)`) rather than relative delta/toggle calls — the cached values can be stale (startup, external pavucontrol changes), so an absolute set is the only way to honor the requested target. The global `Volume` property applies the default profile's `vol_min`/`vol_max` bounds. `ProgressEnabled` reads current `Config::osd()` to avoid stale cache after GUI settings changes.
 
 D-Bus methods:
 - `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `ToggleDucking()`, `RefreshApps()` — bare methods target the default profile / `m_activeApp`, kept for backwards compat and script-friendly default-profile control.
@@ -639,6 +639,7 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
 - `test_mprisclient` — 13 tests (MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards)
 - `test_osdwindow` — 1 test (OSDWindow progress-row metadata update and position preservation regressions)
+- `test_dbusinterface` — 6 tests (Volume/Muted property writers route to absolute `setVolume`/`setMuted` instead of relative delta/toggle, clamping, no-op when no active app, `ToggleMute()` method still toggles)
 
 Run locally: `cd cpp/build && ctest -E test_mprisclient --output-on-failure` and `cd cpp/build && dbus-run-session -- ctest -R test_mprisclient --output-on-failure`.
 
