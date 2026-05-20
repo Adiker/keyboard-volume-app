@@ -205,6 +205,11 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    # Toggle OSD playback progress at runtime
    kv-ctl get progress-enabled
    kv-ctl set progress-enabled true
+
+   # Enable/disable auto-profile switching at runtime (e.g. from a WM workspace script)
+   kv-ctl get auto-profile-switch
+   kv-ctl set auto-profile-switch true
+   kv-ctl set auto-profile-switch false
    ```
 
    `kv-ctl` still uses the app's existing session D-Bus API under the hood, so `keyboard-volume-app` must already be running.
@@ -546,6 +551,11 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
    # Przełącz postęp odtwarzania OSD w trakcie działania aplikacji
    kv-ctl get progress-enabled
    kv-ctl set progress-enabled true
+
+   # Włącz/wyłącz automatyczne przełączanie profili w trakcie działania (np. ze skryptu WM)
+   kv-ctl get auto-profile-switch
+   kv-ctl set auto-profile-switch true
+   kv-ctl set auto-profile-switch false
    ```
 
    `kv-ctl` nadal używa istniejącego API D-Bus aplikacji, więc `keyboard-volume-app` musi już działać.
