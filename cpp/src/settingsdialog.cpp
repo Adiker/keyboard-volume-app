@@ -28,7 +28,7 @@
 #include <QHeaderView>
 #include <QStringList>
 
-#include <linux/input.h>    // KEY_* constants
+#include <linux/input.h>       // KEY_* constants
 #include <libevdev/libevdev.h> // libevdev_event_code_get_name()
 
 // ─── ColorButton ──────────────────────────────────────────────────────────────
@@ -284,12 +284,10 @@ QString HotkeyCapture::keyDisplayName(const HotkeyBinding& binding)
 
     // Level 1: explicit friendly-name map
     auto it = keyNames().find(code);
-    if (it != keyNames().end())
-        return QStringLiteral("%1 (%2)").arg(it.value()).arg(code);
+    if (it != keyNames().end()) return QStringLiteral("%1 (%2)").arg(it.value()).arg(code);
 
     // Level 2: libevdev symbolic name — strip the 4-char "KEY_" prefix
-    const char* evdevName =
-        libevdev_event_code_get_name(EV_KEY, static_cast<unsigned int>(code));
+    const char* evdevName = libevdev_event_code_get_name(EV_KEY, static_cast<unsigned int>(code));
     if (evdevName)
         return QStringLiteral("%1 (%2)").arg(QString::fromLatin1(evdevName + 4)).arg(code);
 
