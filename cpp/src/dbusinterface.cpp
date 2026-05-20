@@ -33,6 +33,7 @@ DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, TrayA
     m_activeApp = m_tray->currentApp();
     m_volumeStep = m_config->volumeStep();
     m_progressEnabled = m_config->osd().progressEnabled;
+    m_autoProfileSwitch = m_config->autoProfileSwitch();
     m_profilesProp = buildProfilesProp();
     m_scenesProp = buildScenesProp();
 
@@ -120,6 +121,37 @@ void DbusInterface::setVolumeStep(int step)
 bool DbusInterface::progressEnabled() const
 {
     return m_config->osd().progressEnabled;
+}
+
+bool DbusInterface::autoProfileSwitch() const
+{
+    return m_config->autoProfileSwitch();
+}
+
+void DbusInterface::setAutoProfileSwitch(bool on)
+{
+    const bool current = autoProfileSwitch();
+    if (current == on)
+    {
+        if (m_autoProfileSwitch != current)
+        {
+            m_autoProfileSwitch = current;
+            emit autoProfileSwitchChanged(m_autoProfileSwitch);
+        }
+        return;
+    }
+
+    m_config->setAutoProfileSwitch(on);
+    m_autoProfileSwitch = on;
+    emit autoProfileSwitchChanged(m_autoProfileSwitch);
+}
+
+void DbusInterface::reloadAutoProfileSwitch()
+{
+    const bool current = autoProfileSwitch();
+    if (m_autoProfileSwitch == current) return;
+    m_autoProfileSwitch = current;
+    emit autoProfileSwitchChanged(m_autoProfileSwitch);
 }
 
 void DbusInterface::setProgressEnabled(bool on)

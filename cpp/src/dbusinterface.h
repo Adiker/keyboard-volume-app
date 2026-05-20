@@ -22,6 +22,8 @@ class DbusInterface : public QObject
     Q_PROPERTY(QVariantList Scenes READ scenesProp NOTIFY scenesChanged)
     Q_PROPERTY(bool ProgressEnabled READ progressEnabled WRITE setProgressEnabled NOTIFY
                    progressEnabledChanged)
+    Q_PROPERTY(bool AutoProfileSwitch READ autoProfileSwitch WRITE setAutoProfileSwitch NOTIFY
+                   autoProfileSwitchChanged)
 
   public:
     explicit DbusInterface(Config* config, VolumeController* volumeCtrl, TrayApp* tray,
@@ -56,16 +58,19 @@ class DbusInterface : public QObject
         return m_scenesProp;
     }
     bool progressEnabled() const;
+    bool autoProfileSwitch() const;
 
     void setVolume(double vol);
     void setMuted(bool muted);
     void setActiveApp(const QString& name);
     void setVolumeStep(int step);
     void setProgressEnabled(bool on);
+    void setAutoProfileSwitch(bool on);
 
-    // Re-read profiles from Config and emit profilesChanged() if different.
+    // Re-read from Config and emit the corresponding signal if the value changed.
     void reloadProfiles();
     void reloadProgressEnabled();
+    void reloadAutoProfileSwitch();
 
   public slots:
     Q_SCRIPTABLE void VolumeUp();
@@ -92,6 +97,7 @@ class DbusInterface : public QObject
     void profilesChanged(const QVariantList& profiles);
     void scenesChanged(const QVariantList& scenes);
     void progressEnabledChanged(bool on);
+    void autoProfileSwitchChanged(bool on);
 
   private:
     // Build the QVariantList wire representation from current Config profiles.
@@ -111,6 +117,7 @@ class DbusInterface : public QObject
     QStringList m_apps;
     int m_volumeStep = 5;
     bool m_progressEnabled = false;
+    bool m_autoProfileSwitch = false;
     QVariantList m_profilesProp;
     QVariantList m_scenesProp;
 };
