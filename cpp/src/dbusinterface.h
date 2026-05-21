@@ -105,7 +105,6 @@ class DbusInterface : public QObject
     QVariantList buildScenesProp() const;
     // Resolve a profile id to a Profile (or empty Profile if unknown).
     Profile findProfile(const QString& id) const;
-    AudioScene findScene(const QString& id) const;
 
     Config* m_config = nullptr;
     VolumeController* m_volumeCtrl = nullptr;

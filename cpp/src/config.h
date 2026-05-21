@@ -261,6 +261,8 @@ class Config
     // Audio scenes: named mixer presets applied through D-Bus / kv-ctl.
     QList<AudioScene> scenes() const;
     void setScenes(const QList<AudioScene>& scenes);
+    // Find a scene by id. Returns default-constructed AudioScene when not found.
+    AudioScene findSceneById(const QString& id) const;
 
     // Auto-profile switching: when enabled, focused window determines the active
     // audio target. Disabled by default (off).

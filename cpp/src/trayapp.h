@@ -42,10 +42,12 @@ class TrayApp : public QObject
     void onAppSelected(const QString& name);
     void openSettings();
     void openAppSelector();
+    void onApplyScene(const QString& sceneId);
 
   private:
     void buildMenu();
     void populateAppList();
+    void populateScenesMenu();
 
     Config* m_config;
     VolumeController* m_volumeCtrl;
