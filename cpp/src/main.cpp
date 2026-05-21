@@ -12,6 +12,7 @@
 #include "screenutils.h"
 #include "windowtracker.h"
 #include "audioapp.h"
+#include "appmatcher.h"
 #include "waylandstate.h"
 
 #ifdef HAVE_WAYLAND_CLIENT
@@ -386,7 +387,7 @@ class App : public QObject
         }
 
         // Match binary name against PipeWire app cache
-        const QString matchedApp = matchBinaryToApp(binary);
+        const QString matchedApp = ::matchBinaryToApp(binary, m_appCache);
         if (matchedApp.isEmpty())
         {
             m_autoActiveApp.clear();
@@ -404,18 +405,6 @@ class App : public QObject
         // Only switch if the auto-detected app differs from current
         if (m_autoActiveApp == matchedApp) return;
         m_autoActiveApp = matchedApp;
-    }
-
-    QString matchBinaryToApp(const QString& binary) const
-    {
-        const QString lower = binary.toLower();
-        for (const AudioApp& app : m_appCache)
-        {
-            if (app.name.toLower().contains(lower) || lower.contains(app.name.toLower()) ||
-                app.binary.toLower().contains(lower) || lower.contains(app.binary.toLower()))
-                return app.name;
-        }
-        return {};
     }
 
     QString effectiveApp(const QString& profileId) const
