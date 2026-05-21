@@ -92,8 +92,10 @@ void DbusInterface::setVolume(double vol)
 void DbusInterface::setMuted(bool muted)
 {
     if (m_activeApp.isEmpty()) return;
-    if (m_muted == muted) return;
-    m_volumeCtrl->toggleMute(m_activeApp);
+    // Drive PA to the desired absolute state. Using setMuted (not toggleMute)
+    // avoids a stale-cache race where m_muted disagrees with the actual sink
+    // state right after a PA reconnect and a toggle would land on the wrong value.
+    m_volumeCtrl->setMuted(m_activeApp, muted);
 }
 
 void DbusInterface::setActiveApp(const QString& name)
@@ -192,6 +194,12 @@ void DbusInterface::ToggleMute()
 {
     if (m_activeApp.isEmpty()) return;
     m_volumeCtrl->toggleMute(m_activeApp);
+}
+
+void DbusInterface::SetMute(bool muted)
+{
+    if (m_activeApp.isEmpty()) return;
+    m_volumeCtrl->setMuted(m_activeApp, muted);
 }
 
 void DbusInterface::ToggleDucking()
@@ -326,6 +334,13 @@ void DbusInterface::ToggleMuteProfile(const QString& profileId)
     Profile p = findProfile(profileId);
     if (p.app.isEmpty()) return;
     m_volumeCtrl->toggleMute(p.app);
+}
+
+void DbusInterface::SetMuteProfile(const QString& profileId, bool muted)
+{
+    Profile p = findProfile(profileId);
+    if (p.app.isEmpty()) return;
+    m_volumeCtrl->setMuted(p.app, muted);
 }
 
 void DbusInterface::ToggleDuckingProfile(const QString& profileId)

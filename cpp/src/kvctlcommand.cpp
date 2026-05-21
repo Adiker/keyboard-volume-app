@@ -10,6 +10,26 @@ KvCtlParseResult fail(const QString& message)
     return result;
 }
 
+// Recognised tokens for an explicit boolean mute state. Mirrors kvctl.cpp's
+// parseBool but lives here so the parser stays self-contained for tests.
+bool parseMuteState(const QString& token, bool* out)
+{
+    const QString normalized = token.trimmed().toLower();
+    if (normalized == QStringLiteral("on") || normalized == QStringLiteral("true") ||
+        normalized == QStringLiteral("1") || normalized == QStringLiteral("yes"))
+    {
+        *out = true;
+        return true;
+    }
+    if (normalized == QStringLiteral("off") || normalized == QStringLiteral("false") ||
+        normalized == QStringLiteral("0") || normalized == QStringLiteral("no"))
+    {
+        *out = false;
+        return true;
+    }
+    return false;
+}
+
 KvCtlCommand::Field parseField(const QString& name)
 {
     if (name == QStringLiteral("volume")) return KvCtlCommand::Field::Volume;
@@ -41,8 +61,7 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
     const QString action = positionalArgs[0];
 
     if (action == QStringLiteral("up") || action == QStringLiteral("down") ||
-        action == QStringLiteral("mute") || action == QStringLiteral("duck") ||
-        action == QStringLiteral("show"))
+        action == QStringLiteral("duck") || action == QStringLiteral("show"))
     {
         if (positionalArgs.size() != 1)
             return fail(
@@ -52,14 +71,32 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
             cmd.action = KvCtlCommand::Action::VolumeUp;
         else if (action == QStringLiteral("down"))
             cmd.action = KvCtlCommand::Action::VolumeDown;
-        else if (action == QStringLiteral("mute"))
-            cmd.action = KvCtlCommand::Action::ToggleMute;
         else if (action == QStringLiteral("duck"))
             cmd.action = KvCtlCommand::Action::ToggleDucking;
         else
             cmd.action = KvCtlCommand::Action::Show;
 
         return {true, cmd, QString()};
+    }
+
+    if (action == QStringLiteral("mute"))
+    {
+        if (positionalArgs.size() == 1)
+        {
+            cmd.action = KvCtlCommand::Action::ToggleMute;
+            return {true, cmd, QString()};
+        }
+        if (positionalArgs.size() == 2)
+        {
+            bool muted = false;
+            if (!parseMuteState(positionalArgs[1], &muted))
+                return fail(QStringLiteral("mute requires 'on' or 'off' (got '%1')")
+                                .arg(positionalArgs[1]));
+            cmd.action = KvCtlCommand::Action::SetMute;
+            cmd.value = muted ? QStringLiteral("true") : QStringLiteral("false");
+            return {true, cmd, QString()};
+        }
+        return fail(QStringLiteral("usage: kv-ctl mute [on|off]"));
     }
 
     if (action == QStringLiteral("refresh"))
@@ -130,7 +167,7 @@ QString kvCtlUsageText()
         "Usage:\n"
         "  kv-ctl up [--profile ID]\n"
         "  kv-ctl down [--profile ID]\n"
-        "  kv-ctl mute [--profile ID]\n"
+        "  kv-ctl mute [on|off] [--profile ID]\n"
         "  kv-ctl duck [--profile ID]\n"
         "  kv-ctl show [--profile ID]\n"
         "  kv-ctl scene ID\n"

@@ -76,6 +76,7 @@ class DbusInterface : public QObject
     Q_SCRIPTABLE void VolumeUp();
     Q_SCRIPTABLE void VolumeDown();
     Q_SCRIPTABLE void ToggleMute();
+    Q_SCRIPTABLE void SetMute(bool muted);
     Q_SCRIPTABLE void ToggleDucking();
     Q_SCRIPTABLE void RefreshApps();
 
@@ -84,6 +85,7 @@ class DbusInterface : public QObject
     Q_SCRIPTABLE void VolumeUpProfile(const QString& profileId);
     Q_SCRIPTABLE void VolumeDownProfile(const QString& profileId);
     Q_SCRIPTABLE void ToggleMuteProfile(const QString& profileId);
+    Q_SCRIPTABLE void SetMuteProfile(const QString& profileId, bool muted);
     Q_SCRIPTABLE void ToggleDuckingProfile(const QString& profileId);
     Q_SCRIPTABLE void ApplyScene(const QString& sceneId);
     Q_SCRIPTABLE void ShowVolume();

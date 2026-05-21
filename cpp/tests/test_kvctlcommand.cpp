@@ -175,3 +175,67 @@ TEST(KvCtlCommand, ParsesShowWithProfile)
     EXPECT_EQ(result.command.action, KvCtlCommand::Action::Show);
     EXPECT_EQ(result.command.profile.toStdString(), "spotify");
 }
+
+TEST(KvCtlCommand, ParsesMuteOnOff)
+{
+    auto on = parseKvCtlCommand({QStringLiteral("mute"), QStringLiteral("on")}, {}, false);
+    ASSERT_TRUE(on.ok) << on.error.toStdString();
+    EXPECT_EQ(on.command.action, KvCtlCommand::Action::SetMute);
+    EXPECT_EQ(on.command.value.toStdString(), "true");
+    EXPECT_TRUE(on.command.profile.isEmpty());
+
+    auto off = parseKvCtlCommand({QStringLiteral("mute"), QStringLiteral("off")}, {}, false);
+    ASSERT_TRUE(off.ok) << off.error.toStdString();
+    EXPECT_EQ(off.command.action, KvCtlCommand::Action::SetMute);
+    EXPECT_EQ(off.command.value.toStdString(), "false");
+
+    // Aliases — true/false, 1/0, yes/no all map to the same SetMute action.
+    for (const QString& token :
+         {QStringLiteral("true"), QStringLiteral("1"), QStringLiteral("yes")})
+    {
+        auto r = parseKvCtlCommand({QStringLiteral("mute"), token}, {}, false);
+        ASSERT_TRUE(r.ok) << token.toStdString();
+        EXPECT_EQ(r.command.action, KvCtlCommand::Action::SetMute);
+        EXPECT_EQ(r.command.value.toStdString(), "true");
+    }
+    for (const QString& token :
+         {QStringLiteral("false"), QStringLiteral("0"), QStringLiteral("no")})
+    {
+        auto r = parseKvCtlCommand({QStringLiteral("mute"), token}, {}, false);
+        ASSERT_TRUE(r.ok) << token.toStdString();
+        EXPECT_EQ(r.command.action, KvCtlCommand::Action::SetMute);
+        EXPECT_EQ(r.command.value.toStdString(), "false");
+    }
+}
+
+TEST(KvCtlCommand, ParsesMuteOnWithProfile)
+{
+    auto result = parseKvCtlCommand({QStringLiteral("mute"), QStringLiteral("on")},
+                                    QStringLiteral("spotify"), true);
+    ASSERT_TRUE(result.ok) << result.error.toStdString();
+    EXPECT_EQ(result.command.action, KvCtlCommand::Action::SetMute);
+    EXPECT_EQ(result.command.value.toStdString(), "true");
+    EXPECT_EQ(result.command.profile.toStdString(), "spotify");
+}
+
+TEST(KvCtlCommand, BareMuteStillToggles)
+{
+    auto bare = parseKvCtlCommand({QStringLiteral("mute")}, {}, false);
+    ASSERT_TRUE(bare.ok) << bare.error.toStdString();
+    EXPECT_EQ(bare.command.action, KvCtlCommand::Action::ToggleMute);
+
+    auto bareProfile = parseKvCtlCommand({QStringLiteral("mute")}, QStringLiteral("firefox"), true);
+    ASSERT_TRUE(bareProfile.ok) << bareProfile.error.toStdString();
+    EXPECT_EQ(bareProfile.command.action, KvCtlCommand::Action::ToggleMute);
+    EXPECT_EQ(bareProfile.command.profile.toStdString(), "firefox");
+}
+
+TEST(KvCtlCommand, RejectsInvalidMuteState)
+{
+    EXPECT_FALSE(
+        parseKvCtlCommand({QStringLiteral("mute"), QStringLiteral("bogus")}, {}, false).ok);
+    EXPECT_FALSE(
+        parseKvCtlCommand({QStringLiteral("mute"), QStringLiteral("on"), QStringLiteral("extra")},
+                          {}, false)
+            .ok);
+}
