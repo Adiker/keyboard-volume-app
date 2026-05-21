@@ -53,6 +53,8 @@ void TrayApp::buildMenu()
     QAction* changeAppAct = m_menu->addAction(::tr(QStringLiteral("tray.action.change_app")));
     connect(changeAppAct, &QAction::triggered, this, &TrayApp::openAppSelector);
 
+    populateScenesMenu();
+
     m_menu->addSeparator();
 
     QAction* deviceAct = m_menu->addAction(::tr(QStringLiteral("tray.action.change_device")));
@@ -105,6 +107,34 @@ void TrayApp::populateAppList()
 
     // Keep the user's configured app even if a transient refresh/reconnect
     // produces a list that does not currently contain it.
+}
+
+void TrayApp::populateScenesMenu()
+{
+    const auto scenes = m_config->scenes();
+    if (scenes.isEmpty()) return;
+
+    QMenu* scenesMenu = m_menu->addMenu(::tr(QStringLiteral("tray.action.apply_scene")));
+    for (const AudioScene& scene : scenes)
+    {
+        const QString id = scene.id;
+        const QString label = scene.name.isEmpty() ? scene.id : scene.name;
+        QAction* act = scenesMenu->addAction(label);
+        connect(act, &QAction::triggered, this, [this, id]() { onApplyScene(id); });
+    }
+}
+
+void TrayApp::onApplyScene(const QString& sceneId)
+{
+    const AudioScene scene = m_config->findSceneById(sceneId);
+    if (scene.id.isEmpty()) return;
+
+    for (const SceneTarget& target : scene.targets)
+    {
+        if (target.match.isEmpty()) continue;
+        if (target.volume) m_volumeCtrl->setVolume(target.match, *target.volume / 100.0);
+        if (target.muted) m_volumeCtrl->setMuted(target.match, *target.muted);
+    }
 }
 
 void TrayApp::onRefresh()

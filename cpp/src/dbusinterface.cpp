@@ -277,15 +277,6 @@ Profile DbusInterface::findProfile(const QString& id) const
     return Profile{};
 }
 
-AudioScene DbusInterface::findScene(const QString& id) const
-{
-    for (const AudioScene& scene : m_config->scenes())
-    {
-        if (scene.id == id) return scene;
-    }
-    return AudioScene{};
-}
-
 void DbusInterface::reloadProfiles()
 {
     QVariantList fresh = buildProfilesProp();
@@ -348,7 +339,7 @@ void DbusInterface::SetVolumeProfile(const QString& profileId, double vol)
 
 void DbusInterface::ApplyScene(const QString& sceneId)
 {
-    const AudioScene scene = findScene(sceneId);
+    const AudioScene scene = m_config->findSceneById(sceneId);
     if (scene.id.isEmpty()) return;
 
     for (const SceneTarget& target : scene.targets)
