@@ -286,6 +286,8 @@ QString methodName(const KvCtlCommand& cmd)
         return profile ? QStringLiteral("VolumeDownProfile") : QStringLiteral("VolumeDown");
     case KvCtlCommand::Action::ToggleMute:
         return profile ? QStringLiteral("ToggleMuteProfile") : QStringLiteral("ToggleMute");
+    case KvCtlCommand::Action::SetMute:
+        return profile ? QStringLiteral("SetMuteProfile") : QStringLiteral("SetMute");
     case KvCtlCommand::Action::ToggleDucking:
         return profile ? QStringLiteral("ToggleDuckingProfile") : QStringLiteral("ToggleDucking");
     case KvCtlCommand::Action::ApplyScene:
@@ -330,7 +332,15 @@ int callControlMethod(const KvCtlCommand& cmd)
     }
 
     QDBusMessage reply;
-    if (cmd.profile.isEmpty())
+    if (cmd.action == KvCtlCommand::Action::SetMute)
+    {
+        const bool muted = cmd.value == QStringLiteral("true");
+        if (cmd.profile.isEmpty())
+            reply = control.call(methodName(cmd), muted);
+        else
+            reply = control.call(methodName(cmd), cmd.profile, muted);
+    }
+    else if (cmd.profile.isEmpty())
     {
         if (cmd.action == KvCtlCommand::Action::ApplyScene)
             reply = control.call(methodName(cmd), cmd.scene);

@@ -91,9 +91,8 @@ void DbusInterface::setVolume(double vol)
 void DbusInterface::setMuted(bool muted)
 {
     if (m_activeApp.isEmpty()) return;
-    // Absolute set — toggleMute() would flip whatever the real state is, which
-    // produces the wrong result whenever m_muted has drifted from the live
-    // sink-input state (e.g. external mute via pavucontrol or kv-ctl).
+    // Absolute set — toggleMute() would flip whatever the real state is when
+    // m_muted has drifted from the live sink-input (pavucontrol, PA reconnect).
     m_volumeCtrl->setMuted(m_activeApp, muted);
 }
 
@@ -196,6 +195,12 @@ void DbusInterface::ToggleMute()
 {
     if (m_activeApp.isEmpty()) return;
     m_volumeCtrl->toggleMute(m_activeApp);
+}
+
+void DbusInterface::SetMute(bool muted)
+{
+    if (m_activeApp.isEmpty()) return;
+    m_volumeCtrl->setMuted(m_activeApp, muted);
 }
 
 void DbusInterface::ToggleDucking()
@@ -330,6 +335,13 @@ void DbusInterface::ToggleMuteProfile(const QString& profileId)
     Profile p = findProfile(profileId);
     if (p.app.isEmpty()) return;
     m_volumeCtrl->toggleMute(p.app);
+}
+
+void DbusInterface::SetMuteProfile(const QString& profileId, bool muted)
+{
+    Profile p = findProfile(profileId);
+    if (p.app.isEmpty()) return;
+    m_volumeCtrl->setMuted(p.app, muted);
 }
 
 void DbusInterface::ToggleDuckingProfile(const QString& profileId)

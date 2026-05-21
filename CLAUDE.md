@@ -380,9 +380,9 @@ Exposes `org.keyboardvolumeapp.VolumeControl` on the D-Bus session bus (bus name
 Caches volume/mute/app state by listening to `VolumeController::volumeChanged` and `VolumeController::appsReady`; `App::initDbus()` wires `TrayApp::appChanged` to `DbusInterface::onActiveAppChanged()` so the tray drives active-app invalidation without `DbusInterface` having to depend on the GUI stack. D-Bus properties are `Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`, `Profiles`, `Scenes`, `ProgressEnabled`, and `AutoProfileSwitch`; setters delegate to `VolumeController`/`Config` async. The `Volume` and `Muted` property writers route to absolute setters on `VolumeController` (`setVolume(app, target, vol_min, vol_max)` / `setMuted(app, muted)`) rather than relative delta/toggle calls — the cached values can be stale (startup, external pavucontrol changes), so an absolute set is the only way to honor the requested target. The global `Volume` property applies the default profile's `vol_min`/`vol_max` bounds. `ProgressEnabled` reads current `Config::osd()` to avoid stale cache after GUI settings changes.
 
 D-Bus methods:
-- `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `ToggleDucking()`, `RefreshApps()` — bare methods target the default profile / `m_activeApp`, kept for backwards compat and script-friendly default-profile control.
-- `VolumeUpProfile(QString id)`, `VolumeDownProfile(QString id)`, `ToggleMuteProfile(QString id)`, `ToggleDuckingProfile(QString id)` — per-profile methods, route directly to the profile's app via `m_volumeCtrl`.
-- `SetVolumeProfile(QString id, double vol)` — per-profile absolute volume setter. `vol` is `0.0..1.0` (clamped); unknown profile ids are silently a no-op. Used by `kv-ctl set volume X --profile id`. (Per-profile absolute mute is provided by `SetMuteProfile` from PR #47.)
+- `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `SetMute(bool)`, `ToggleDucking()`, `RefreshApps()` — bare methods target the default profile / `m_activeApp`, kept for backwards compat and script-friendly default-profile control. `SetMute` and the `Muted` property both drive an absolute mute state via `setMuted`.
+- `VolumeUpProfile(QString id)`, `VolumeDownProfile(QString id)`, `ToggleMuteProfile(QString id)`, `SetMuteProfile(QString id, bool muted)`, `ToggleDuckingProfile(QString id)` — per-profile methods, route directly to the profile's app via `m_volumeCtrl`.
+- `SetVolumeProfile(QString id, double vol)` — per-profile absolute volume setter. `vol` is `0.0..1.0` (clamped); unknown profile ids are silently a no-op. Used by `kv-ctl set volume X --profile id`.
 - `ApplyScene(QString id)` — applies a configured audio scene by posting absolute volume/mute operations to `VolumeController`; unknown scene ids are a no-op.
 - `ShowVolume()` — queries the current volume of `m_activeApp` via `VolumeController::queryVolume()` and emits `volumeChanged` → OSD displays without any value change.
 - `ShowVolumeProfile(QString id)` — same as `ShowVolume()` but for the app in the named profile.
@@ -396,6 +396,7 @@ D-Bus methods:
 
 `kv-ctl` is a small CLI client for scripts and tiling WM keybinds. Commands:
 - `kv-ctl up|down|mute [--profile id]` maps to bare D-Bus methods or `VolumeUpProfile` / `VolumeDownProfile` / `ToggleMuteProfile`.
+- `kv-ctl mute on|off [--profile id]` maps to `SetMute(bool)` or `SetMuteProfile(id, bool)` for deterministic mute state from scripts. Accepts `on|true|1|yes` and `off|false|0|no`.
 - `kv-ctl duck [--profile id]` maps to bare `ToggleDucking` or `ToggleDuckingProfile(id)`; without `--profile`, the daemon resolves the current default profile server-side.
 - `kv-ctl show [--profile id]` maps to `ShowVolume()` or `ShowVolumeProfile(id)`; displays the OSD with the current volume without changing it.
 - `kv-ctl scene ID` maps to `ApplyScene(ID)`.
