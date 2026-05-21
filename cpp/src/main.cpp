@@ -1,18 +1,19 @@
+#include "appmatcher.h"
+#include "audioapp.h"
 #include "config.h"
-#include "i18n.h"
-#include "volumecontroller.h"
-#include "osdwindow.h"
-#include "trayapp.h"
-#include "inputhandler.h"
+#include "dbusinterface.h"
 #include "deviceselector.h"
 #include "firstrunwizard.h"
-#include "dbusinterface.h"
-#include "mprisinterface.h"
+#include "i18n.h"
+#include "inputhandler.h"
 #include "mprisclient.h"
+#include "mprisinterface.h"
+#include "osdwindow.h"
 #include "screenutils.h"
-#include "windowtracker.h"
-#include "audioapp.h"
+#include "trayapp.h"
+#include "volumecontroller.h"
 #include "waylandstate.h"
+#include "windowtracker.h"
 
 #ifdef HAVE_WAYLAND_CLIENT
 #include <wayland-client.h>
@@ -386,7 +387,7 @@ class App : public QObject
         }
 
         // Match binary name against PipeWire app cache
-        const QString matchedApp = matchBinaryToApp(binary);
+        const QString matchedApp = ::matchBinaryToApp(binary, m_appCache);
         if (matchedApp.isEmpty())
         {
             m_autoActiveApp.clear();
@@ -404,18 +405,6 @@ class App : public QObject
         // Only switch if the auto-detected app differs from current
         if (m_autoActiveApp == matchedApp) return;
         m_autoActiveApp = matchedApp;
-    }
-
-    QString matchBinaryToApp(const QString& binary) const
-    {
-        const QString lower = binary.toLower();
-        for (const AudioApp& app : m_appCache)
-        {
-            if (app.name.toLower().contains(lower) || lower.contains(app.name.toLower()) ||
-                app.binary.toLower().contains(lower) || lower.contains(app.binary.toLower()))
-                return app.name;
-        }
-        return {};
     }
 
     QString effectiveApp(const QString& profileId) const
