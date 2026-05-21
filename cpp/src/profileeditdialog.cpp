@@ -86,6 +86,39 @@ ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
     m_hkDucking = new HotkeyCapture(initial.ducking.hotkey, m_inputHandler, this);
     form->addRow(::tr(QStringLiteral("settings.profiles.ducking_hotkey")), m_hkDucking);
 
+    // Volume limits (percent, 0-100). Keep min <= max as the user types.
+    m_volMin = new QSpinBox(this);
+    m_volMin->setRange(0, 100);
+    m_volMin->setSuffix(QStringLiteral("%"));
+    m_volMin->setValue(std::clamp(initial.volMin, 0, 100));
+
+    m_volMax = new QSpinBox(this);
+    m_volMax->setRange(0, 100);
+    m_volMax->setSuffix(QStringLiteral("%"));
+    m_volMax->setValue(std::clamp(initial.volMax, 0, 100));
+
+    connect(m_volMin, qOverload<int>(&QSpinBox::valueChanged), this,
+            [this](int v)
+            {
+                if (m_volMax->value() < v) m_volMax->setValue(v);
+            });
+    connect(m_volMax, qOverload<int>(&QSpinBox::valueChanged), this,
+            [this](int v)
+            {
+                if (m_volMin->value() > v) m_volMin->setValue(v);
+            });
+
+    auto* limitsRow = new QHBoxLayout;
+    limitsRow->addWidget(new QLabel(::tr(QStringLiteral("settings.profiles.vol_min_label")), this));
+    limitsRow->addWidget(m_volMin);
+    limitsRow->addSpacing(12);
+    limitsRow->addWidget(new QLabel(::tr(QStringLiteral("settings.profiles.vol_max_label")), this));
+    limitsRow->addWidget(m_volMax);
+    limitsRow->addStretch();
+    auto* limitsWrap = new QWidget(this);
+    limitsWrap->setLayout(limitsRow);
+    form->addRow(::tr(QStringLiteral("settings.profiles.vol_limits")), limitsWrap);
+
     // Auto-switch participation
     m_autoSwitch = new QCheckBox(::tr(QStringLiteral("settings.profiles.auto_switch")), this);
     m_autoSwitch->setChecked(initial.autoSwitch);
@@ -119,6 +152,8 @@ Profile ProfileEditDialog::result() const
     p.ducking.volume = m_duckingSpin->value();
     p.ducking.hotkey = m_hkDucking->binding();
     p.autoSwitch = m_autoSwitch->isChecked();
+    p.volMin = m_volMin->value();
+    p.volMax = m_volMax->value();
 
     return p;
 }

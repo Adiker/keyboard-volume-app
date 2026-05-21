@@ -308,9 +308,15 @@ class PaWorker : public QObject
         doListApps(/*forceRefresh=*/true);
     }
 
-    void doChangeVolume(const QString& appName, double delta)
+    void doChangeVolume(const QString& appName, double delta, double minVol = 0.0,
+                        double maxVol = 1.0)
     {
         if (m_stopping) return;
+
+        // Sanitize bounds so a misconfigured profile cannot break volume control.
+        minVol = std::clamp(minVol, 0.0, 1.0);
+        maxVol = std::clamp(maxVol, 0.0, 1.0);
+        if (minVol > maxVol) std::swap(minVol, maxVol);
 
         // 1. Active sink input (fast path)
         if (contextReady())
@@ -321,7 +327,7 @@ class PaWorker : public QObject
             {
                 if (!si.matches(appName)) continue;
 
-                double newVol = std::clamp(si.volume + delta, 0.0, 1.0);
+                double newVol = std::clamp(si.volume + delta, minVol, maxVol);
                 pa_cvolume cv;
                 pa_cvolume_set(&cv, 2, static_cast<pa_volume_t>(newVol * PA_VOLUME_NORM));
                 pa_operation* op = pa_context_set_sink_input_volume(m_ctx, si.index, &cv,
@@ -343,7 +349,7 @@ class PaWorker : public QObject
         }
 
         // 2. Stream restore DB
-        auto vol = streamRestoreChangeVolume(appName, delta);
+        auto vol = streamRestoreChangeVolume(appName, delta, minVol, maxVol);
         if (vol)
         {
             m_appVolumes[appName] = *vol;
@@ -356,7 +362,7 @@ class PaWorker : public QObject
         auto node = ::findPipeWireNodeForApp(appName);
         if (node)
         {
-            double newVol = std::clamp(node->volume + delta, 0.0, 1.0);
+            double newVol = std::clamp(node->volume + delta, minVol, maxVol);
             if (::setPipeWireNodeVolume(node->id, newVol))
             {
                 m_appVolumes[appName] = newVol;
@@ -368,7 +374,7 @@ class PaWorker : public QObject
 
         // 4. App disconnected — park and show desired volume on OSD anyway
         double base = m_appVolumes.value(appName, 1.0);
-        double newVol = std::clamp(base + delta, 0.0, 1.0);
+        double newVol = std::clamp(base + delta, minVol, maxVol);
         m_appVolumes[appName] = newVol;
         {
             QMutexLocker lk(&m_pendingMutex);
@@ -534,11 +540,16 @@ class PaWorker : public QObject
         emit volumeChanged(appName, vol, targetMuted);
     }
 
-    void setAppVolume(const QString& appName, double targetVolume)
+    void setAppVolume(const QString& appName, double targetVolume, double minVol = 0.0,
+                      double maxVol = 1.0)
     {
         if (m_stopping) return;
 
-        targetVolume = std::clamp(targetVolume, 0.0, 1.0);
+        // Sanitize bounds — caller may pass invalid values.
+        minVol = std::clamp(minVol, 0.0, 1.0);
+        maxVol = std::clamp(maxVol, 0.0, 1.0);
+        if (minVol > maxVol) std::swap(minVol, maxVol);
+        targetVolume = std::clamp(targetVolume, minVol, maxVol);
 
         // 1. Active sink input (absolute target, not relative delta)
         if (contextReady())
@@ -570,7 +581,7 @@ class PaWorker : public QObject
         }
 
         // 2. Stream restore DB
-        if (streamRestoreSetVolume(appName, targetVolume))
+        if (streamRestoreSetVolume(appName, targetVolume, minVol, maxVol))
         {
             m_appVolumes[appName] = targetVolume;
             removePending(appName);
@@ -1139,6 +1150,8 @@ class PaWorker : public QObject
         bool targetMute;
         std::optional<double>* outVol;
         std::optional<std::pair<bool, double>>* outMute;
+        double minVol = 0.0;
+        double maxVol = 1.0;
     };
 
     static void streamRestoreReadCallback(pa_context* ctx, const pa_ext_stream_restore_info* info,
@@ -1151,8 +1164,8 @@ class PaWorker : public QObject
         double vol = static_cast<double>(pa_cvolume_avg(&info->volume)) / PA_VOLUME_NORM;
         if (!d->isMute)
         {
-            double newVol =
-                d->absoluteVolume ? d->targetVolume : std::clamp(vol + d->delta, 0.0, 1.0);
+            double newVol = d->absoluteVolume ? std::clamp(d->targetVolume, d->minVol, d->maxVol)
+                                              : std::clamp(vol + d->delta, d->minVol, d->maxVol);
             pa_ext_stream_restore_info out = *info;
             pa_cvolume_set(const_cast<pa_cvolume*>(&out.volume), 2,
                            static_cast<pa_volume_t>(newVol * PA_VOLUME_NORM));
@@ -1216,18 +1229,20 @@ class PaWorker : public QObject
         return candidates;
     }
 
-    std::optional<double> streamRestoreChangeVolume(const QString& app, double delta)
+    std::optional<double> streamRestoreChangeVolume(const QString& app, double delta,
+                                                    double minVol = 0.0, double maxVol = 1.0)
     {
         if (!contextReady()) return std::nullopt;
         for (const QString& candidate : streamRestoreAppCandidates(app))
         {
             std::optional<double> result;
             StreamRestoreCbData d{
-                this,   QStringLiteral("sink-input-by-application-name:") + candidate,
-                delta,  0.0,
-                false,  false,
-                false,  &result,
-                nullptr};
+                this,    QStringLiteral("sink-input-by-application-name:") + candidate,
+                delta,   0.0,
+                false,   false,
+                false,   &result,
+                nullptr, minVol,
+                maxVol};
             pa_threaded_mainloop_lock(m_mainloop);
             waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
                              "read stream restore volume");
@@ -1254,19 +1269,22 @@ class PaWorker : public QObject
         return std::nullopt;
     }
 
-    std::optional<double> streamRestoreSetVolume(const QString& app, double targetVolume)
+    std::optional<double> streamRestoreSetVolume(const QString& app, double targetVolume,
+                                                 double minVol = 0.0, double maxVol = 1.0)
     {
         if (!contextReady()) return std::nullopt;
-        targetVolume = std::clamp(targetVolume, 0.0, 1.0);
+        targetVolume =
+            std::clamp(targetVolume, std::clamp(minVol, 0.0, 1.0), std::clamp(maxVol, 0.0, 1.0));
         for (const QString& candidate : streamRestoreAppCandidates(app))
         {
             std::optional<double> result;
             StreamRestoreCbData d{
-                this,   QStringLiteral("sink-input-by-application-name:") + candidate,
-                0.0,    targetVolume,
-                true,   false,
-                false,  &result,
-                nullptr};
+                this,    QStringLiteral("sink-input-by-application-name:") + candidate,
+                0.0,     targetVolume,
+                true,    false,
+                false,   &result,
+                nullptr, minVol,
+                maxVol};
             pa_threaded_mainloop_lock(m_mainloop);
             waitForOperation(pa_ext_stream_restore_read(m_ctx, streamRestoreReadCallback, &d),
                              "read stream restore absolute volume");
@@ -1410,20 +1428,24 @@ QList<AudioApp> VolumeController::listApps(bool forceRefresh)
     return m_listCache; // return cached data immediately — no blocking
 }
 
-void VolumeController::changeVolume(const QString& appName, double delta)
+void VolumeController::changeVolume(const QString& appName, double delta, double minVol,
+                                    double maxVol)
 {
     if (m_closing || !m_worker) return;
 
     QMetaObject::invokeMethod(m_worker, "doChangeVolume", Qt::QueuedConnection,
-                              Q_ARG(QString, appName), Q_ARG(double, delta));
+                              Q_ARG(QString, appName), Q_ARG(double, delta), Q_ARG(double, minVol),
+                              Q_ARG(double, maxVol));
 }
 
-void VolumeController::setVolume(const QString& appName, double targetVolume)
+void VolumeController::setVolume(const QString& appName, double targetVolume, double minVol,
+                                 double maxVol)
 {
     if (m_closing || !m_worker) return;
 
     QMetaObject::invokeMethod(m_worker, "setAppVolume", Qt::QueuedConnection,
-                              Q_ARG(QString, appName), Q_ARG(double, targetVolume));
+                              Q_ARG(QString, appName), Q_ARG(double, targetVolume),
+                              Q_ARG(double, minVol), Q_ARG(double, maxVol));
 }
 
 void VolumeController::toggleMute(const QString& appName)

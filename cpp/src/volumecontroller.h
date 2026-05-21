@@ -21,8 +21,13 @@ class VolumeController : public QObject
     QList<AudioApp> listApps(bool forceRefresh = false);
 
     // Async volume operations — result arrives via volumeChanged().
-    void changeVolume(const QString& appName, double delta);
-    void setVolume(const QString& appName, double targetVolume);
+    // The optional [minVol, maxVol] bounds clamp the resulting absolute volume
+    // (used to enforce per-profile vol_min / vol_max). Both must lie in [0,1]
+    // with minVol <= maxVol; defaults preserve the full range.
+    void changeVolume(const QString& appName, double delta, double minVol = 0.0,
+                      double maxVol = 1.0);
+    void setVolume(const QString& appName, double targetVolume, double minVol = 0.0,
+                   double maxVol = 1.0);
     void toggleMute(const QString& appName);
     void setMuted(const QString& appName, bool muted);
     void toggleDucking(const QString& keepApp, double duckVolume);

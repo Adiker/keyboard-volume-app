@@ -229,7 +229,9 @@ class App : public QObject
         const QString app = effectiveApp(profileId);
         if (app.isEmpty()) return;
         double step = m_config->volumeStep() / 100.0;
-        m_volumeCtrl->changeVolume(app, direction * step); // async → volumeChanged signal
+        const Profile p = findProfile(profileId);
+        // async → volumeChanged signal; clamped to per-profile [vol_min, vol_max].
+        m_volumeCtrl->changeVolume(app, direction * step, p.volMin / 100.0, p.volMax / 100.0);
     }
 
     void onMute(const QString& profileId)

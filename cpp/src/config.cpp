@@ -101,6 +101,8 @@ QJsonObject Config::defaultJson()
              {QStringLiteral("volume"), 25},
              {QStringLiteral("hotkey"), 0},
          }},
+        {QStringLiteral("vol_min"), 0},
+        {QStringLiteral("vol_max"), 100},
     };
 
     return QJsonObject{
@@ -209,6 +211,8 @@ QJsonObject Config::profileToJson(const Profile& p)
              {QStringLiteral("hotkey"), bindingToJson(p.ducking.hotkey)},
          }},
         {QStringLiteral("auto_switch"), p.autoSwitch},
+        {QStringLiteral("vol_min"), std::clamp(p.volMin, 0, 100)},
+        {QStringLiteral("vol_max"), std::clamp(p.volMax, 0, 100)},
     };
 }
 
@@ -237,6 +241,9 @@ Profile Config::profileFromJson(const QJsonObject& o)
     p.ducking.volume = std::clamp(duck[QStringLiteral("volume")].toInt(25), 0, 100);
     p.ducking.hotkey = bindingFromJson(duck[QStringLiteral("hotkey")], 0);
     p.autoSwitch = o[QStringLiteral("auto_switch")].toBool(true);
+    p.volMin = std::clamp(o[QStringLiteral("vol_min")].toInt(0), 0, 100);
+    p.volMax = std::clamp(o[QStringLiteral("vol_max")].toInt(100), 0, 100);
+    if (p.volMin > p.volMax) std::swap(p.volMin, p.volMax);
     return p;
 }
 
@@ -677,6 +684,9 @@ void Config::setProfiles(const QList<Profile>& profiles)
         seen.insert(p.id);
         p.ducking.volume = std::clamp(p.ducking.volume, 0, 100);
         if (!p.ducking.hotkey.isAssigned()) p.ducking.hotkey = {};
+        p.volMin = std::clamp(p.volMin, 0, 100);
+        p.volMax = std::clamp(p.volMax, 0, 100);
+        if (p.volMin > p.volMax) std::swap(p.volMin, p.volMax);
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);

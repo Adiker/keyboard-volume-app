@@ -74,6 +74,9 @@ static const QMap<QString, QMap<QString, QString>>& strings()
               QStringLiteral("At least one profile must remain.")},
              {QStringLiteral("settings.profiles.auto_switch"),
               QStringLiteral("Auto-switch: participate in window-focus switching")},
+             {QStringLiteral("settings.profiles.vol_limits"), QStringLiteral("Volume limits:")},
+             {QStringLiteral("settings.profiles.vol_min_label"), QStringLiteral("Min:")},
+             {QStringLiteral("settings.profiles.vol_max_label"), QStringLiteral("Max:")},
              // auto profile switch
              {QStringLiteral("settings.auto_profile_switch"),
               QStringLiteral("Auto-switch profile by focused window")},
@@ -214,6 +217,10 @@ static const QMap<QString, QMap<QString, QString>>& strings()
               QStringLiteral("Musi pozosta\u0107 co najmniej jeden profil.")},
              {QStringLiteral("settings.profiles.auto_switch"),
               QStringLiteral("Auto-prze\u0142\u0105czanie: reaguj na zmian\u0119 aktywnego okna")},
+             {QStringLiteral("settings.profiles.vol_limits"),
+              QStringLiteral("Limity g\u0142o\u015bno\u015bci:")},
+             {QStringLiteral("settings.profiles.vol_min_label"), QStringLiteral("Min:")},
+             {QStringLiteral("settings.profiles.vol_max_label"), QStringLiteral("Maks:")},
              // auto profile switch
              {QStringLiteral("settings.auto_profile_switch"),
               QStringLiteral("Auto-prze\u0142\u0105czanie profilu wg aktywnego okna")},

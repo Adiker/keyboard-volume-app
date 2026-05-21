@@ -135,12 +135,14 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
       "modifiers": [],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
       "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
-      "auto_switch": true },
+      "auto_switch": true,
+      "vol_min": 0, "vol_max": 100 },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
       "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
-      "auto_switch": true }
+      "auto_switch": true,
+      "vol_min": 10, "vol_max": 80 }
   ],
   "scenes": [
     { "id": "meeting", "name": "Meeting",
@@ -158,11 +160,12 @@ Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linu
 **OSD playback progress config.** `progress_enabled` is the master toggle. `progress_interactive` allows OSD seek controls when the active MPRIS player is seekable. `progress_poll_ms` is clamped to `200..2000` because many players do not emit position changes. `progress_label_mode` is one of `app`, `track`, or `both`. `tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling.
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
-- `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; }`
+- `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; int volMin; int volMax; }`
 - `struct DuckingConfig { bool enabled; int volume; HotkeyBinding hotkey; }` — manual per-profile Focus Audio. `volume` is clamped to `0..100`; unassigned binding means no hotkey.
 - `enum class Modifier { Ctrl, Shift }` — left/right collapsed to canonical (Ctrl/Shift only in v1; Alt/Meta out of scope)
-- API: `profiles()`, `setProfiles(QList<Profile>)` (validates non-empty + uniqueifies ids with numeric suffix on collision), `defaultProfile()` (= `profiles().first()`), `setDefaultProfileApp(QString)`, `findProfileByApp(QString)` (case-insensitive contains match among auto_switch-enabled profiles)
+- API: `profiles()`, `setProfiles(QList<Profile>)` (validates non-empty + uniqueifies ids with numeric suffix on collision; clamps `volMin`/`volMax` to `0..100` and swaps when inverted), `defaultProfile()` (= `profiles().first()`), `setDefaultProfileApp(QString)`, `findProfileByApp(QString)` (case-insensitive contains match among auto_switch-enabled profiles)
 - `autoSwitch` (default `true`) — whether this profile participates in auto-profile switching by focused window
+- `volMin` / `volMax` (defaults `0` / `100`, percent) — per-profile absolute volume limits. `VolumeController::changeVolume`/`setVolume` clamp the resulting volume to `[volMin/100, volMax/100]` across all 4 fallback paths (active sink-input, stream-restore DB, PipeWire node, parked). Used by profile hotkeys (`App::changeVolume`), bare D-Bus `VolumeUp`/`VolumeDown`/`Volume` setter (against the default profile), and `VolumeUpProfile`/`VolumeDownProfile`. `ApplyScene` and `toggleDucking` intentionally bypass these limits — scenes are explicit mixer presets and ducking is a temporary override.
 - `autoProfileSwitch()` / `setAutoProfileSwitch(bool)` — global on/off (default `false`)
 - `Modifier` ↔ string helpers: `modifierToString(Modifier)`, `modifierFromString(QString)`
 
@@ -418,6 +421,7 @@ Sub-dialog launched from the Settings → Profiles section to add or edit a sing
 - 2× `QCheckBox` — Ctrl, Shift required modifiers
 - 3× `HotkeyCapture` — VolUp / VolDown / Mute hotkey bindings (each is a `HotkeyBinding`, supports `EV_KEY` and `EV_REL`); right-click for **Unassign**
 - Ducking controls — enable checkbox, other-apps volume slider/spinbox, and Focus Audio `HotkeyCapture` with the same right-click **Unassign** action
+- 2× `QSpinBox` — per-profile **Volume limits** (`vol_min` / `vol_max`, both 0–100%, suffix `%`). Cross-clamped on edit so `vol_min <= vol_max` stays invariant as the user types. Defaults are `0` / `100` (no clamping).
 
 `result()` builds a `Profile` from the widgets and preserves the original `id` when editing (a fresh Add gets the empty id and `Config::setProfiles()` slugifies/uniqueifies it).
 
@@ -607,7 +611,7 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 32 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / scroll hotkeys / show hotkey / id uniqueification)
+- `test_config` — 38 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / scroll hotkeys / show hotkey / id uniqueification / per-profile vol_min and vol_max)
 - `test_i18n` — 7 tests (lookup, fallback)
 - `test_kvctlcommand` — 9 tests (subcommand parser, profile option, get/set fields, show command, invalid input)
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)

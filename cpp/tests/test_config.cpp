@@ -935,3 +935,115 @@ TEST(ConfigOsdProgress, OsdScaleClamped)
     Config config3(tmp.path());
     EXPECT_DOUBLE_EQ(config3.osd().osdScale, 0.5); // clamped to min
 }
+
+// ─── Per-profile volume limits ─────────────────────────────────────────────────
+
+TEST(ConfigProfileVolumeLimits, DefaultsAreFullRange)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    const Profile def = config.defaultProfile();
+    EXPECT_EQ(def.volMin, 0);
+    EXPECT_EQ(def.volMax, 100);
+}
+
+TEST(ConfigProfileVolumeLimits, RoundTrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    QList<Profile> profs = config.profiles();
+    profs[0].volMin = 20;
+    profs[0].volMax = 80;
+    config.setProfiles(profs);
+
+    Config config2(tmp.path());
+    EXPECT_EQ(config2.defaultProfile().volMin, 20);
+    EXPECT_EQ(config2.defaultProfile().volMax, 80);
+}
+
+TEST(ConfigProfileVolumeLimits, OutOfRangeValuesAreClamped)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    Profile p;
+    p.id = "default";
+    p.name = "Default";
+    p.hotkeys = {115, 114, 113, {}};
+    p.volMin = -25; // below 0
+    p.volMax = 175; // above 100
+
+    config.setProfiles({p});
+    auto profs = config.profiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_EQ(profs[0].volMin, 0);
+    EXPECT_EQ(profs[0].volMax, 100);
+}
+
+TEST(ConfigProfileVolumeLimits, InvertedMinMaxAreSwapped)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    Profile p;
+    p.id = "default";
+    p.name = "Default";
+    p.hotkeys = {115, 114, 113, {}};
+    p.volMin = 90;
+    p.volMax = 10;
+
+    config.setProfiles({p});
+    auto profs = config.profiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_EQ(profs[0].volMin, 10);
+    EXPECT_EQ(profs[0].volMax, 90);
+}
+
+TEST(ConfigProfileVolumeLimits, MissingKeysUseDefaults)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    // Write a profile JSON without vol_min / vol_max keys (simulates an old config).
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject hk{{QStringLiteral("volume_up"), 115},
+                   {QStringLiteral("volume_down"), 114},
+                   {QStringLiteral("mute"), 113}};
+    QJsonObject prof{{QStringLiteral("id"), QStringLiteral("default")},
+                     {QStringLiteral("name"), QStringLiteral("Default")},
+                     {QStringLiteral("hotkeys"), hk}};
+    QJsonObject root{{QStringLiteral("profiles"), QJsonArray{prof}}};
+    f.write(QJsonDocument(root).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    EXPECT_EQ(config.defaultProfile().volMin, 0);
+    EXPECT_EQ(config.defaultProfile().volMax, 100);
+}
+
+TEST(ConfigProfileVolumeLimits, JsonSerializationContainsKeys)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    QList<Profile> profs = config.profiles();
+    profs[0].volMin = 15;
+    profs[0].volMax = 85;
+    config.setProfiles(profs);
+
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+    f.close();
+    const QJsonObject profile = doc.object()["profiles"].toArray().first().toObject();
+    EXPECT_EQ(profile["vol_min"].toInt(), 15);
+    EXPECT_EQ(profile["vol_max"].toInt(), 85);
+}

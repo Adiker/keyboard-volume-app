@@ -36,6 +36,8 @@ class ProfileEditDialog : public QDialog
     QSlider* m_duckingSlider = nullptr;
     QSpinBox* m_duckingSpin = nullptr;
     QCheckBox* m_autoSwitch = nullptr;
+    QSpinBox* m_volMin = nullptr;
+    QSpinBox* m_volMax = nullptr;
     HotkeyCapture* m_hkUp = nullptr;
     HotkeyCapture* m_hkDown = nullptr;
     HotkeyCapture* m_hkMute = nullptr;

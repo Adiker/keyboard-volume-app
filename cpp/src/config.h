@@ -154,6 +154,12 @@ struct Profile
     QSet<Modifier> modifiers; // required held modifiers (empty = bare key)
     DuckingConfig ducking;    // manual per-profile audio ducking
     bool autoSwitch = true;   // participate in auto-profile switching by window focus
+    // Per-profile absolute volume limits (percent, 0–100). volMin <= volMax.
+    // Hotkey and per-profile D-Bus volume changes clamp the resulting value into
+    // [volMin/100, volMax/100]. Scenes ignore these limits (they are explicit
+    // mixer presets). Defaults preserve the full 0–100 range.
+    int volMin = 0;
+    int volMax = 100;
 };
 
 inline bool operator==(const HotkeyConfig& a, const HotkeyConfig& b)
@@ -196,7 +202,8 @@ inline bool operator!=(const AudioScene& a, const AudioScene& b)
 inline bool operator==(const Profile& a, const Profile& b)
 {
     return a.id == b.id && a.name == b.name && a.app == b.app && a.hotkeys == b.hotkeys &&
-           a.modifiers == b.modifiers && a.ducking == b.ducking && a.autoSwitch == b.autoSwitch;
+           a.modifiers == b.modifiers && a.ducking == b.ducking && a.autoSwitch == b.autoSwitch &&
+           a.volMin == b.volMin && a.volMax == b.volMax;
 }
 inline bool operator!=(const Profile& a, const Profile& b)
 {
