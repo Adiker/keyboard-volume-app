@@ -335,6 +335,13 @@ void DbusInterface::ToggleDuckingProfile(const QString& profileId)
     m_volumeCtrl->toggleDucking(p.app, p.ducking.volume / 100.0);
 }
 
+void DbusInterface::SetVolumeProfile(const QString& profileId, double vol)
+{
+    Profile p = findProfile(profileId);
+    if (p.app.isEmpty()) return;
+    m_volumeCtrl->setVolume(p.app, std::clamp(vol, 0.0, 1.0));
+}
+
 void DbusInterface::ApplyScene(const QString& sceneId)
 {
     const AudioScene scene = findScene(sceneId);

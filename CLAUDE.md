@@ -367,6 +367,7 @@ Caches volume/mute/app state by listening to `VolumeController::volumeChanged`, 
 D-Bus methods:
 - `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `ToggleDucking()`, `RefreshApps()` — bare methods target the default profile / `m_activeApp`, kept for backwards compat and script-friendly default-profile control.
 - `VolumeUpProfile(QString id)`, `VolumeDownProfile(QString id)`, `ToggleMuteProfile(QString id)`, `ToggleDuckingProfile(QString id)` — per-profile methods, route directly to the profile's app via `m_volumeCtrl`.
+- `SetVolumeProfile(QString id, double vol)` — per-profile absolute volume setter. `vol` is `0.0..1.0` (clamped); unknown profile ids are silently a no-op. Used by `kv-ctl set volume X --profile id`. (Per-profile absolute mute is provided by `SetMuteProfile` from PR #47.)
 - `ApplyScene(QString id)` — applies a configured audio scene by posting absolute volume/mute operations to `VolumeController`; unknown scene ids are a no-op.
 - `ShowVolume()` — queries the current volume of `m_activeApp` via `VolumeController::queryVolume()` and emits `volumeChanged` → OSD displays without any value change.
 - `ShowVolumeProfile(QString id)` — same as `ShowVolume()` but for the app in the named profile.
@@ -385,7 +386,7 @@ D-Bus methods:
 - `kv-ctl scene ID` maps to `ApplyScene(ID)`.
 - `kv-ctl refresh` maps to `RefreshApps`.
 - `kv-ctl get volume|muted|active-app|apps|step|profiles|scenes|progress-enabled|auto-profile-switch` reads D-Bus properties through `org.freedesktop.DBus.Properties.Get`.
-- `kv-ctl set volume|muted|active-app|step|progress-enabled|auto-profile-switch VALUE` writes properties through `org.freedesktop.DBus.Properties.Set`; volume is given as `0..100` percent and mapped to `0.0..1.0`, while `progress-enabled` and `auto-profile-switch` accept `true|false`.
+- `kv-ctl set volume|muted|active-app|step|progress-enabled|auto-profile-switch VALUE` writes properties through `org.freedesktop.DBus.Properties.Set`; volume is given as `0..100` percent and mapped to `0.0..1.0`, while `progress-enabled` and `auto-profile-switch` accept `true|false`. The optional `--profile ID` flag is accepted only for `set volume` and routes through `SetVolumeProfile` instead of the daemon-wide property setter. (Per-profile mute uses `kv-ctl mute on|off --profile id` via `SetMute`/`SetMuteProfile`.)
 
 Exit codes: `0` success, `1` usage, `2` daemon unavailable, `3` D-Bus error, `4` invalid value. Parser logic lives in `kvctlcommand` so it can be unit-tested without a session bus.
 
@@ -609,7 +610,7 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_config` — 32 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / scroll hotkeys / show hotkey / id uniqueification)
 - `test_i18n` — 7 tests (lookup, fallback)
-- `test_kvctlcommand` — 9 tests (subcommand parser, profile option, get/set fields, show command, invalid input)
+- `test_kvctlcommand` — 10 tests (subcommand parser, profile option, get/set fields, per-profile set volume, show command, invalid input)
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)

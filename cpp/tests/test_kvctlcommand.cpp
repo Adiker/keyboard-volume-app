@@ -43,10 +43,33 @@ TEST(KvCtlCommand, RejectsProfileWhereUnsupported)
                                  QStringLiteral("firefox-ctrl"), true);
     EXPECT_FALSE(get.ok);
 
-    auto set =
+    auto setStep =
         parseKvCtlCommand({QStringLiteral("set"), QStringLiteral("step"), QStringLiteral("10")},
                           QStringLiteral("firefox-ctrl"), true);
-    EXPECT_FALSE(set.ok);
+    EXPECT_FALSE(setStep.ok);
+
+    auto setActive = parseKvCtlCommand(
+        {QStringLiteral("set"), QStringLiteral("active-app"), QStringLiteral("Firefox")},
+        QStringLiteral("firefox-ctrl"), true);
+    EXPECT_FALSE(setActive.ok);
+
+    // Per-profile mute is handled by `kv-ctl mute on|off --profile id` (PR #47);
+    // `set muted --profile id` is intentionally rejected to avoid a duplicate
+    // CLI surface for the same operation.
+    auto setMuted =
+        parseKvCtlCommand({QStringLiteral("set"), QStringLiteral("muted"), QStringLiteral("true")},
+                          QStringLiteral("spotify"), true);
+    EXPECT_FALSE(setMuted.ok);
+
+    auto setProgress = parseKvCtlCommand(
+        {QStringLiteral("set"), QStringLiteral("progress-enabled"), QStringLiteral("true")},
+        QStringLiteral("firefox-ctrl"), true);
+    EXPECT_FALSE(setProgress.ok);
+
+    auto setAutoSwitch = parseKvCtlCommand(
+        {QStringLiteral("set"), QStringLiteral("auto-profile-switch"), QStringLiteral("true")},
+        QStringLiteral("firefox-ctrl"), true);
+    EXPECT_FALSE(setAutoSwitch.ok);
 
     auto refresh =
         parseKvCtlCommand({QStringLiteral("refresh")}, QStringLiteral("firefox-ctrl"), true);
@@ -55,6 +78,19 @@ TEST(KvCtlCommand, RejectsProfileWhereUnsupported)
     auto scene = parseKvCtlCommand({QStringLiteral("scene"), QStringLiteral("meeting")},
                                    QStringLiteral("firefox-ctrl"), true);
     EXPECT_FALSE(scene.ok);
+}
+
+TEST(KvCtlCommand, ParsesSetVolumeWithProfile)
+{
+    auto result =
+        parseKvCtlCommand({QStringLiteral("set"), QStringLiteral("volume"), QStringLiteral("42")},
+                          QStringLiteral("firefox-ctrl"), true);
+
+    ASSERT_TRUE(result.ok) << result.error.toStdString();
+    EXPECT_EQ(result.command.action, KvCtlCommand::Action::Set);
+    EXPECT_EQ(result.command.field, KvCtlCommand::Field::Volume);
+    EXPECT_EQ(result.command.profile.toStdString(), "firefox-ctrl");
+    EXPECT_EQ(result.command.value.toStdString(), "42");
 }
 
 TEST(KvCtlCommand, ParsesGetFields)

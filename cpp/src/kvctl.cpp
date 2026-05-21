@@ -387,6 +387,28 @@ int setProperty(const KvCtlCommand& cmd)
 
     if (!ensureDaemonAvailable()) return ExitUnavailable;
 
+    // Per-profile `set volume` routes through SetVolumeProfile rather than the
+    // daemon-wide Volume property. Per-profile mute is handled by the dedicated
+    // `kv-ctl mute on|off --profile id` form (see PR #47).
+    if (!cmd.profile.isEmpty())
+    {
+        QDBusInterface control(Service, ObjectPath, ControlInterface,
+                               QDBusConnection::sessionBus());
+        if (!control.isValid())
+        {
+            printError(control.lastError().message());
+            return ExitDbusError;
+        }
+
+        QDBusMessage reply = control.call(QStringLiteral("SetVolumeProfile"), cmd.profile, value);
+        if (reply.type() == QDBusMessage::ErrorMessage)
+        {
+            printError(reply.errorMessage());
+            return ExitDbusError;
+        }
+        return ExitOk;
+    }
+
     QDBusInterface props(Service, ObjectPath, PropertiesInterface, QDBusConnection::sessionBus());
     QDBusMessage reply =
         props.call(QStringLiteral("Set"), ControlInterface, propertyName(cmd.field),
@@ -412,9 +434,10 @@ int main(int argc, char* argv[])
     parser.setApplicationDescription(QStringLiteral("CLI control client for keyboard-volume-app"));
     parser.addHelpOption();
     parser.addVersionOption();
-    parser.addOption(QCommandLineOption(QStringList{QStringLiteral("p"), QStringLiteral("profile")},
-                                        QStringLiteral("Target profile id for up/down/mute/duck."),
-                                        QStringLiteral("ID")));
+    parser.addOption(QCommandLineOption(
+        QStringList{QStringLiteral("p"), QStringLiteral("profile")},
+        QStringLiteral("Target profile id for up/down/mute/duck/show/set volume."),
+        QStringLiteral("ID")));
     parser.addPositionalArgument(QStringLiteral("command"), kvCtlUsageText());
 
     if (!parser.parse(app.arguments()))
