@@ -544,7 +544,7 @@ bool WindowTracker::runKWinScript()
 
     QDBusReply<int> loadReply =
         scripting.call(QStringLiteral("loadScript"), scriptPath, scriptPluginName);
-    if (!loadReply.isValid() || loadReply.value() <= 0)
+    if (!loadReply.isValid() || loadReply.value() < 0)
     {
         QFile::remove(scriptPath);
         emit error(QStringLiteral("KWin focus tracker script failed to load"));
