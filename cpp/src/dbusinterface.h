@@ -88,8 +88,7 @@ class DbusInterface : public QObject
     Q_SCRIPTABLE void ToggleMuteProfile(const QString& profileId);
     Q_SCRIPTABLE void ToggleDuckingProfile(const QString& profileId);
     // Per-profile absolute volume. Routes to the profile's app (independent of
-    // ActiveApp). Silently no-op for unknown profiles. Per-profile absolute
-    // mute lives on SetMute / SetMuteProfile (added by PR #47).
+    // ActiveApp). Silently no-op for unknown profiles.
     Q_SCRIPTABLE void SetVolumeProfile(const QString& profileId, double vol);
     Q_SCRIPTABLE void ApplyScene(const QString& sceneId);
     Q_SCRIPTABLE void ShowVolume();
