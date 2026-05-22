@@ -229,7 +229,12 @@ class App : public QObject
         const QString app = effectiveApp(profileId);
         if (app.isEmpty()) return;
         double step = m_config->volumeStep() / 100.0;
-        m_volumeCtrl->changeVolume(app, direction * step); // async → volumeChanged signal
+        // Limits follow the *target* profile — when auto-switch redirects the
+        // hotkey to a focused app belonging to a different profile, we must use
+        // that profile's vol_min/vol_max, not the hotkey-emitting profile's.
+        const Profile p = effectiveProfile(profileId);
+        // async → volumeChanged signal; clamped to per-profile [vol_min, vol_max].
+        m_volumeCtrl->changeVolume(app, direction * step, p.volMin / 100.0, p.volMax / 100.0);
     }
 
     void onMute(const QString& profileId)
@@ -422,6 +427,20 @@ class App : public QObject
     {
         if (m_config->autoProfileSwitch() && !m_autoActiveApp.isEmpty()) return m_autoActiveApp;
         return findProfile(profileId).app;
+    }
+
+    // Mirrors effectiveApp: when auto-switch redirects to a focused app, return
+    // the profile that owns that app (so per-profile limits / settings track the
+    // target, not the hotkey-emitting profile). Falls back to the hotkey profile
+    // when auto-switch is off or no match is found.
+    Profile effectiveProfile(const QString& profileId) const
+    {
+        if (m_config->autoProfileSwitch() && !m_autoActiveApp.isEmpty())
+        {
+            const Profile matched = m_config->findProfileByApp(m_autoActiveApp);
+            if (!matched.id.isEmpty()) return matched;
+        }
+        return findProfile(profileId);
     }
 
     std::unique_ptr<Config> m_config;

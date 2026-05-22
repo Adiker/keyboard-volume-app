@@ -86,7 +86,9 @@ void DbusInterface::setVolume(double vol)
     if (m_activeApp.isEmpty()) return;
     double delta = vol - m_volume;
     if (qAbs(delta) < 0.0001) return;
-    m_volumeCtrl->changeVolume(m_activeApp, delta);
+    // Volume property setter targets the default profile — respect its limits.
+    const Profile p = m_config->defaultProfile();
+    m_volumeCtrl->changeVolume(m_activeApp, delta, p.volMin / 100.0, p.volMax / 100.0);
 }
 
 void DbusInterface::setMuted(bool muted)
@@ -178,14 +180,17 @@ void DbusInterface::VolumeUp()
 {
     if (m_activeApp.isEmpty()) return;
     double step = m_volumeStep / 100.0;
-    m_volumeCtrl->changeVolume(m_activeApp, step);
+    // Bare D-Bus methods act on the default profile — respect its volume limits.
+    const Profile p = m_config->defaultProfile();
+    m_volumeCtrl->changeVolume(m_activeApp, step, p.volMin / 100.0, p.volMax / 100.0);
 }
 
 void DbusInterface::VolumeDown()
 {
     if (m_activeApp.isEmpty()) return;
     double step = m_volumeStep / 100.0;
-    m_volumeCtrl->changeVolume(m_activeApp, -step);
+    const Profile p = m_config->defaultProfile();
+    m_volumeCtrl->changeVolume(m_activeApp, -step, p.volMin / 100.0, p.volMax / 100.0);
 }
 
 void DbusInterface::ToggleMute()
@@ -310,7 +315,7 @@ void DbusInterface::VolumeUpProfile(const QString& profileId)
     Profile p = findProfile(profileId);
     if (p.app.isEmpty()) return;
     double step = m_volumeStep / 100.0;
-    m_volumeCtrl->changeVolume(p.app, step);
+    m_volumeCtrl->changeVolume(p.app, step, p.volMin / 100.0, p.volMax / 100.0);
 }
 
 void DbusInterface::VolumeDownProfile(const QString& profileId)
@@ -318,7 +323,7 @@ void DbusInterface::VolumeDownProfile(const QString& profileId)
     Profile p = findProfile(profileId);
     if (p.app.isEmpty()) return;
     double step = m_volumeStep / 100.0;
-    m_volumeCtrl->changeVolume(p.app, -step);
+    m_volumeCtrl->changeVolume(p.app, -step, p.volMin / 100.0, p.volMax / 100.0);
 }
 
 void DbusInterface::ToggleMuteProfile(const QString& profileId)

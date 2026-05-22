@@ -201,7 +201,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Problem:** Niektóre aplikacje (np. alerty systemowe, asystent głosowy) nie powinny być całkowicie wyciszone przez hotkeys; inne (np. muzyka w tle) nie powinny przekraczać określonego progu. Brak mechanizmu ograniczenia zakresu zmian głośności dla konkretnego profilu.
 **Rekomendacja:** Dodać pola `vol_min` i `vol_max` (0–100, domyślnie 0 i 100) do struktury `Profile`. W `PaWorker::doChangeVolume()` klampować wynikową głośność do `[vol_min/100.0, vol_max/100.0]` przed wysłaniem do libpulse/libpipewire. `ProfileEditDialog` powinien oferować dwa suwaki lub pola spinbox dla tych limitów. Zaktualizować `profileToJson`/`profileFromJson` w `config.cpp` oraz testy.
 **Pliki:** `cpp/src/config.h`, `cpp/src/config.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/tests/test_config.cpp`
-**Status:** Planowane.
+**Status:** Zrealizowane. Pola `vol_min`/`vol_max` (domyślnie 0/100) trzymane w profilu i klampowane w czterech ścieżkach `PaWorker`: active sink-input, stream-restore DB, węzeł PipeWire i parked-pending. Hotkeys profilu (`App::changeVolume`), `DbusInterface::setVolume` oraz `VolumeUp`/`VolumeDown` (bare + per-profile) respektują limity; sceny i `toggleDucking` celowo zachowują pełny zakres `[0,1]`. UI: dwa `QSpinBox` w `ProfileEditDialog` z wzajemnym domknięciem; sanitacja w `Config::setProfiles` (clamp do 0–100, swap przy odwróceniu). 6 nowych testów w `test_config`.
 
 ### 26. Stopniowe wyciszanie ducking (fade in/out)
 
