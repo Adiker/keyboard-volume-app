@@ -34,5 +34,7 @@ class WindowTracker : public QThread
     bool runKWinScript();
     bool runWayland();
 
+    QObject* m_kwinReceiver = nullptr;
+    bool m_kwinReceiverRegistered = false;
     std::atomic<bool> m_running{false};
 };

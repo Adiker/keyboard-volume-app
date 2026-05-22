@@ -1,6 +1,5 @@
 #include "windowtracker.h"
 
-#include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusInterface>
@@ -39,6 +38,9 @@ class KWinFocusReceiver : public QObject
 {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.keyboardvolumeapp.WindowTracker")
+
+  public:
+    explicit KWinFocusReceiver(QObject* parent = nullptr) : QObject(parent) {}
 
   public slots:
     Q_SCRIPTABLE void ReportFocusedApp(const QString& appId)
@@ -392,7 +394,12 @@ void cleanupWaylandState(WaylandState* state)
 #endif
 } // namespace
 
-WindowTracker::WindowTracker(QObject* parent) : QThread(parent) {}
+WindowTracker::WindowTracker(QObject* parent) : QThread(parent)
+{
+    m_kwinReceiver = new KWinFocusReceiver(this);
+    connect(m_kwinReceiver, SIGNAL(focusedAppReported(QString)), this,
+            SIGNAL(focusedBinaryChanged(QString)));
+}
 
 WindowTracker::~WindowTracker()
 {
@@ -411,10 +418,23 @@ void WindowTracker::stop()
             wait(1000);
         }
     }
+    if (m_kwinReceiverRegistered)
+    {
+        QDBusConnection::sessionBus().unregisterObject(QString::fromLatin1(KWinTrackerObjectPath));
+        m_kwinReceiverRegistered = false;
+    }
 }
 
 void WindowTracker::start()
 {
+    if (!m_kwinReceiverRegistered)
+    {
+        auto bus = QDBusConnection::sessionBus();
+        bus.unregisterObject(QString::fromLatin1(KWinTrackerObjectPath));
+        m_kwinReceiverRegistered =
+            bus.registerObject(QString::fromLatin1(KWinTrackerObjectPath), m_kwinReceiver,
+                               QDBusConnection::ExportScriptableSlots);
+    }
     m_running = true;
     QThread::start();
 }
@@ -483,14 +503,9 @@ bool WindowTracker::runKWinScript()
         return false;
     }
 
-    KWinFocusReceiver receiver;
-    connect(&receiver, &KWinFocusReceiver::focusedAppReported, this,
-            &WindowTracker::focusedBinaryChanged);
-
-    const QString trackerObjectPath = QString::fromLatin1(KWinTrackerObjectPath);
     const QString scriptPluginName = QString::fromLatin1(KWinScriptPluginName);
 
-    if (!bus.registerObject(trackerObjectPath, &receiver, QDBusConnection::ExportScriptableSlots))
+    if (!m_kwinReceiverRegistered)
     {
         emit error(QStringLiteral("Cannot register KWin focus tracker D-Bus object"));
         return false;
@@ -501,7 +516,6 @@ bool WindowTracker::runKWinScript()
     scriptFile.setAutoRemove(false);
     if (!scriptFile.open())
     {
-        bus.unregisterObject(trackerObjectPath);
         emit error(QStringLiteral("Cannot create KWin focus tracker script"));
         return false;
     }
@@ -512,7 +526,6 @@ bool WindowTracker::runKWinScript()
     {
         scriptFile.close();
         QFile::remove(scriptPath);
-        bus.unregisterObject(trackerObjectPath);
         emit error(QStringLiteral("Cannot write KWin focus tracker script"));
         return false;
     }
@@ -523,7 +536,6 @@ bool WindowTracker::runKWinScript()
     if (!scripting.isValid())
     {
         QFile::remove(scriptPath);
-        bus.unregisterObject(trackerObjectPath);
         emit error(QStringLiteral("KWin scripting D-Bus interface unavailable"));
         return false;
     }
@@ -535,7 +547,6 @@ bool WindowTracker::runKWinScript()
     if (!loadReply.isValid() || loadReply.value() <= 0)
     {
         QFile::remove(scriptPath);
-        bus.unregisterObject(trackerObjectPath);
         emit error(QStringLiteral("KWin focus tracker script failed to load"));
         return false;
     }
@@ -549,7 +560,6 @@ bool WindowTracker::runKWinScript()
     {
         scripting.call(QStringLiteral("unloadScript"), scriptPluginName);
         QFile::remove(scriptPath);
-        bus.unregisterObject(trackerObjectPath);
         emit error(QStringLiteral("KWin focus tracker script failed to start"));
         return false;
     }
@@ -567,7 +577,6 @@ bool WindowTracker::runKWinScript()
 
     scripting.call(QStringLiteral("unloadScript"), scriptPluginName);
     QFile::remove(scriptPath);
-    bus.unregisterObject(trackerObjectPath);
     return true;
 }
 
