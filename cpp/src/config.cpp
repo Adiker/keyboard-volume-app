@@ -101,6 +101,18 @@ QJsonArray appsArrayWithPrimary(const QJsonObject& profile, const QString& prima
     return QJsonArray::fromStringList(apps);
 }
 
+QString normalizedAppId(QString value)
+{
+    value = value.toLower();
+    QString out;
+    out.reserve(value.size());
+    for (const QChar ch : value)
+    {
+        if (ch.isLetterOrNumber()) out.append(ch);
+    }
+    return out;
+}
+
 } // namespace
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -869,6 +881,13 @@ Profile Config::findProfileByApp(const QString& appName) const
             if (a.isEmpty()) continue;
             const QString la = a.toLower();
             if (la.contains(lower) || lower.contains(la)) return p;
+
+            const QString normalizedApp = normalizedAppId(a);
+            const QString normalizedNeedle = normalizedAppId(appName);
+            if (!normalizedApp.isEmpty() && !normalizedNeedle.isEmpty() &&
+                (normalizedApp.contains(normalizedNeedle) ||
+                 normalizedNeedle.contains(normalizedApp)))
+                return p;
         }
     }
     return Profile{};

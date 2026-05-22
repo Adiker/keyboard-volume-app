@@ -661,6 +661,22 @@ TEST(ConfigProfiles, FindProfileByAppMatchesSecondaryApp)
     EXPECT_EQ(config.findProfileByApp("vlc").id.toStdString(), "media");
 }
 
+TEST(ConfigProfiles, FindProfileByAppNormalizesDesktopAppIds)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    Profile p;
+    p.id = "media";
+    p.name = "Media";
+    p.apps = {"harmonoid", "youtube-music"};
+    p.hotkeys = {115, 114, 113, {}};
+    config.setProfiles({p});
+
+    EXPECT_EQ(config.findProfileByApp("YouTube Music").id.toStdString(), "media");
+}
+
 // ─── Audio scene tests ───────────────────────────────────────────────────────
 
 TEST(ConfigScenes, DefaultsToEmptyList)

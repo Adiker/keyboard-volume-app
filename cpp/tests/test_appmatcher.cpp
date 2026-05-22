@@ -34,10 +34,10 @@ TEST(AppMatcher, NoMatchReturnsEmpty)
     EXPECT_EQ(matchBinaryToApp(QStringLiteral("firefox"), cache), QString());
 }
 
-TEST(AppMatcher, ExactBinaryMatchReturnsAppName)
+TEST(AppMatcher, ExactBinaryMatchReturnsBinaryTarget)
 {
     const QList<AudioApp> cache{makeApp(QStringLiteral("Firefox"), QStringLiteral("firefox"))};
-    EXPECT_EQ(matchBinaryToApp(QStringLiteral("firefox"), cache), QStringLiteral("Firefox"));
+    EXPECT_EQ(matchBinaryToApp(QStringLiteral("firefox"), cache), QStringLiteral("firefox"));
 }
 
 TEST(AppMatcher, SubstringMatchInBothDirections)
@@ -46,13 +46,30 @@ TEST(AppMatcher, SubstringMatchInBothDirections)
     // lower.contains(appBinary) wins.
     const QList<AudioApp> cache{makeApp(QStringLiteral("Firefox"), QStringLiteral("firefox"))};
     EXPECT_EQ(matchBinaryToApp(QStringLiteral("firefox-developer-edition"), cache),
-              QStringLiteral("Firefox"));
+              QStringLiteral("firefox"));
 
     // Cached app is the longer name; focused window is the short binary.
     // appBinary.contains(lower) wins.
     const QList<AudioApp> cache2{
         makeApp(QStringLiteral("youtube-music"), QStringLiteral("youtube-music"))};
     EXPECT_EQ(matchBinaryToApp(QStringLiteral("youtube"), cache2), QStringLiteral("youtube-music"));
+}
+
+TEST(AppMatcher, NormalizedAppIdMatchesBinaryTarget)
+{
+    const QList<AudioApp> cache{
+        makeApp(QStringLiteral("YouTube Music"), QStringLiteral("youtube-music"))};
+    EXPECT_EQ(matchBinaryToApp(QStringLiteral("YouTube Music"), cache),
+              QStringLiteral("youtube-music"));
+}
+
+TEST(AppMatcher, NormalizedAppIdSkipsEarlierNonMatches)
+{
+    const QList<AudioApp> cache{
+        makeApp(QStringLiteral("harmonoid"), QStringLiteral("harmonoid")),
+        makeApp(QStringLiteral("youtube-music"), QStringLiteral("youtube-music"))};
+    EXPECT_EQ(matchBinaryToApp(QStringLiteral("YouTube Music"), cache),
+              QStringLiteral("youtube-music"));
 }
 
 TEST(AppMatcher, EmptyBinaryFieldDoesNotFalseMatch)
@@ -85,14 +102,14 @@ TEST(AppMatcher, FirstMatchWins)
     QList<AudioApp> cache;
     cache.append(makeApp(QStringLiteral("Firefox"), QStringLiteral("firefox")));
     cache.append(makeApp(QStringLiteral("Firefox Dev"), QStringLiteral("firefox-developer")));
-    EXPECT_EQ(matchBinaryToApp(QStringLiteral("firefox"), cache), QStringLiteral("Firefox"));
+    EXPECT_EQ(matchBinaryToApp(QStringLiteral("firefox"), cache), QStringLiteral("firefox"));
 }
 
 TEST(AppMatcher, CaseInsensitive)
 {
     const QList<AudioApp> cache{makeApp(QStringLiteral("Firefox"), QStringLiteral("firefox"))};
-    EXPECT_EQ(matchBinaryToApp(QStringLiteral("FIREFOX"), cache), QStringLiteral("Firefox"));
-    EXPECT_EQ(matchBinaryToApp(QStringLiteral("FireFox"), cache), QStringLiteral("Firefox"));
+    EXPECT_EQ(matchBinaryToApp(QStringLiteral("FIREFOX"), cache), QStringLiteral("firefox"));
+    EXPECT_EQ(matchBinaryToApp(QStringLiteral("FireFox"), cache), QStringLiteral("firefox"));
 }
 
 TEST(AppMatcher, MatchesAfterAppWithEmptyFields)
@@ -102,5 +119,5 @@ TEST(AppMatcher, MatchesAfterAppWithEmptyFields)
     QList<AudioApp> cache;
     cache.append(makeApp(QString(), QString()));
     cache.append(makeApp(QStringLiteral("Firefox"), QStringLiteral("firefox")));
-    EXPECT_EQ(matchBinaryToApp(QStringLiteral("firefox"), cache), QStringLiteral("Firefox"));
+    EXPECT_EQ(matchBinaryToApp(QStringLiteral("firefox"), cache), QStringLiteral("firefox"));
 }
