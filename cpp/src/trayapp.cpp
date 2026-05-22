@@ -173,7 +173,7 @@ void TrayApp::openAppSelector()
     const QPoint anchor = QCursor::pos();
     AppSelectorDialog dlg(m_config);
     centerDialogOnScreenAt(&dlg, anchor);
-    if (dlg.exec() == QDialog::Accepted) onAppSelected(m_config->defaultProfile().primaryApp());
+    if (dlg.exec() == QDialog::Accepted) onAppSelected(dlg.selectedAppName());
 }
 
 void TrayApp::rebuildMenu()

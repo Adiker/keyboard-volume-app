@@ -163,7 +163,9 @@ struct Profile
 
     QString primaryApp() const
     {
-        return apps.isEmpty() ? QString{} : apps.first();
+        for (const QString& app : apps)
+            if (!app.isEmpty()) return app;
+        return {};
     }
 };
 
@@ -238,8 +240,8 @@ class Config
     QString inputDevice() const;
     void setInputDevice(const QString& path);
 
-    // selected audio app name (legacy mirror of profile[0].app — kept for
-    // D-Bus/MPRIS continuity; setter updates the default profile too)
+    // selected audio app name (legacy mirror of profile[0]'s primary app — kept
+    // for D-Bus/MPRIS continuity; setter updates the default profile too)
     QString selectedApp() const;
     void setSelectedApp(const QString& name);
 

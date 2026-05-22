@@ -7,7 +7,6 @@ class QLineEdit;
 class QCheckBox;
 class QSlider;
 class QSpinBox;
-class AppListWidget;
 class HotkeyCapture;
 class InputHandler;
 

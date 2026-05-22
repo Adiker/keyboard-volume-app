@@ -496,6 +496,8 @@ TEST(ConfigProfiles, MissingDuckingUsesDefaults)
     Config config(tmp.path());
     auto profs = config.profiles();
     ASSERT_EQ(profs.size(), 1);
+    EXPECT_EQ(profs[0].primaryApp().toStdString(), "spotify");
+    EXPECT_EQ(config.selectedApp().toStdString(), "spotify");
     EXPECT_FALSE(profs[0].ducking.enabled);
     EXPECT_EQ(profs[0].ducking.volume, 25);
     EXPECT_EQ(profs[0].ducking.hotkey, 0);
@@ -574,6 +576,12 @@ TEST(ConfigProfiles, SetSelectedAppMirrorsToDefaultProfile)
     config.setSelectedApp("youtube-music");
     EXPECT_EQ(config.defaultProfile().primaryApp().toStdString(), "youtube-music");
     EXPECT_EQ(config.selectedApp().toStdString(), "youtube-music");
+
+    QFile f(tmp.path() + "/config.json");
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    const QJsonObject profile = root["profiles"].toArray().first().toObject();
+    EXPECT_EQ(profile["apps"].toArray().first().toString().toStdString(), "youtube-music");
 }
 
 TEST(ConfigProfiles, SetHotkeysMirrorsToDefaultProfile)
