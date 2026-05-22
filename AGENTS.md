@@ -23,6 +23,14 @@ Comprehensive project docs are in `CLAUDE.md`. This file covers only the sharp e
 | `python-last` | Tag pointing to last Python `main` commit |
 | `cpp-rewrite` | Preserved migration branch, inactive for new changes |
 
+## Branch hygiene
+
+- Working branches on origin must use `feature/`, `fix/`, `refactor/`, `docs/`, or `chore/` prefixes — never push `claude/*` or other agent-generated names to origin.
+- When starting work from an agent branch, rename to the proper prefix before opening a PR.
+- GitHub is configured to **automatically delete head branches after merge**; do not rely on stale remote branches as long-lived workspaces.
+- Archive branches (`python-legacy`, `cpp-rewrite`) and tags (`python-last`, `main-v0.1.0`, `cpp-rewrite-v0.1.0`) are excluded from cleanup.
+- To audit stale branches locally: `.github/scripts/audit-branches.sh`
+
 ## Build & Run
 
 ```bash
