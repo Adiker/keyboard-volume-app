@@ -685,6 +685,45 @@ TEST(ConfigScenes, SanitizesTargetsAndUniqueifiesIds)
     EXPECT_EQ(*scenes[1].targets[0].volume, 0);
 }
 
+TEST(ConfigScenes, FindSceneByIdReturnsMatchingScene)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AudioScene meeting;
+    meeting.id = "meeting";
+    meeting.name = "Meeting";
+    meeting.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt}};
+
+    AudioScene gaming;
+    gaming.id = "gaming";
+    gaming.name = "Gaming";
+    gaming.targets = {SceneTarget{QStringLiteral("Discord"), 50, std::nullopt}};
+
+    Config config(tmp.path());
+    config.setScenes({meeting, gaming});
+
+    EXPECT_EQ(config.findSceneById(QStringLiteral("meeting")), meeting);
+    EXPECT_EQ(config.findSceneById(QStringLiteral("gaming")), gaming);
+}
+
+TEST(ConfigScenes, FindSceneByIdReturnsEmptyForUnknownId)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AudioScene scene;
+    scene.id = "meeting";
+    scene.name = "Meeting";
+    scene.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt}};
+
+    Config config(tmp.path());
+    config.setScenes({scene});
+
+    EXPECT_TRUE(config.findSceneById(QStringLiteral("nope")).id.isEmpty());
+    EXPECT_TRUE(config.findSceneById(QString()).id.isEmpty());
+}
+
 TEST(ConfigHotkeys, ShowHotkeyDefaultsToZero)
 {
     QTemporaryDir tmp;

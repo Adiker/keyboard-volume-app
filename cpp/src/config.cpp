@@ -735,6 +735,16 @@ void Config::setScenes(const QList<AudioScene>& scenes)
     saveUnlocked();
 }
 
+AudioScene Config::findSceneById(const QString& id) const
+{
+    if (id.isEmpty()) return AudioScene{};
+    for (const AudioScene& scene : scenes())
+    {
+        if (scene.id == id) return scene;
+    }
+    return AudioScene{};
+}
+
 Profile Config::defaultProfile() const
 {
     QList<Profile> all = profiles();
