@@ -1,8 +1,18 @@
 #include "windowtracker.h"
 
+#include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QDBusInterface>
+#include <QDBusMessage>
+#include <QDBusReply>
+#include <QDir>
+#include <QEventLoop>
 #include <QFile>
 #include <QList>
 #include <QString>
+#include <QTemporaryFile>
+#include <QTimer>
 
 #include <xcb/xcb.h>
 
@@ -22,6 +32,24 @@
 
 namespace
 {
+constexpr auto KWinScriptPluginName = "keyboard-volume-app-focus-tracker";
+constexpr auto KWinTrackerObjectPath = "/org/keyboardvolumeapp/WindowTracker";
+
+class KWinFocusReceiver : public QObject
+{
+    Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.keyboardvolumeapp.WindowTracker")
+
+  public slots:
+    Q_SCRIPTABLE void ReportFocusedApp(const QString& appId)
+    {
+        emit focusedAppReported(appId);
+    }
+
+  signals:
+    void focusedAppReported(const QString& appId);
+};
+
 QString windowToBinary(xcb_connection_t* conn, xcb_window_t win, xcb_atom_t pidAtom)
 {
     if (win == 0) return {};
@@ -50,6 +78,78 @@ QString windowToBinary(xcb_connection_t* conn, xcb_window_t win, xcb_atom_t pidA
         return QString::fromUtf8(f.readAll()).trimmed();
     }
     return {};
+}
+
+bool isServiceRegistered(const QString& service)
+{
+    auto bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected() || !bus.interface()) return false;
+    QDBusReply<bool> reply = bus.interface()->isServiceRegistered(service);
+    return reply.isValid() && reply.value();
+}
+
+bool probeKWinScripting()
+{
+    if (!isServiceRegistered(QStringLiteral("org.kde.KWin"))) return false;
+
+    QDBusInterface scripting(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"),
+                             QStringLiteral("org.kde.kwin.Scripting"),
+                             QDBusConnection::sessionBus());
+    return scripting.isValid();
+}
+
+QString kwinFocusScriptSource()
+{
+    return QStringLiteral(R"JS(
+const service = "org.keyboardvolumeapp";
+const path = "/org/keyboardvolumeapp/WindowTracker";
+const iface = "org.keyboardvolumeapp.WindowTracker";
+
+function firstText(window, names) {
+    if (!window) {
+        return "";
+    }
+    for (let i = 0; i < names.length; ++i) {
+        try {
+            const value = window[names[i]];
+            if (value !== undefined && value !== null && String(value).length > 0) {
+                return String(value);
+            }
+        } catch (error) {
+        }
+    }
+    return "";
+}
+
+function appIdForWindow(window) {
+    return firstText(window, [
+        "desktopFileName",
+        "resourceClass",
+        "resourceName",
+        "windowClass",
+        "caption"
+    ]);
+}
+
+function report(window) {
+    callDBus(service, path, iface, "ReportFocusedApp", appIdForWindow(window));
+}
+
+try {
+    workspace.windowActivated.connect(report);
+} catch (error) {
+    try {
+        workspace.clientActivated.connect(report);
+    } catch (fallbackError) {
+    }
+}
+
+try {
+    report(workspace.activeWindow || workspace.activeClient);
+} catch (error) {
+    report(null);
+}
+)JS");
 }
 
 #ifdef HAVE_WAYLAND_FOREIGN_TOPLEVEL
@@ -321,6 +421,11 @@ void WindowTracker::start()
 
 WindowTracker::Backend WindowTracker::chooseBackend() const
 {
+    if (!qgetenv("WAYLAND_DISPLAY").isEmpty() && probeKWinScripting())
+    {
+        return Backend::KWinScript;
+    }
+
 #ifdef HAVE_WAYLAND_FOREIGN_TOPLEVEL
     if (!qgetenv("WAYLAND_DISPLAY").isEmpty() && probeWaylandForeignToplevel())
     {
@@ -341,6 +446,21 @@ void WindowTracker::run()
     const Backend backend = chooseBackend();
     switch (backend)
     {
+    case Backend::KWinScript:
+        if (!runKWinScript())
+        {
+#ifdef HAVE_WAYLAND_FOREIGN_TOPLEVEL
+            if (!qgetenv("WAYLAND_DISPLAY").isEmpty() && probeWaylandForeignToplevel())
+            {
+                if (runWayland()) break;
+            }
+#endif
+            if (!qgetenv("DISPLAY").isEmpty())
+                runXcb();
+            else
+                emit error(QStringLiteral("No supported window tracking backend found"));
+        }
+        break;
     case Backend::WaylandForeignToplevel:
         runWayland();
         break;
@@ -352,6 +472,103 @@ void WindowTracker::run()
         break;
     }
     m_running = false;
+}
+
+bool WindowTracker::runKWinScript()
+{
+    auto bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected())
+    {
+        emit error(QStringLiteral("KWin scripting backend requires a session D-Bus"));
+        return false;
+    }
+
+    KWinFocusReceiver receiver;
+    connect(&receiver, &KWinFocusReceiver::focusedAppReported, this,
+            &WindowTracker::focusedBinaryChanged);
+
+    const QString trackerObjectPath = QString::fromLatin1(KWinTrackerObjectPath);
+    const QString scriptPluginName = QString::fromLatin1(KWinScriptPluginName);
+
+    if (!bus.registerObject(trackerObjectPath, &receiver, QDBusConnection::ExportScriptableSlots))
+    {
+        emit error(QStringLiteral("Cannot register KWin focus tracker D-Bus object"));
+        return false;
+    }
+
+    QTemporaryFile scriptFile(QDir::tempPath() +
+                              QStringLiteral("/keyboard-volume-app-kwin-XXXXXX.js"));
+    scriptFile.setAutoRemove(false);
+    if (!scriptFile.open())
+    {
+        bus.unregisterObject(trackerObjectPath);
+        emit error(QStringLiteral("Cannot create KWin focus tracker script"));
+        return false;
+    }
+
+    const QString scriptPath = scriptFile.fileName();
+    const QByteArray script = kwinFocusScriptSource().toUtf8();
+    if (scriptFile.write(script) != script.size())
+    {
+        scriptFile.close();
+        QFile::remove(scriptPath);
+        bus.unregisterObject(trackerObjectPath);
+        emit error(QStringLiteral("Cannot write KWin focus tracker script"));
+        return false;
+    }
+    scriptFile.close();
+
+    QDBusInterface scripting(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"),
+                             QStringLiteral("org.kde.kwin.Scripting"), bus);
+    if (!scripting.isValid())
+    {
+        QFile::remove(scriptPath);
+        bus.unregisterObject(trackerObjectPath);
+        emit error(QStringLiteral("KWin scripting D-Bus interface unavailable"));
+        return false;
+    }
+
+    scripting.call(QStringLiteral("unloadScript"), scriptPluginName);
+
+    QDBusReply<int> loadReply =
+        scripting.call(QStringLiteral("loadScript"), scriptPath, scriptPluginName);
+    if (!loadReply.isValid() || loadReply.value() <= 0)
+    {
+        QFile::remove(scriptPath);
+        bus.unregisterObject(trackerObjectPath);
+        emit error(QStringLiteral("KWin focus tracker script failed to load"));
+        return false;
+    }
+
+    const int scriptId = loadReply.value();
+    QDBusInterface scriptObject(QStringLiteral("org.kde.KWin"),
+                                QStringLiteral("/Scripting/Script%1").arg(scriptId),
+                                QStringLiteral("org.kde.kwin.Script"), bus);
+    QDBusMessage runReply = scriptObject.call(QStringLiteral("run"));
+    if (runReply.type() == QDBusMessage::ErrorMessage)
+    {
+        scripting.call(QStringLiteral("unloadScript"), scriptPluginName);
+        QFile::remove(scriptPath);
+        bus.unregisterObject(trackerObjectPath);
+        emit error(QStringLiteral("KWin focus tracker script failed to start"));
+        return false;
+    }
+
+    QEventLoop loop;
+    QTimer poll;
+    poll.setInterval(50);
+    connect(&poll, &QTimer::timeout, &loop,
+            [this, &loop]()
+            {
+                if (!m_running) loop.quit();
+            });
+    poll.start();
+    loop.exec();
+
+    scripting.call(QStringLiteral("unloadScript"), scriptPluginName);
+    QFile::remove(scriptPath);
+    bus.unregisterObject(trackerObjectPath);
+    return true;
 }
 
 void WindowTracker::runXcb()
@@ -438,7 +655,7 @@ void WindowTracker::runXcb()
     xcb_disconnect(conn);
 }
 
-void WindowTracker::runWayland()
+bool WindowTracker::runWayland()
 {
 #ifdef HAVE_WAYLAND_FOREIGN_TOPLEVEL
     WaylandState state;
@@ -447,7 +664,7 @@ void WindowTracker::runWayland()
     if (!state.display)
     {
         emit error(QStringLiteral("Wayland connection failed"));
-        return;
+        return false;
     }
 
     state.registry = wl_display_get_registry(state.display);
@@ -455,7 +672,7 @@ void WindowTracker::runWayland()
     {
         emit error(QStringLiteral("Wayland registry failed"));
         cleanupWaylandState(&state);
-        return;
+        return false;
     }
 
     wl_registry_add_listener(state.registry, &RegistryListener, &state);
@@ -463,21 +680,21 @@ void WindowTracker::runWayland()
     {
         emit error(QStringLiteral("Wayland registry roundtrip failed"));
         cleanupWaylandState(&state);
-        return;
+        return false;
     }
 
     if (!state.manager)
     {
         emit error(QStringLiteral("Wayland foreign-toplevel protocol unavailable"));
         cleanupWaylandState(&state);
-        return;
+        return false;
     }
 
     if (wl_display_roundtrip(state.display) < 0)
     {
         emit error(QStringLiteral("Wayland foreign-toplevel initialization failed"));
         cleanupWaylandState(&state);
-        return;
+        return false;
     }
 
     const int fd = wl_display_get_fd(state.display);
@@ -496,7 +713,7 @@ void WindowTracker::runWayland()
             {
                 emit error(QStringLiteral("Wayland event dispatch failed"));
                 cleanupWaylandState(&state);
-                return;
+                return false;
             }
         }
         if (!m_running)
@@ -539,7 +756,11 @@ void WindowTracker::runWayland()
     }
 
     cleanupWaylandState(&state);
+    return true;
 #else
     emit error(QStringLiteral("Wayland foreign-toplevel backend not compiled in"));
+    return false;
 #endif
 }
+
+#include "windowtracker.moc"

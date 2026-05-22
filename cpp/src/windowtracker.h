@@ -25,12 +25,14 @@ class WindowTracker : public QThread
     {
         None,
         Xcb,
+        KWinScript,
         WaylandForeignToplevel,
     };
 
     Backend chooseBackend() const;
     void runXcb();
-    void runWayland();
+    bool runKWinScript();
+    bool runWayland();
 
     std::atomic<bool> m_running{false};
 };
