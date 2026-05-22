@@ -20,14 +20,14 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 ### Features
 
 - **Per-app volume control** — changes the volume of only the selected application, not the system master
-- **Multiple audio profiles** — define several profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, and target audio app. Bare `VolUp` controls Spotify, `Ctrl+VolUp` controls Firefox, `F11` controls VLC — all from the same keyboard
+- **Multiple audio profiles** — define several profiles, each with its own hotkeys (keyboard keys or mouse wheel), optional `Ctrl`/`Shift` modifiers, and target audio app. Bare `VolUp` controls Spotify, `Ctrl+VolUp` controls Firefox, `F11` controls VLC — all from the same keyboard
 - **Show volume hotkey** — each profile can bind an optional `show` hotkey that displays the OSD with the current volume of that profile's app without changing it; also available via `kv-ctl show [--profile id]` and D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
 - **Focus audio / ducking** — each profile can bind a manual ducking hotkey that lowers every other known audio app to a configured percentage, then restores the previous levels on the next press
 - **Auto-switch by window focus** — when enabled, the active (focused) window determines which profile's audio app receives volume keys; switch from Spotify to Firefox and volume keys follow automatically
 - **Audio scenes / mixer presets** — define named presets in `config.json` that set volume and/or mute for several apps at once, then apply them from scripts with `kv-ctl scene ID`
-- **Global key capture** — reads directly from an evdev input device, works regardless of which window is focused
-- **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising volume keys from any profile, so the desktop never intercepts them
-- **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio keys are reassignable via Settings → Profiles; right-click any hotkey field for an **Unassign** menu option to clear it; defaults are the dedicated media keys
+- **Global key capture** — reads directly from evdev input devices (keyboards and mice), works regardless of which window is focused
+- **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising configured hotkey bindings (keys or scroll) from any profile, so the desktop never intercepts them
+- **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio hotkeys (keys or mouse wheel) are reassignable via Settings → Profiles; right-click any hotkey field for an **Unassign** menu option to clear it; defaults are the dedicated media keys
 - **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; can optionally expand with MPRIS playback progress, track label and elapsed/total time; click or drag the progress bar to seek when the player allows it; live streams show `LIVE`; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists non-system PipeWire audio clients, including apps that are connected but not currently playing
@@ -215,7 +215,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    `kv-ctl` still uses the app's existing session D-Bus API under the hood, so `keyboard-volume-app` must already be running.
    App names are case-sensitive; use `kv-ctl get apps` to list the exact names known by the daemon.
 
-> **Hotkey capture note:** the app grabs its configured keys at the evdev level, so those exact keys won't be visible to Qt while the app is running. To reassign a *currently active* hotkey, right-click the hotkey field in Settings → Profiles, choose **Unassign**, save, reopen the profile, and capture the new key.
+> **Hotkey capture note:** the app grabs its configured hotkey bindings (keys and scroll) at the evdev level, so those exact events won't be visible to Qt while the app is running. To reassign a *currently active* hotkey, right-click the hotkey field in Settings → Profiles, choose **Unassign**, save, reopen the profile, and capture the new binding.
 
 ### Configuration
 
@@ -256,7 +256,8 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
       "auto_switch": true },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
+      "hotkeys": { "volume_up": { "type": "rel", "code": 8, "direction": 1 },
+                   "volume_down": 114, "mute": 113, "show": 0 },
       "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
       "auto_switch": true }
   ],
@@ -271,7 +272,7 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
 }
 ```
 
-Hotkey values are evdev bindings: legacy integers are `EV_KEY` codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), while scroll bindings use objects such as `{ "type": "rel", "code": 8, "direction": 1 }`. `show` defaults to `0` (unassigned) and supports the same key/scroll binding formats. The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch. Scene target `match` values use the same app/binary names as `kv-ctl get apps`; `volume` is a `0..100` percent value, and omitted `volume` or `muted` fields leave that part unchanged.
+Hotkey values are evdev bindings: legacy integers are `EV_KEY` codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), while scroll bindings use objects such as `{ "type": "rel", "code": 8, "direction": 1 }` for `REL_WHEEL` up and `"direction": -1` for down. `show` defaults to `0` (unassigned) and supports the same key/scroll binding formats. The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch. Scene target `match` values use the same app/binary names as `kv-ctl get apps`; `volume` is a `0..100` percent value, and omitted `volume` or `muted` fields leave that part unchanged.
 
 `auto_profile_switch` (default `false`) globally enables auto-profile switching by focused window. Per-profile `auto_switch` (default `true`) controls whether a given profile participates in auto-switching.
 
@@ -355,7 +356,7 @@ GPL-2.0-or-later — see [LICENSE](LICENSE)
 
 # keyboard-volume-app
 
-Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Windowsie. Zmienia głośność wybranej aplikacji za pomocą klawiatury — bez ingerowania w głośność systemową. Wybierz aplikację audio z ikony w zasobniku systemowym, użyj klawiszy lub pokrętła głośności na klawiaturze i obserwuj nakładkę OSD z aktualnym poziomem głośności.
+Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Windowsie. Zmienia głośność wybranej aplikacji za pomocą klawiatury — bez ingerowania w głośność systemową. Wybierz aplikację audio z ikony w zasobniku systemowym, użyj klawiszy klawiatury lub pokrętła myszy i obserwuj nakładkę OSD z aktualnym poziomem głośności.
 
 ![C++](https://img.shields.io/badge/C%2B%2B-20-blue)
 ![Qt](https://img.shields.io/badge/Qt-6-green)
@@ -367,14 +368,14 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 ### Funkcje
 
 - **Sterowanie głośnością per aplikacja** — zmienia głośność wyłącznie wybranej aplikacji, nie ruszając głośności systemowej
-- **Wiele profili audio** — definiuj kilka profili, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją. `VolUp` steruje Spotify, `Ctrl+VolUp` steruje Firefoxem, `F11` steruje VLC — wszystko z tej samej klawiatury
+- **Wiele profili audio** — definiuj kilka profili, każdy z własnymi skrótami (klawisze lub pokrętło myszy), opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją. `VolUp` steruje Spotify, `Ctrl+VolUp` steruje Firefoxem, `F11` steruje VLC — wszystko z tej samej klawiatury
 - **Hotkey „Pokaż głośność"** — każdy profil może mieć opcjonalny skrót `show`, który wyświetla OSD z aktualną głośnością aplikacji profilu bez jej zmieniania; dostępny też przez `kv-ctl show [--profile id]` i D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
 - **Tryb skupienia audio / ducking** — każdy profil może mieć ręczny skrót, który ścisza wszystkie inne znane aplikacje audio do ustawionego procentu, a kolejne naciśnięcie przywraca poprzednie poziomy
 - **Sceny audio / presety miksera** — definiuj nazwane presety w `config.json`, które ustawiają głośność i/lub wyciszenie kilku aplikacji naraz, a potem odpalaj je ze skryptów przez `kv-ctl scene ID`
 - **Auto-przełączanie profilu wg aktywnego okna** — po włączeniu aktywne okno (np. Firefox, Spotify) automatycznie wybiera odpowiedni profil audio; klawisze głośności zawsze sterują aplikacją na wierzchu
-- **Globalne przechwytywanie klawiszy** — odczytuje zdarzenia bezpośrednio z urządzenia evdev, działa niezależnie od tego, które okno jest aktywne
-- **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające klawisze użyte w którymkolwiek profilu, aby system nie przechwytywał ich
-- **Konfigurowalne skróty** — Głośność w górę, Głośność w dół, Wyciszenie i tryb skupienia każdego profilu można przypisać do dowolnego klawisza przez Ustawienia → Profile; prawy klik na polu hotkeya otwiera menu **Wyczyść**; domyślnie są to dedykowane klawisze multimedialne
+- **Globalne przechwytywanie** — odczytuje zdarzenia bezpośrednio z urządzeń evdev (klawiatury i myszy), działa niezależnie od tego, które okno jest aktywne
+- **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające skonfigurowane skróty (klawisze lub zdarzenia scroll) w którymkolwiek profilu, aby system nie przechwytywał ich
+- **Konfigurowalne skróty** — Głośność w górę, Głośność w dół, Wyciszenie i tryb skupienia każdego profilu można przypisać do dowolnego klawisza lub pokrętła myszy przez Ustawienia → Profile; prawy klik na polu hotkeya otwiera menu **Wyczyść**; domyślnie są to dedykowane klawisze multimedialne
 - **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; opcjonalnie rozwija się o postęp MPRIS, etykietę utworu i czas odtwarzania; kliknięcie lub przeciągnięcie paska przewija odtwarzacz, jeśli ten na to pozwala; transmisje live pokazują `LIVE`; znika automatycznie po upływie skonfigurowanego czasu
 - **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego oraz dostęp do ustawień
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera niesystemowe klienty audio PipeWire, także aplikacje podłączone, ale aktualnie nieodtwarzające dźwięku
@@ -500,7 +501,7 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
 ### Użytkowanie
 
 1. **Wybór aplikacji audio** — kliknij ikonę w zasobniku systemowym → wybierz aplikację z listy. Aplikacje aktualnie odtwarzające dźwięk są na górze; nieaktywne (podłączone do PipeWire, ale zapauzowane) pojawiają się poniżej.
-2. **Klawisze / pokrętło głośności** — naciśnij lub przekręć w górę albo w dół, aby zmienić głośność wybranej aplikacji o skonfigurowany krok.
+2. **Klawisze / pokrętło myszy** — naciśnij skonfigurowane klawisze głośności lub przewiń pokrętło myszy w górę albo w dół, aby zmienić głośność wybranej aplikacji o skonfigurowany krok.
 3. **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇.
 4. **Odświeżenie listy** — menu zasobnika → *Odśwież listę aplikacji*, aby ponownie wczytać aktywne aplikacje audio.
 5. **Zmiana urządzenia wejściowego** — menu zasobnika → *Zmień urządzenie wejściowe...*, aby wybrać inną klawiaturę bez restartu aplikacji.
@@ -561,7 +562,7 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
    `kv-ctl` nadal używa istniejącego API D-Bus aplikacji, więc `keyboard-volume-app` musi już działać.
    Nazwy aplikacji rozróżniają wielkość liter; użyj `kv-ctl get apps`, żeby sprawdzić dokładne nazwy znane daemonowi.
 
-> **Uwaga dot. przechwytywania klawiszy:** aplikacja blokuje aktualnie skonfigurowane klawisze na poziomie evdev, więc te właśnie klawisze nie są widoczne dla Qt podczas działania programu. Aby zmienić *aktywny* skrót, kliknij prawym przyciskiem pole hotkeya w Ustawienia → Profile, wybierz **Wyczyść**, zapisz, otwórz profil ponownie i przechwyć nowy klawisz.
+> **Uwaga dot. przechwytywania skrótów:** aplikacja blokuje aktualnie skonfigurowane skróty (klawisze i scroll) na poziomie evdev, więc te właśnie zdarzenia nie są widoczne dla Qt podczas działania programu. Aby zmienić *aktywny* skrót, kliknij prawym przyciskiem pole hotkeya w Ustawienia → Profile, wybierz **Wyczyść**, zapisz, otwórz profil ponownie i przechwyć nowe powiązanie.
 
 ### Konfiguracja
 
@@ -602,7 +603,8 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
       "auto_switch": true },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
+      "hotkeys": { "volume_up": { "type": "rel", "code": 8, "direction": 1 },
+                   "volume_down": 114, "mute": 113, "show": 0 },
       "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
       "auto_switch": true }
   ],
@@ -617,7 +619,7 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
 }
 ```
 
-Wartości skrótów to bindingi evdev: starsze liczby oznaczają kody `EV_KEY` (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), a scroll używa obiektów takich jak `{ "type": "rel", "code": 8, "direction": 1 }`. `show` domyślnie ma `0` (nieprzypisany) i obsługuje te same formaty klawiszy oraz scrolla. Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu. `match` w targetach scen używa tych samych nazw aplikacji/binarek co `kv-ctl get apps`; `volume` to procent `0..100`, a pominięte pola `volume` lub `muted` pozostawiają daną część stanu bez zmian.
+Wartości skrótów to bindingi evdev: starsze liczby oznaczają kody `EV_KEY` (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), a scroll używa obiektów takich jak `{ "type": "rel", "code": 8, "direction": 1 }` dla `REL_WHEEL` w górę i `"direction": -1` w dół. `show` domyślnie ma `0` (nieprzypisany) i obsługuje te same formaty klawiszy oraz scrolla. Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu. `match` w targetach scen używa tych samych nazw aplikacji/binarek co `kv-ctl get apps`; `volume` to procent `0..100`, a pominięte pola `volume` lub `muted` pozostawiają daną część stanu bez zmian.
 
 `auto_profile_switch` (domyślnie `false`) globalnie włącza auto-przełączanie profilu wg aktywnego okna. Per-profilowe `auto_switch` (domyślnie `true`) kontroluje, czy dany profil bierze udział w auto-przełączaniu.
 
