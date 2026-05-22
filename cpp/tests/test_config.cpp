@@ -584,6 +584,30 @@ TEST(ConfigProfiles, SetSelectedAppMirrorsToDefaultProfile)
     EXPECT_EQ(profile["apps"].toArray().first().toString().toStdString(), "youtube-music");
 }
 
+TEST(ConfigProfiles, DefaultAppSettersPreserveSecondaryApps)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    Profile p;
+    p.id = "default";
+    p.name = "Default";
+    p.apps = {"spotify", "vlc", "firefox"};
+    p.hotkeys = {115, 114, 113, {}};
+    config.setProfiles({p});
+
+    config.setSelectedApp("vlc");
+    EXPECT_EQ(
+        config.defaultProfile().apps,
+        (QStringList{QStringLiteral("vlc"), QStringLiteral("spotify"), QStringLiteral("firefox")}));
+
+    config.setDefaultProfileApp("youtube-music");
+    EXPECT_EQ(config.defaultProfile().apps,
+              (QStringList{QStringLiteral("youtube-music"), QStringLiteral("vlc"),
+                           QStringLiteral("spotify"), QStringLiteral("firefox")}));
+}
+
 TEST(ConfigProfiles, SetHotkeysMirrorsToDefaultProfile)
 {
     QTemporaryDir tmp;
@@ -619,6 +643,22 @@ TEST(ConfigProfiles, SetProfilesUniqueifiesIds)
     ASSERT_EQ(profs.size(), 2);
     EXPECT_EQ(profs[0].id.toStdString(), "x");
     EXPECT_NE(profs[1].id.toStdString(), "x"); // suffixed
+}
+
+TEST(ConfigProfiles, FindProfileByAppMatchesSecondaryApp)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    Profile p;
+    p.id = "media";
+    p.name = "Media";
+    p.apps = {"spotify", "vlc"};
+    p.hotkeys = {115, 114, 113, {}};
+    config.setProfiles({p});
+
+    EXPECT_EQ(config.findProfileByApp("vlc").id.toStdString(), "media");
 }
 
 // ─── Audio scene tests ───────────────────────────────────────────────────────

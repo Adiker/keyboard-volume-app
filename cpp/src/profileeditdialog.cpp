@@ -35,6 +35,7 @@ ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
 
     // Apps (multi-app support)
     m_appsListWidget = new QListWidget(this);
+    m_appsListWidget->setMinimumHeight(72);
     m_appsListWidget->setSelectionMode(QAbstractItemView::SingleSelection);
     for (const QString& app : initial.apps)
     {

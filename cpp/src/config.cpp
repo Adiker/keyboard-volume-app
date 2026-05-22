@@ -65,6 +65,42 @@ HotkeyBinding bindingFromJson(const QJsonValue& value, int defaultKey)
     return HotkeyBinding(value.toInt(defaultKey));
 }
 
+QStringList profileAppsFromObject(const QJsonObject& profile)
+{
+    QStringList apps;
+    for (const QJsonValue& v : profile[QStringLiteral("apps")].toArray())
+        if (v.isString() && !v.toString().isEmpty()) apps.append(v.toString());
+
+    if (apps.isEmpty())
+    {
+        const QJsonValue legacyApp = profile[QStringLiteral("app")];
+        if (legacyApp.isString() && !legacyApp.toString().isEmpty())
+            apps.append(legacyApp.toString());
+    }
+    return apps;
+}
+
+QJsonArray appsArrayWithPrimary(const QJsonObject& profile, const QString& primaryApp)
+{
+    if (primaryApp.isEmpty()) return {};
+
+    QStringList apps{primaryApp};
+    for (const QString& app : profileAppsFromObject(profile))
+    {
+        bool duplicate = false;
+        for (const QString& existing : apps)
+        {
+            if (existing.compare(app, Qt::CaseInsensitive) == 0)
+            {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) apps.append(app);
+    }
+    return QJsonArray::fromStringList(apps);
+}
+
 } // namespace
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
@@ -540,7 +576,7 @@ void Config::setSelectedApp(const QString& name)
     if (!arr.isEmpty())
     {
         QJsonObject p0 = arr.first().toObject();
-        p0[QStringLiteral("apps")] = name.isEmpty() ? QJsonArray{} : QJsonArray{name};
+        p0[QStringLiteral("apps")] = appsArrayWithPrimary(p0, name);
         p0[QStringLiteral("app")] =
             name.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(name);
         arr.replace(0, p0);
@@ -799,8 +835,7 @@ void Config::setDefaultProfileApp(const QString& app)
         return;
     }
     QJsonObject p0 = arr.first().toObject();
-    QJsonArray appsArr = app.isEmpty() ? QJsonArray{} : QJsonArray{app};
-    p0[QStringLiteral("apps")] = appsArr;
+    p0[QStringLiteral("apps")] = appsArrayWithPrimary(p0, app);
     p0[QStringLiteral("app")] = app.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(app);
     arr.replace(0, p0);
     m_data[QStringLiteral("profiles")] = arr;
