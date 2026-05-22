@@ -54,6 +54,7 @@ keyboard-volume-app/
 │       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (fd, libevdev*, uinput)
 │       ├── windowtracker.h/cpp  # Window focus monitor (X11 + Wayland backends) for auto-profile switching
 │       ├── screenutils.h        # Header-only: centerDialogOnScreenAt() for multi-monitor XWayland
+│       ├── appmatcher.h         # Header-only: matchBinaryToApp() — focused-window → AudioApp lookup
 │       ├── audioapp.h           # AudioApp struct (display name, PA index, muted, volume)
 │       └── waylandstate.h       # Declares global extern bool g_nativeWayland for LayerShellQt OSD routing
 ├── pkg/
@@ -224,6 +225,17 @@ inline void centerDialogOnScreenAt(QWidget *window, const QPoint &globalPos)
 **Call sites:** All 4 parentless dialogs capture `QCursor::pos()` before construction and call `centerDialogOnScreenAt()` before `exec()`:
 - `SettingsDialog` and `AppSelectorDialog` in `cpp/src/trayapp.cpp`
 - `DeviceSelectorDialog` and `FirstRunWizard` in `cpp/src/main.cpp`
+
+### `cpp/src/appmatcher.h` — `matchBinaryToApp()`
+
+Header-only helper that maps a focused-window binary name to an `AudioApp` from the PipeWire app cache, used by `App::onFocusedBinaryChanged()` to drive auto-profile switching.
+
+```cpp
+inline QString matchBinaryToApp(const QString &binary, const QList<AudioApp> &apps)
+```
+
+- Returns the `AudioApp::name` of the first app whose `name` or `binary` is a case-insensitive substring of the focused binary (or vice versa); empty otherwise.
+- **Skips candidate fields that are empty** — `QString::contains("")` returns `true`, so an `AudioApp` with an empty `name` or `binary` would otherwise match every focused window and hijack auto-switching.
 
 ### `cpp/src/volumecontroller.h/cpp` — `VolumeController`, `PaWorker`, `AudioApp`
 
@@ -622,6 +634,7 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_i18n` — 7 tests (lookup, fallback)
 - `test_kvctlcommand` — 10 tests (subcommand parser, profile option, get/set fields, per-profile set volume, show command, invalid input)
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
+- `test_appmatcher` — 11 tests (focused-window → AudioApp lookup, including empty-field regression)
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
 - `test_mprisclient` — 13 tests (MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards)

@@ -74,6 +74,19 @@ target_link_libraries(test_volumecontroller PRIVATE
 )
 add_test(NAME test_volumecontroller COMMAND test_volumecontroller)
 
+# ─── test_appmatcher ──────────────────────────────────────────────────────────
+add_executable(test_appmatcher
+    test_appmatcher.cpp
+)
+target_include_directories(test_appmatcher PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(test_appmatcher PRIVATE
+    GTest::gtest_main
+    Qt6::Core
+)
+add_test(NAME test_appmatcher COMMAND test_appmatcher)
+
 # ─── test_pwutils ──────────────────────────────────────────────────────────────
 add_executable(test_pwutils
     test_pwutils.cpp
