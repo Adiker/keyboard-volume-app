@@ -195,7 +195,8 @@ QJsonObject Config::profileToJson(const Profile& p)
     return QJsonObject{
         {QStringLiteral("id"), p.id},
         {QStringLiteral("name"), p.name},
-        {QStringLiteral("app"), p.app.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(p.app)},
+        {QStringLiteral("apps"), QJsonArray::fromStringList(p.apps)},
+        {QStringLiteral("app"), p.primaryApp().isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(p.primaryApp())},
         {QStringLiteral("modifiers"), mods},
         {QStringLiteral("hotkeys"),
          QJsonObject{
@@ -221,8 +222,16 @@ Profile Config::profileFromJson(const QJsonObject& o)
     Profile p;
     p.id = o[QStringLiteral("id")].toString();
     p.name = o[QStringLiteral("name")].toString();
-    QJsonValue av = o[QStringLiteral("app")];
-    p.app = av.isString() ? av.toString() : QString{};
+    if (o.contains(QStringLiteral("apps")))
+    {
+        for (const auto& v : o[QStringLiteral("apps")].toArray())
+            if (v.isString()) p.apps.append(v.toString());
+    }
+    else
+    {
+        QJsonValue av = o[QStringLiteral("app")];
+        if (av.isString()) p.apps.append(av.toString());
+    }
 
     QJsonObject hk = o[QStringLiteral("hotkeys")].toObject();
     p.hotkeys.volumeUp = bindingFromJson(hk[QStringLiteral("volume_up")], 115);
@@ -382,9 +391,10 @@ void Config::mirrorDefaultProfileToLegacyUnlocked()
     if (arr.isEmpty()) return;
 
     QJsonObject p0 = arr.first().toObject();
-    QJsonValue av = p0[QStringLiteral("app")];
+    QJsonArray appsArr = p0[QStringLiteral("apps")].toArray();
+    QString firstApp = appsArr.isEmpty() ? QString{} : appsArr.first().toString();
     m_data[QStringLiteral("selected_app")] =
-        (av.isString() && !av.toString().isEmpty()) ? av : QJsonValue(QJsonValue::Null);
+        (!firstApp.isEmpty()) ? QJsonValue(firstApp) : QJsonValue(QJsonValue::Null);
 
     QJsonObject hk = p0[QStringLiteral("hotkeys")].toObject();
     m_data[QStringLiteral("hotkeys")] = QJsonObject{
@@ -768,6 +778,8 @@ void Config::setDefaultProfileApp(const QString& app)
         return;
     }
     QJsonObject p0 = arr.first().toObject();
+    QJsonArray appsArr = app.isEmpty() ? QJsonArray{} : QJsonArray{app};
+    p0[QStringLiteral("apps")] = appsArr;
     p0[QStringLiteral("app")] = app.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(app);
     arr.replace(0, p0);
     m_data[QStringLiteral("profiles")] = arr;
@@ -795,8 +807,13 @@ Profile Config::findProfileByApp(const QString& appName) const
     const QString lower = appName.toLower();
     for (const Profile& p : profiles())
     {
-        if (!p.autoSwitch || p.app.isEmpty()) continue;
-        if (p.app.toLower().contains(lower) || lower.contains(p.app.toLower())) return p;
+        if (!p.autoSwitch) continue;
+        for (const QString& a : p.apps)
+        {
+            if (a.isEmpty()) continue;
+            const QString la = a.toLower();
+            if (la.contains(lower) || lower.contains(la)) return p;
+        }
     }
     return Profile{};
 }

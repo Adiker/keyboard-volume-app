@@ -28,7 +28,7 @@ QVariant hotkeyBindingVariant(const HotkeyBinding& binding)
 DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, QObject* parent)
     : QObject(parent), m_config(config), m_volumeCtrl(volumeCtrl)
 {
-    m_activeApp = m_config->defaultProfile().app;
+    m_activeApp = m_config->defaultProfile().primaryApp();
     m_volumeStep = m_config->volumeStep();
     m_progressEnabled = m_config->osd().progressEnabled;
     m_autoProfileSwitch = m_config->autoProfileSwitch();
@@ -206,8 +206,8 @@ void DbusInterface::SetMute(bool muted)
 void DbusInterface::ToggleDucking()
 {
     const Profile p = m_config->defaultProfile();
-    if (p.app.isEmpty() || !p.ducking.enabled) return;
-    m_volumeCtrl->toggleDucking(p.app, p.ducking.volume / 100.0);
+    if (p.primaryApp().isEmpty() || !p.ducking.enabled) return;
+    m_volumeCtrl->toggleDucking(p.primaryApp(), p.ducking.volume / 100.0);
 }
 
 void DbusInterface::RefreshApps()
@@ -239,7 +239,7 @@ QVariantList DbusInterface::buildProfilesProp() const
         QVariantMap m;
         m[QStringLiteral("id")] = p.id;
         m[QStringLiteral("name")] = p.name;
-        m[QStringLiteral("app")] = p.app;
+        m[QStringLiteral("app")] = p.primaryApp();
         m[QStringLiteral("modifiers")] = mods;
         m[QStringLiteral("hotkeys")] = hk;
         m[QStringLiteral("ducking")] = ducking;
@@ -308,45 +308,45 @@ void DbusInterface::reloadProgressEnabled()
 void DbusInterface::VolumeUpProfile(const QString& profileId)
 {
     Profile p = findProfile(profileId);
-    if (p.app.isEmpty()) return;
+    if (p.primaryApp().isEmpty()) return;
     double step = m_volumeStep / 100.0;
-    m_volumeCtrl->changeVolume(p.app, step, p.volMin / 100.0, p.volMax / 100.0);
+    m_volumeCtrl->changeVolume(p.primaryApp(), step, p.volMin / 100.0, p.volMax / 100.0);
 }
 
 void DbusInterface::VolumeDownProfile(const QString& profileId)
 {
     Profile p = findProfile(profileId);
-    if (p.app.isEmpty()) return;
+    if (p.primaryApp().isEmpty()) return;
     double step = m_volumeStep / 100.0;
-    m_volumeCtrl->changeVolume(p.app, -step, p.volMin / 100.0, p.volMax / 100.0);
+    m_volumeCtrl->changeVolume(p.primaryApp(), -step, p.volMin / 100.0, p.volMax / 100.0);
 }
 
 void DbusInterface::ToggleMuteProfile(const QString& profileId)
 {
     Profile p = findProfile(profileId);
-    if (p.app.isEmpty()) return;
-    m_volumeCtrl->toggleMute(p.app);
+    if (p.primaryApp().isEmpty()) return;
+    m_volumeCtrl->toggleMute(p.primaryApp());
 }
 
 void DbusInterface::SetMuteProfile(const QString& profileId, bool muted)
 {
     Profile p = findProfile(profileId);
-    if (p.app.isEmpty()) return;
-    m_volumeCtrl->setMuted(p.app, muted);
+    if (p.primaryApp().isEmpty()) return;
+    m_volumeCtrl->setMuted(p.primaryApp(), muted);
 }
 
 void DbusInterface::ToggleDuckingProfile(const QString& profileId)
 {
     Profile p = findProfile(profileId);
-    if (p.app.isEmpty() || !p.ducking.enabled) return;
-    m_volumeCtrl->toggleDucking(p.app, p.ducking.volume / 100.0);
+    if (p.primaryApp().isEmpty() || !p.ducking.enabled) return;
+    m_volumeCtrl->toggleDucking(p.primaryApp(), p.ducking.volume / 100.0);
 }
 
 void DbusInterface::SetVolumeProfile(const QString& profileId, double vol)
 {
     Profile p = findProfile(profileId);
-    if (p.app.isEmpty()) return;
-    m_volumeCtrl->setVolume(p.app, std::clamp(vol, 0.0, 1.0), p.volMin / 100.0, p.volMax / 100.0);
+    if (p.primaryApp().isEmpty()) return;
+    m_volumeCtrl->setVolume(p.primaryApp(), std::clamp(vol, 0.0, 1.0), p.volMin / 100.0, p.volMax / 100.0);
 }
 
 void DbusInterface::ApplyScene(const QString& sceneId)
@@ -371,6 +371,6 @@ void DbusInterface::ShowVolume()
 void DbusInterface::ShowVolumeProfile(const QString& profileId)
 {
     const Profile p = findProfile(profileId);
-    if (p.app.isEmpty()) return;
-    m_volumeCtrl->queryVolume(p.app);
+    if (p.primaryApp().isEmpty()) return;
+    m_volumeCtrl->queryVolume(p.primaryApp());
 }

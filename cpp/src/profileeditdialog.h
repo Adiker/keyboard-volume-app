@@ -1,6 +1,7 @@
 #pragma once
 #include "config.h" // Profile, Modifier
 #include <QDialog>
+#include <QListWidget>
 
 class QLineEdit;
 class QCheckBox;
@@ -29,7 +30,7 @@ class ProfileEditDialog : public QDialog
     InputHandler* m_inputHandler;
 
     QLineEdit* m_name = nullptr;
-    AppListWidget* m_appList = nullptr;
+    QListWidget* m_appsListWidget = nullptr;
     QCheckBox* m_modCtrl = nullptr;
     QCheckBox* m_modShift = nullptr;
     QCheckBox* m_duckingEnabled = nullptr;
@@ -43,4 +44,6 @@ class ProfileEditDialog : public QDialog
     HotkeyCapture* m_hkMute = nullptr;
     HotkeyCapture* m_hkShow = nullptr;
     HotkeyCapture* m_hkDucking = nullptr;
+
+    void addAppToList(const QString& appName);
 };

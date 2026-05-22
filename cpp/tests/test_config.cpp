@@ -357,7 +357,7 @@ TEST(ConfigProfiles, MigrationOldConfigSynthesizesDefaultProfile)
     ASSERT_EQ(profs.size(), 1);
     EXPECT_EQ(profs[0].id.toStdString(), "default");
     EXPECT_EQ(profs[0].name.toStdString(), "Default");
-    EXPECT_EQ(profs[0].app.toStdString(), "spotify");
+    EXPECT_EQ(profs[0].primaryApp().toStdString(), "spotify");
     EXPECT_EQ(profs[0].hotkeys.volumeUp, 200);
     EXPECT_EQ(profs[0].hotkeys.volumeDown, 201);
     EXPECT_EQ(profs[0].hotkeys.mute, 202);
@@ -397,7 +397,7 @@ TEST(ConfigProfiles, EmptyProfilesRebuildsDefaultProfile)
     auto profs = config.profiles();
     ASSERT_EQ(profs.size(), 1);
     EXPECT_EQ(profs[0].id.toStdString(), "default");
-    EXPECT_EQ(profs[0].app.toStdString(), "spotify");
+    EXPECT_EQ(profs[0].primaryApp().toStdString(), "spotify");
     EXPECT_EQ(profs[0].hotkeys.volumeUp, 210);
     EXPECT_EQ(profs[0].hotkeys.volumeDown, 211);
     EXPECT_EQ(profs[0].hotkeys.mute, 212);
@@ -431,7 +431,7 @@ TEST(ConfigProfiles, MalformedProfilesRebuildsDefaultProfile)
     auto profs = config.profiles();
     ASSERT_EQ(profs.size(), 1);
     EXPECT_EQ(profs[0].id.toStdString(), "default");
-    EXPECT_EQ(profs[0].app.toStdString(), "vlc");
+    EXPECT_EQ(profs[0].primaryApp().toStdString(), "vlc");
     EXPECT_EQ(profs[0].hotkeys.volumeUp, 220);
     EXPECT_EQ(profs[0].hotkeys.volumeDown, 221);
     EXPECT_EQ(profs[0].hotkeys.mute, 222);
@@ -445,13 +445,13 @@ TEST(ConfigProfiles, RoundTripTwoProfiles)
     Profile a;
     a.id = "default";
     a.name = "Default";
-    a.app = "spotify";
+    a.apps = {"spotify"};
     a.hotkeys = {115, 114, 113, {}};
 
     Profile b;
     b.id = "firefox-ctrl";
     b.name = "Firefox (Ctrl)";
-    b.app = "firefox";
+    b.apps = {"firefox"};
     b.hotkeys = {115, 114, 113, {}};
     b.modifiers.insert(Modifier::Ctrl);
     b.ducking.enabled = true;
@@ -532,13 +532,13 @@ TEST(ConfigProfiles, DefaultMirroringToLegacyKeys)
     Profile a;
     a.id = "main";
     a.name = "Main";
-    a.app = "vlc";
+    a.apps = {"vlc"};
     a.hotkeys = {300, 301, 302, {}};
 
     Profile b;
     b.id = "other";
     b.name = "Other";
-    b.app = "firefox";
+    b.apps = {"firefox"};
     b.hotkeys = {115, 114, 113, {}};
 
     config.setProfiles({a, b});
@@ -572,7 +572,7 @@ TEST(ConfigProfiles, SetSelectedAppMirrorsToDefaultProfile)
     Config config(tmp.path());
 
     config.setSelectedApp("youtube-music");
-    EXPECT_EQ(config.defaultProfile().app.toStdString(), "youtube-music");
+    EXPECT_EQ(config.defaultProfile().primaryApp().toStdString(), "youtube-music");
     EXPECT_EQ(config.selectedApp().toStdString(), "youtube-music");
 }
 
@@ -598,12 +598,12 @@ TEST(ConfigProfiles, SetProfilesUniqueifiesIds)
     Profile a;
     a.id = "x";
     a.name = "X";
-    a.app = "spotify";
+    a.apps = {"spotify"};
     a.hotkeys = {1, 2, 3, {}};
     Profile b;
     b.id = "x";
     b.name = "X2";
-    b.app = "firefox";
+    b.apps = {"firefox"};
     b.hotkeys = {4, 5, 6, {}};
 
     config.setProfiles({a, b});

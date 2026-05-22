@@ -12,6 +12,9 @@
 #include <QDialogButtonBox>
 #include <QSlider>
 #include <QSpinBox>
+#include <QListWidget>
+#include <QPushButton>
+#include <QMessageBox>
 
 ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
                                      InputHandler* inputHandler, QWidget* parent)
@@ -30,11 +33,76 @@ ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
     m_name = new QLineEdit(initial.name, this);
     form->addRow(::tr(QStringLiteral("settings.profiles.name_label")), m_name);
 
-    // App
-    m_appList = new AppListWidget(this);
-    m_appList->populate(m_config);
-    if (!initial.app.isEmpty()) m_appList->setSelectedApp(initial.app);
-    form->addRow(::tr(QStringLiteral("app_selector.subtitle")), m_appList);
+    // Apps (multi-app support)
+    m_appsListWidget = new QListWidget(this);
+    m_appsListWidget->setSelectionMode(QAbstractItemView::SingleSelection);
+    for (const QString& app : initial.apps)
+    {
+        if (!app.isEmpty()) m_appsListWidget->addItem(app);
+    }
+
+    auto* addBtn = new QPushButton(::tr(QStringLiteral("settings.profiles.app_add")), this);
+    auto* removeBtn = new QPushButton(::tr(QStringLiteral("settings.profiles.app_remove")), this);
+    auto* upBtn = new QPushButton(::tr(QStringLiteral("settings.profiles.app_up")), this);
+    auto* downBtn = new QPushButton(::tr(QStringLiteral("settings.profiles.app_down")), this);
+
+    connect(addBtn, &QPushButton::clicked, this, [this]() {
+        QDialog dlg(this);
+        dlg.setWindowTitle(::tr(QStringLiteral("settings.profiles.app_add")));
+        auto* lay = new QVBoxLayout(&dlg);
+        auto* picker = new AppListWidget(&dlg);
+        picker->populate(m_config);
+        lay->addWidget(picker);
+        auto* btns = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        lay->addWidget(btns);
+        connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+        if (dlg.exec() == QDialog::Accepted)
+        {
+            QString sel = picker->selectedAppName();
+            if (!sel.isEmpty()) addAppToList(sel);
+        }
+    });
+
+    connect(removeBtn, &QPushButton::clicked, this, [this]() {
+        auto* item = m_appsListWidget->currentItem();
+        if (item) delete m_appsListWidget->takeItem(m_appsListWidget->row(item));
+    });
+
+    connect(upBtn, &QPushButton::clicked, this, [this]() {
+        int row = m_appsListWidget->currentRow();
+        if (row > 0)
+        {
+            QListWidgetItem* item = m_appsListWidget->takeItem(row);
+            m_appsListWidget->insertItem(row - 1, item);
+            m_appsListWidget->setCurrentRow(row - 1);
+        }
+    });
+
+    connect(downBtn, &QPushButton::clicked, this, [this]() {
+        int row = m_appsListWidget->currentRow();
+        if (row >= 0 && row < m_appsListWidget->count() - 1)
+        {
+            QListWidgetItem* item = m_appsListWidget->takeItem(row);
+            m_appsListWidget->insertItem(row + 1, item);
+            m_appsListWidget->setCurrentRow(row + 1);
+        }
+    });
+
+    auto* appsButtons = new QHBoxLayout;
+    appsButtons->addWidget(addBtn);
+    appsButtons->addWidget(removeBtn);
+    appsButtons->addWidget(upBtn);
+    appsButtons->addWidget(downBtn);
+    appsButtons->addStretch();
+
+    auto* appsLayout = new QVBoxLayout;
+    appsLayout->addWidget(m_appsListWidget);
+    appsLayout->addLayout(appsButtons);
+
+    auto* appsWidget = new QWidget(this);
+    appsWidget->setLayout(appsLayout);
+    form->addRow(::tr(QStringLiteral("app_selector.subtitle")), appsWidget);
 
     // Modifiers
     m_modCtrl = new QCheckBox(::tr(QStringLiteral("settings.profiles.modifier_ctrl")), this);
@@ -138,7 +206,11 @@ Profile ProfileEditDialog::result() const
     p.id = m_initial.id; // preserve id; SettingsDialog assigns one for new
     p.name = m_name->text().trimmed();
     if (p.name.isEmpty()) p.name = QStringLiteral("Profile");
-    p.app = m_appList->selectedAppName();
+    p.apps.clear();
+    for (int i = 0; i < m_appsListWidget->count(); ++i)
+    {
+        p.apps.append(m_appsListWidget->item(i)->text());
+    }
 
     p.hotkeys.volumeUp = m_hkUp->binding();
     p.hotkeys.volumeDown = m_hkDown->binding();
@@ -156,4 +228,21 @@ Profile ProfileEditDialog::result() const
     p.volMax = m_volMax->value();
 
     return p;
+}
+
+void ProfileEditDialog::addAppToList(const QString& appName)
+{
+    const QString lower = appName.toLower();
+    for (int i = 0; i < m_appsListWidget->count(); ++i)
+    {
+        if (m_appsListWidget->item(i)->text().toLower() == lower)
+        {
+            QMessageBox::warning(this,
+                ::tr(QStringLiteral("settings.profiles.duplicate_title")),
+                ::tr(QStringLiteral("settings.profiles.duplicate_msg")));
+            return;
+        }
+    }
+    m_appsListWidget->addItem(appName);
+    m_appsListWidget->setCurrentRow(m_appsListWidget->count() - 1);
 }

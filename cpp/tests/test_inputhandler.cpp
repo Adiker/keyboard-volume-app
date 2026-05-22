@@ -28,7 +28,7 @@ TEST(InputHandler, SetProfilesRoundTrip)
     Profile a;
     a.id = QStringLiteral("a");
     a.name = QStringLiteral("A");
-    a.app = QStringLiteral("spotify");
+    a.apps = {QStringLiteral("spotify")};
     a.hotkeys.volumeUp = 200;
     a.hotkeys.volumeDown = 201;
     a.hotkeys.mute = 202;
@@ -36,7 +36,7 @@ TEST(InputHandler, SetProfilesRoundTrip)
     Profile b;
     b.id = QStringLiteral("b");
     b.name = QStringLiteral("B");
-    b.app = QStringLiteral("firefox");
+    b.apps = {QStringLiteral("firefox")};
     b.modifiers.insert(Modifier::Ctrl);
     b.hotkeys.volumeUp = 200;
     b.hotkeys.volumeDown = 201;
@@ -123,7 +123,7 @@ Profile mkProfile(const QString& id, int up, int down, int mute,
     Profile p;
     p.id = id;
     p.name = id;
-    p.app = id;
+    p.apps = {id};
     p.hotkeys.volumeUp = up;
     p.hotkeys.volumeDown = down;
     p.hotkeys.mute = mute;

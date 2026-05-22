@@ -98,8 +98,8 @@ void TrayApp::populateAppList()
         else
             m_menu->addAction(act);
 
-        if (app.name.compare(m_config->defaultProfile().app, Qt::CaseInsensitive) == 0 ||
-            app.binary.compare(m_config->defaultProfile().app, Qt::CaseInsensitive) == 0)
+        if (app.name.compare(m_config->defaultProfile().primaryApp(), Qt::CaseInsensitive) == 0 ||
+            app.binary.compare(m_config->defaultProfile().primaryApp(), Qt::CaseInsensitive) == 0)
             act->setChecked(true);
 
         connect(act, &QAction::triggered, this, [this, target]() { onAppSelected(target); });
@@ -173,7 +173,7 @@ void TrayApp::openAppSelector()
     const QPoint anchor = QCursor::pos();
     AppSelectorDialog dlg(m_config);
     centerDialogOnScreenAt(&dlg, anchor);
-    if (dlg.exec() == QDialog::Accepted) onAppSelected(m_config->defaultProfile().app);
+    if (dlg.exec() == QDialog::Accepted) onAppSelected(m_config->defaultProfile().primaryApp());
 }
 
 void TrayApp::rebuildMenu()
@@ -183,5 +183,5 @@ void TrayApp::rebuildMenu()
 
 QString TrayApp::currentApp() const
 {
-    return m_config->defaultProfile().app;
+    return m_config->defaultProfile().primaryApp();
 }

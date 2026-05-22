@@ -147,10 +147,10 @@ inline size_t qHash(const HotkeyBinding& b, size_t seed = 0) noexcept
 // the keyboard (e.g. Vol+ → spotify, Ctrl+Vol+ → firefox, F11 → vlc).
 struct Profile
 {
-    QString id;               // stable slug, unique within profiles list
-    QString name;             // user-facing label
-    QString app;              // audio app name (may be empty)
-    HotkeyConfig hotkeys;     // evdev codes for volume up/down/mute
+    QString id;                // stable slug, unique within profiles list
+    QString name;              // user-facing label
+    QStringList apps;          // audio app names (first = primary/default)
+    HotkeyConfig hotkeys;      // evdev codes for volume up/down/mute
     QSet<Modifier> modifiers; // required held modifiers (empty = bare key)
     DuckingConfig ducking;    // manual per-profile audio ducking
     bool autoSwitch = true;   // participate in auto-profile switching by window focus
@@ -160,6 +160,8 @@ struct Profile
     // mixer presets). Defaults preserve the full 0–100 range.
     int volMin = 0;
     int volMax = 100;
+
+    QString primaryApp() const { return apps.isEmpty() ? QString{} : apps.first(); }
 };
 
 inline bool operator==(const HotkeyConfig& a, const HotkeyConfig& b)
@@ -201,7 +203,7 @@ inline bool operator!=(const AudioScene& a, const AudioScene& b)
 
 inline bool operator==(const Profile& a, const Profile& b)
 {
-    return a.id == b.id && a.name == b.name && a.app == b.app && a.hotkeys == b.hotkeys &&
+    return a.id == b.id && a.name == b.name && a.apps == b.apps && a.hotkeys == b.hotkeys &&
            a.modifiers == b.modifiers && a.ducking == b.ducking && a.autoSwitch == b.autoSwitch &&
            a.volMin == b.volMin && a.volMax == b.volMax;
 }

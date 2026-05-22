@@ -693,7 +693,7 @@ void SettingsDialog::refreshProfilesTable()
             m_profilesTable->setItem(row, col, item);
         };
         setCell(0, nameDisplay);
-        setCell(1, p.app);
+        setCell(1, p.apps.join(", "));
         setCell(2, modsDisplay);
         setCell(3, HotkeyCapture::keyDisplayName(p.hotkeys.volumeUp));
         setCell(4, HotkeyCapture::keyDisplayName(p.hotkeys.volumeDown));
