@@ -321,7 +321,8 @@ class App : public QObject
 
     void initDbus()
     {
-        m_dbus = new DbusInterface(m_config.get(), m_volumeCtrl, m_tray, this);
+        m_dbus = new DbusInterface(m_config.get(), m_volumeCtrl, this);
+        connect(m_tray, &TrayApp::appChanged, m_dbus, &DbusInterface::onActiveAppChanged);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProfiles);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProgressEnabled);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadAutoProfileSwitch);

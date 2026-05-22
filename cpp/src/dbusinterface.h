@@ -6,7 +6,6 @@
 #include <QVariantList>
 
 class VolumeController;
-class TrayApp;
 
 class DbusInterface : public QObject
 {
@@ -26,8 +25,7 @@ class DbusInterface : public QObject
                    autoProfileSwitchChanged)
 
   public:
-    explicit DbusInterface(Config* config, VolumeController* volumeCtrl, TrayApp* tray,
-                           QObject* parent = nullptr);
+    explicit DbusInterface(Config* config, VolumeController* volumeCtrl, QObject* parent = nullptr);
 
     double volume() const
     {
@@ -72,6 +70,10 @@ class DbusInterface : public QObject
     void reloadProgressEnabled();
     void reloadAutoProfileSwitch();
 
+    // Update the cached active-app state when the tray (or any other source)
+    // changes the selected application. Wired up by main.cpp.
+    void onActiveAppChanged(const QString& name);
+
   public slots:
     Q_SCRIPTABLE void VolumeUp();
     Q_SCRIPTABLE void VolumeDown();
@@ -113,7 +115,6 @@ class DbusInterface : public QObject
 
     Config* m_config = nullptr;
     VolumeController* m_volumeCtrl = nullptr;
-    TrayApp* m_tray = nullptr;
 
     double m_volume = 0.0;
     bool m_muted = false;
