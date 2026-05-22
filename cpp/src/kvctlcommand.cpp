@@ -101,7 +101,6 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
 
     if (action == QStringLiteral("set"))
     {
-        if (profileSet) return fail(QStringLiteral("set does not accept --profile"));
         if (positionalArgs.size() != 3)
             return fail(QStringLiteral("usage: kv-ctl set volume|muted|active-app|step VALUE"));
 
@@ -116,6 +115,14 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
         {
             return fail(
                 QStringLiteral("unknown or read-only set field '%1'").arg(positionalArgs[1]));
+        }
+
+        // --profile only makes sense for `set volume`. Per-profile mute uses
+        // the `kv-ctl mute on|off --profile id` form (PR #47); other set
+        // fields are global config and route through Properties.Set.
+        if (profileSet && cmd.field != KvCtlCommand::Field::Volume)
+        {
+            return fail(QStringLiteral("set %1 does not accept --profile").arg(positionalArgs[1]));
         }
 
         return {true, cmd, QString()};
@@ -137,7 +144,7 @@ QString kvCtlUsageText()
         "  kv-ctl refresh\n"
         "  kv-ctl get "
         "volume|muted|active-app|apps|step|profiles|scenes|progress-enabled|auto-profile-switch\n"
-        "  kv-ctl set volume VALUE\n"
+        "  kv-ctl set volume VALUE [--profile ID]\n"
         "  kv-ctl set muted true|false\n"
         "  kv-ctl set active-app NAME\n"
         "  kv-ctl set step VALUE\n"

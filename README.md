@@ -202,6 +202,9 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    # Read current volume
    kv-ctl get volume
 
+   # Set an absolute volume for a specific profile (0..100)
+   kv-ctl set volume 35 --profile firefox-ctrl
+
    # Toggle OSD playback progress at runtime
    kv-ctl get progress-enabled
    kv-ctl set progress-enabled true
@@ -548,6 +551,9 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
 
    # Odczytaj aktualną głośność
    kv-ctl get volume
+
+   # Ustaw głośność konkretnego profilu (0..100)
+   kv-ctl set volume 35 --profile firefox-ctrl
 
    # Przełącz postęp odtwarzania OSD w trakcie działania aplikacji
    kv-ctl get progress-enabled
