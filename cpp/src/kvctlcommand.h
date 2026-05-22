@@ -10,6 +10,7 @@ struct KvCtlCommand
         VolumeUp,
         VolumeDown,
         ToggleMute,
+        SetMute,
         ToggleDucking,
         ApplyScene,
         Refresh,
