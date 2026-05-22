@@ -196,7 +196,8 @@ QJsonObject Config::profileToJson(const Profile& p)
         {QStringLiteral("id"), p.id},
         {QStringLiteral("name"), p.name},
         {QStringLiteral("apps"), QJsonArray::fromStringList(p.apps)},
-        {QStringLiteral("app"), p.primaryApp().isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(p.primaryApp())},
+        {QStringLiteral("app"),
+         p.primaryApp().isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(p.primaryApp())},
         {QStringLiteral("modifiers"), mods},
         {QStringLiteral("hotkeys"),
          QJsonObject{

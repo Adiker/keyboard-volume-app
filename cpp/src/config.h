@@ -147,10 +147,10 @@ inline size_t qHash(const HotkeyBinding& b, size_t seed = 0) noexcept
 // the keyboard (e.g. Vol+ → spotify, Ctrl+Vol+ → firefox, F11 → vlc).
 struct Profile
 {
-    QString id;                // stable slug, unique within profiles list
-    QString name;              // user-facing label
-    QStringList apps;          // audio app names (first = primary/default)
-    HotkeyConfig hotkeys;      // evdev codes for volume up/down/mute
+    QString id;               // stable slug, unique within profiles list
+    QString name;             // user-facing label
+    QStringList apps;         // audio app names (first = primary/default)
+    HotkeyConfig hotkeys;     // evdev codes for volume up/down/mute
     QSet<Modifier> modifiers; // required held modifiers (empty = bare key)
     DuckingConfig ducking;    // manual per-profile audio ducking
     bool autoSwitch = true;   // participate in auto-profile switching by window focus
@@ -161,7 +161,10 @@ struct Profile
     int volMin = 0;
     int volMax = 100;
 
-    QString primaryApp() const { return apps.isEmpty() ? QString{} : apps.first(); }
+    QString primaryApp() const
+    {
+        return apps.isEmpty() ? QString{} : apps.first();
+    }
 };
 
 inline bool operator==(const HotkeyConfig& a, const HotkeyConfig& b)

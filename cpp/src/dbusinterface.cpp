@@ -346,7 +346,8 @@ void DbusInterface::SetVolumeProfile(const QString& profileId, double vol)
 {
     Profile p = findProfile(profileId);
     if (p.primaryApp().isEmpty()) return;
-    m_volumeCtrl->setVolume(p.primaryApp(), std::clamp(vol, 0.0, 1.0), p.volMin / 100.0, p.volMax / 100.0);
+    m_volumeCtrl->setVolume(p.primaryApp(), std::clamp(vol, 0.0, 1.0), p.volMin / 100.0,
+                            p.volMax / 100.0);
 }
 
 void DbusInterface::ApplyScene(const QString& sceneId)

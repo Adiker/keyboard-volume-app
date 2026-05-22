@@ -46,48 +46,57 @@ ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
     auto* upBtn = new QPushButton(::tr(QStringLiteral("settings.profiles.app_up")), this);
     auto* downBtn = new QPushButton(::tr(QStringLiteral("settings.profiles.app_down")), this);
 
-    connect(addBtn, &QPushButton::clicked, this, [this]() {
-        QDialog dlg(this);
-        dlg.setWindowTitle(::tr(QStringLiteral("settings.profiles.app_add")));
-        auto* lay = new QVBoxLayout(&dlg);
-        auto* picker = new AppListWidget(&dlg);
-        picker->populate(m_config);
-        lay->addWidget(picker);
-        auto* btns = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
-        lay->addWidget(btns);
-        connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-        connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-        if (dlg.exec() == QDialog::Accepted)
-        {
-            QString sel = picker->selectedAppName();
-            if (!sel.isEmpty()) addAppToList(sel);
-        }
-    });
+    connect(addBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                QDialog dlg(this);
+                dlg.setWindowTitle(::tr(QStringLiteral("settings.profiles.app_add")));
+                auto* lay = new QVBoxLayout(&dlg);
+                auto* picker = new AppListWidget(&dlg);
+                picker->populate(m_config);
+                lay->addWidget(picker);
+                auto* btns =
+                    new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+                lay->addWidget(btns);
+                connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+                connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+                if (dlg.exec() == QDialog::Accepted)
+                {
+                    QString sel = picker->selectedAppName();
+                    if (!sel.isEmpty()) addAppToList(sel);
+                }
+            });
 
-    connect(removeBtn, &QPushButton::clicked, this, [this]() {
-        auto* item = m_appsListWidget->currentItem();
-        if (item) delete m_appsListWidget->takeItem(m_appsListWidget->row(item));
-    });
+    connect(removeBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                auto* item = m_appsListWidget->currentItem();
+                if (item) delete m_appsListWidget->takeItem(m_appsListWidget->row(item));
+            });
 
-    connect(upBtn, &QPushButton::clicked, this, [this]() {
-        int row = m_appsListWidget->currentRow();
-        if (row > 0)
-        {
-            QListWidgetItem* item = m_appsListWidget->takeItem(row);
-            m_appsListWidget->insertItem(row - 1, item);
-            m_appsListWidget->setCurrentRow(row - 1);
-        }
-    });
+    connect(upBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                int row = m_appsListWidget->currentRow();
+                if (row > 0)
+                {
+                    QListWidgetItem* item = m_appsListWidget->takeItem(row);
+                    m_appsListWidget->insertItem(row - 1, item);
+                    m_appsListWidget->setCurrentRow(row - 1);
+                }
+            });
 
-    connect(downBtn, &QPushButton::clicked, this, [this]() {
-        int row = m_appsListWidget->currentRow();
-        if (row >= 0 && row < m_appsListWidget->count() - 1)
-        {
-            QListWidgetItem* item = m_appsListWidget->takeItem(row);
-            m_appsListWidget->insertItem(row + 1, item);
-            m_appsListWidget->setCurrentRow(row + 1);
-        }
-    });
+    connect(downBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                int row = m_appsListWidget->currentRow();
+                if (row >= 0 && row < m_appsListWidget->count() - 1)
+                {
+                    QListWidgetItem* item = m_appsListWidget->takeItem(row);
+                    m_appsListWidget->insertItem(row + 1, item);
+                    m_appsListWidget->setCurrentRow(row + 1);
+                }
+            });
 
     auto* appsButtons = new QHBoxLayout;
     appsButtons->addWidget(addBtn);
@@ -237,9 +246,8 @@ void ProfileEditDialog::addAppToList(const QString& appName)
     {
         if (m_appsListWidget->item(i)->text().toLower() == lower)
         {
-            QMessageBox::warning(this,
-                ::tr(QStringLiteral("settings.profiles.duplicate_title")),
-                ::tr(QStringLiteral("settings.profiles.duplicate_msg")));
+            QMessageBox::warning(this, ::tr(QStringLiteral("settings.profiles.duplicate_title")),
+                                 ::tr(QStringLiteral("settings.profiles.duplicate_msg")));
             return;
         }
     }
