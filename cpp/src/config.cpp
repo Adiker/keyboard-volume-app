@@ -1,5 +1,7 @@
 #include "config.h"
 
+#include "appmatcher.h"
+
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
@@ -99,18 +101,6 @@ QJsonArray appsArrayWithPrimary(const QJsonObject& profile, const QString& prima
         if (!duplicate) apps.append(app);
     }
     return QJsonArray::fromStringList(apps);
-}
-
-QString normalizedAppId(QString value)
-{
-    value = value.toLower();
-    QString out;
-    out.reserve(value.size());
-    for (const QChar ch : value)
-    {
-        if (ch.isLetterOrNumber()) out.append(ch);
-    }
-    return out;
 }
 
 } // namespace
