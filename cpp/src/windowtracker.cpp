@@ -128,8 +128,7 @@ function appIdForWindow(window) {
         "desktopFileName",
         "resourceClass",
         "resourceName",
-        "windowClass",
-        "caption"
+        "windowClass"
     ]);
 }
 
@@ -564,6 +563,8 @@ bool WindowTracker::runKWinScript()
         return false;
     }
 
+    // D-Bus session bus dispatches ReportFocusedApp to the main thread
+    // (where m_kwinReceiver lives); this loop only polls m_running as a stop sentinel.
     QEventLoop loop;
     QTimer poll;
     poll.setInterval(50);
