@@ -7,17 +7,16 @@
 #include <QVBoxLayout>
 #include <QDialogButtonBox>
 
-AppSelectorDialog::AppSelectorDialog(Config *config, QWidget *parent)
-    : QDialog(parent)
-    , m_config(config)
+AppSelectorDialog::AppSelectorDialog(Config* config, QWidget* parent)
+    : QDialog(parent), m_config(config)
 {
     setWindowTitle(::tr(QStringLiteral("app_selector.title")));
     setMinimumWidth(360);
     setWindowModality(Qt::ApplicationModal);
 
-    auto *layout = new QVBoxLayout(this);
+    auto* layout = new QVBoxLayout(this);
 
-    auto *subtitle = new QLabel(::tr(QStringLiteral("app_selector.subtitle")), this);
+    auto* subtitle = new QLabel(::tr(QStringLiteral("app_selector.subtitle")), this);
     subtitle->setWordWrap(true);
     layout->addWidget(subtitle);
 
@@ -27,11 +26,18 @@ AppSelectorDialog::AppSelectorDialog(Config *config, QWidget *parent)
     m_appList->populate(m_config);
 
     m_buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    connect(m_buttons, &QDialogButtonBox::accepted, this, [this]() {
-        QString name = m_appList->selectedAppName();
-        m_config->setSelectedApp(name);
-        accept();
-    });
+    connect(m_buttons, &QDialogButtonBox::accepted, this,
+            [this]()
+            {
+                m_selectedApp = m_appList->selectedAppName();
+                m_config->setSelectedApp(m_selectedApp);
+                accept();
+            });
     connect(m_buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     layout->addWidget(m_buttons);
+}
+
+QString AppSelectorDialog::selectedAppName() const
+{
+    return m_selectedApp;
 }

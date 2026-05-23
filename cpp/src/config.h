@@ -149,7 +149,7 @@ struct Profile
 {
     QString id;               // stable slug, unique within profiles list
     QString name;             // user-facing label
-    QString app;              // audio app name (may be empty)
+    QStringList apps;         // audio app names (first = primary/default)
     HotkeyConfig hotkeys;     // evdev codes for volume up/down/mute
     QSet<Modifier> modifiers; // required held modifiers (empty = bare key)
     DuckingConfig ducking;    // manual per-profile audio ducking
@@ -160,6 +160,13 @@ struct Profile
     // mixer presets). Defaults preserve the full 0–100 range.
     int volMin = 0;
     int volMax = 100;
+
+    QString primaryApp() const
+    {
+        for (const QString& app : apps)
+            if (!app.isEmpty()) return app;
+        return {};
+    }
 };
 
 inline bool operator==(const HotkeyConfig& a, const HotkeyConfig& b)
@@ -201,7 +208,7 @@ inline bool operator!=(const AudioScene& a, const AudioScene& b)
 
 inline bool operator==(const Profile& a, const Profile& b)
 {
-    return a.id == b.id && a.name == b.name && a.app == b.app && a.hotkeys == b.hotkeys &&
+    return a.id == b.id && a.name == b.name && a.apps == b.apps && a.hotkeys == b.hotkeys &&
            a.modifiers == b.modifiers && a.ducking == b.ducking && a.autoSwitch == b.autoSwitch &&
            a.volMin == b.volMin && a.volMax == b.volMax;
 }
@@ -233,8 +240,8 @@ class Config
     QString inputDevice() const;
     void setInputDevice(const QString& path);
 
-    // selected audio app name (legacy mirror of profile[0].app — kept for
-    // D-Bus/MPRIS continuity; setter updates the default profile too)
+    // selected audio app name (legacy mirror of profile[0]'s primary app — kept
+    // for D-Bus/MPRIS continuity; setter updates the default profile too)
     QString selectedApp() const;
     void setSelectedApp(const QString& name);
 

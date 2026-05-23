@@ -416,7 +416,7 @@ class App : public QObject
     QString effectiveApp(const QString& profileId) const
     {
         if (m_config->autoProfileSwitch() && !m_autoActiveApp.isEmpty()) return m_autoActiveApp;
-        return findProfile(profileId).app;
+        return findProfile(profileId).primaryApp();
     }
 
     // Mirrors effectiveApp: when auto-switch redirects to a focused app, return
