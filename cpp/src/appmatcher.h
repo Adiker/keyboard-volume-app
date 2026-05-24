@@ -1,6 +1,7 @@
 #pragma once
 
 #include "audioapp.h"
+#include "config.h"
 
 #include <QList>
 #include <QString>
@@ -50,4 +51,42 @@ inline QString matchBinaryToApp(const QString& binary, const QList<AudioApp>& ca
             return app.binary.isEmpty() ? app.name : app.binary;
     }
     return {};
+}
+
+inline Profile findAutoSwitchProfileForApp(const QString& appName, const QList<Profile>& profiles)
+{
+    if (appName.isEmpty()) return {};
+    const QString lower = appName.toLower();
+
+    for (const Profile& profile : profiles)
+    {
+        if (!profile.autoSwitch) continue;
+        for (const QString& app : profile.apps)
+        {
+            if (appIdMatches(app, lower)) return profile;
+        }
+    }
+    return {};
+}
+
+inline QString validateStickyAutoProfileTarget(const QString& currentTarget,
+                                               const QList<Profile>& profiles)
+{
+    if (currentTarget.isEmpty()) return {};
+    return findAutoSwitchProfileForApp(currentTarget, profiles).id.isEmpty() ? QString{}
+                                                                             : currentTarget;
+}
+
+inline QString resolveStickyAutoProfileTarget(const QString& focusedBinary,
+                                              const QList<AudioApp>& cache,
+                                              const QList<Profile>& profiles,
+                                              const QString& currentTarget)
+{
+    if (focusedBinary.isEmpty()) return currentTarget;
+
+    const QString matchedApp = matchBinaryToApp(focusedBinary, cache);
+    if (matchedApp.isEmpty()) return currentTarget;
+
+    const Profile matchedProfile = findAutoSwitchProfileForApp(matchedApp, profiles);
+    return matchedProfile.id.isEmpty() ? currentTarget : matchedApp;
 }
