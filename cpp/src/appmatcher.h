@@ -56,13 +56,14 @@ inline QString matchBinaryToApp(const QString& binary, const QList<AudioApp>& ca
 inline Profile findAutoSwitchProfileForApp(const QString& appName, const QList<Profile>& profiles)
 {
     if (appName.isEmpty()) return {};
+    const QString lower = appName.toLower();
 
     for (const Profile& profile : profiles)
     {
         if (!profile.autoSwitch) continue;
         for (const QString& app : profile.apps)
         {
-            if (appIdMatches(app, appName)) return profile;
+            if (appIdMatches(app, lower)) return profile;
         }
     }
     return {};

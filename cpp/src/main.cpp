@@ -382,6 +382,7 @@ class App : public QObject
             delete m_windowTracker;
             m_windowTracker = nullptr;
         }
+        // Auto-switch is off or shutting down: drop the sticky target.
         m_autoActiveApp.clear();
     }
 

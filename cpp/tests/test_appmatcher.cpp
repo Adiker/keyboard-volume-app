@@ -190,6 +190,16 @@ TEST(AppMatcher, StickyAutoProfileDisabledProfileDoesNotSwitchTarget)
               QStringLiteral("spotify"));
 }
 
+TEST(AppMatcher, StickyAutoProfileUnprofiledFocusWithNoCurrentTargetStaysEmpty)
+{
+    const QList<AudioApp> cache{makeApp(QStringLiteral("Firefox"), QStringLiteral("firefox"))};
+    const QList<Profile> profiles{
+        makeProfile(QStringLiteral("music"), {QStringLiteral("spotify")})};
+
+    EXPECT_EQ(resolveStickyAutoProfileTarget(QStringLiteral("firefox"), cache, profiles, QString()),
+              QString());
+}
+
 TEST(AppMatcher, StickyAutoProfileValidationClearsRemovedOrDisabledTarget)
 {
     const QList<Profile> activeProfiles{
