@@ -218,6 +218,75 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    `kv-ctl` still uses the app's existing session D-Bus API under the hood, so `keyboard-volume-app` must already be running.
    App names are case-sensitive; use `kv-ctl get apps` to list the exact names known by the daemon.
 
+8. **Direct D-Bus access (advanced)** — when `kv-ctl` is not available (e.g. on a remote machine or from a tool that already speaks D-Bus), the same API is reachable through `qdbus`. The daemon registers two services on the session bus:
+
+   ```bash
+   # Custom interface — properties (Get / Set)
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Get \
+     org.keyboardvolumeapp.VolumeControl Volume
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Get \
+     org.keyboardvolumeapp.VolumeControl Apps
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Get \
+     org.keyboardvolumeapp.VolumeControl ActiveApp
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Set \
+     org.keyboardvolumeapp.VolumeControl Volume 0.75
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Set \
+     org.keyboardvolumeapp.VolumeControl Muted true
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Set \
+     org.keyboardvolumeapp.VolumeControl ActiveApp "Firefox"
+
+   # Custom interface — methods (default profile)
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.VolumeUp
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.VolumeDown
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.ToggleMute
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.SetMute true
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.RefreshApps
+
+   # Custom interface — per-profile and scenes
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.VolumeUpProfile firefox-ctrl
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.SetVolumeProfile firefox-ctrl 0.35
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.SetMuteProfile firefox-ctrl true
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.ToggleDuckingProfile discord
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.ShowVolume
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.ApplyScene meeting
+
+   # Debug — read everything at once / introspect
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.GetAll \
+     org.keyboardvolumeapp.VolumeControl
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Introspectable.Introspect
+
+   # MPRIS endpoint (only when "Expose fake MPRIS endpoint" is enabled in Settings)
+   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
+     org.freedesktop.DBus.Properties.Get org.mpris.MediaPlayer2 Identity
+   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
+     org.freedesktop.DBus.Properties.Get org.mpris.MediaPlayer2.Player Volume
+   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
+     org.freedesktop.DBus.Properties.Set org.mpris.MediaPlayer2.Player Volume 0.5
+   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
+     org.mpris.MediaPlayer2.Quit
+   ```
+
+   The MPRIS endpoint is opt-in (Settings → Playback progress → *Expose fake MPRIS endpoint*) and stays unregistered by default to avoid being picked up by tools like `discord-music-presence`. For shell scripts that should not depend on `qdbus` being installed, see `dbus-send` recipes in `AGENTS.md`.
+
 > **Hotkey capture note:** the app grabs its configured hotkey bindings (keys and scroll) at the evdev level, so those exact events won't be visible to Qt while the app is running. To reassign a *currently active* hotkey, right-click the hotkey field in Settings → Profiles, choose **Unassign**, save, reopen the profile, and capture the new binding.
 
 ### Configuration
@@ -567,6 +636,75 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
 
    `kv-ctl` nadal używa istniejącego API D-Bus aplikacji, więc `keyboard-volume-app` musi już działać.
    Nazwy aplikacji rozróżniają wielkość liter; użyj `kv-ctl get apps`, żeby sprawdzić dokładne nazwy znane daemonowi.
+
+8. **Bezpośredni dostęp przez D-Bus (zaawansowane)** — gdy `kv-ctl` nie jest dostępne (np. zdalna maszyna albo narzędzie, które już mówi po D-Bus), to samo API jest osiągalne przez `qdbus`. Daemon rejestruje dwie usługi na sesyjnej szynie:
+
+   ```bash
+   # Własny interfejs — properties (Get / Set)
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Get \
+     org.keyboardvolumeapp.VolumeControl Volume
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Get \
+     org.keyboardvolumeapp.VolumeControl Apps
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Get \
+     org.keyboardvolumeapp.VolumeControl ActiveApp
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Set \
+     org.keyboardvolumeapp.VolumeControl Volume 0.75
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Set \
+     org.keyboardvolumeapp.VolumeControl Muted true
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.Set \
+     org.keyboardvolumeapp.VolumeControl ActiveApp "Firefox"
+
+   # Własny interfejs — metody (profil domyślny)
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.VolumeUp
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.VolumeDown
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.ToggleMute
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.SetMute true
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.RefreshApps
+
+   # Własny interfejs — per profil i sceny
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.VolumeUpProfile firefox-ctrl
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.SetVolumeProfile firefox-ctrl 0.35
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.SetMuteProfile firefox-ctrl true
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.ToggleDuckingProfile discord
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.ShowVolume
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.ApplyScene meeting
+
+   # Debug — odczyt wszystkiego naraz / introspekcja
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Properties.GetAll \
+     org.keyboardvolumeapp.VolumeControl
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.freedesktop.DBus.Introspectable.Introspect
+
+   # Endpoint MPRIS (tylko gdy "Eksponuj fałszywy endpoint MPRIS" jest włączone w Ustawieniach)
+   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
+     org.freedesktop.DBus.Properties.Get org.mpris.MediaPlayer2 Identity
+   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
+     org.freedesktop.DBus.Properties.Get org.mpris.MediaPlayer2.Player Volume
+   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
+     org.freedesktop.DBus.Properties.Set org.mpris.MediaPlayer2.Player Volume 0.5
+   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
+     org.mpris.MediaPlayer2.Quit
+   ```
+
+   Endpoint MPRIS jest opt-in (Ustawienia → Postęp odtwarzania → *Eksponuj fałszywy endpoint MPRIS*) i domyślnie pozostaje niezarejestrowany, żeby narzędzia takie jak `discord-music-presence` go nie wykrywały. Dla skryptów powłoki, które nie powinny zależeć od obecności `qdbus`, w `AGENTS.md` znajdziesz odpowiedniki w `dbus-send`.
 
 > **Uwaga dot. przechwytywania skrótów:** aplikacja blokuje aktualnie skonfigurowane skróty (klawisze i scroll) na poziomie evdev, więc te właśnie zdarzenia nie są widoczne dla Qt podczas działania programu. Aby zmienić *aktywny* skrót, kliknij prawym przyciskiem pole hotkeya w Ustawienia → Profile, wybierz **Wyczyść**, zapisz, otwórz profil ponownie i przechwyć nowe powiązanie.
 

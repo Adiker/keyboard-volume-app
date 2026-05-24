@@ -305,6 +305,91 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 
 ---
 
+## Notatki z przeglądu kodu (2026-05-04, zaktualizowane)
+
+Pozycje pochodzące z lokalnej notatki `CODE_REVIEW.md`. Część punktów jest już opisana wyżej (#22 clang-tidy, #23 pasywne modifiery, alias aplikacji #7b). Lista poniżej zbiera to, co nie miało jeszcze własnego wpisu — głównie refactor/maintainability i drobne luki testowe / featurowe. Status na dzień dodania: planowane, chyba że oznaczono inaczej.
+
+### 33. Wydzielenie klasy `App` z `main.cpp`
+
+**Problem:** `cpp/src/main.cpp` nadal trzyma klasę koordynatora `App` razem z `main()`. To już nie jest błąd lifetime, ale utrudnia testowanie wiringu i wymusza obecność `main.moc`. Konstrukcja oraz rejestracja D-Bus/MPRIS są sprzężone z wejściem aplikacji.
+**Rekomendacja:** Wydzielić `App` do `cpp/src/app.h/cpp`. W `main.cpp` zostawić tylko: setup środowiska (Wayland/XCB decision logic), CLI (`QCommandLineParser`), singleton check przez D-Bus name, first-run i `app.exec()`.
+**Pliki:** Nowy `cpp/src/app.h`, `cpp/src/app.cpp`, `cpp/src/main.cpp`, `cpp/CMakeLists.txt`.
+**Status:** Planowane.
+
+### 34. Podział `volumecontroller.cpp`
+
+**Problem:** Plik ma ~880 linii i łączy `VolumeController`, `PaWorker`, `PaWatcherThread`, sink-input introspection, stream-restore, pending queue, reconnect/backoff oraz orchestrację fallbacku PipeWire. Trudny w review i ryzykowny przy kolejnych zmianach hot patha.
+**Rekomendacja:** Wydzielić: `paworker.h/cpp` (właściciel kontekstu PA i operacji volume/mute), `pawatcherthread.h/cpp` (subskrypcja sink-input + reconnect watcher), wewnętrzny namespace lub `pabackend_helpers.h/cpp` na callback data i stream-restore helpery. `volumecontroller.cpp` zostaje cienką fasadą Qt API.
+**Pliki:** Nowe `cpp/src/paworker.h/cpp`, `cpp/src/pawatcherthread.h/cpp`, refactor `cpp/src/volumecontroller.{h,cpp}`, `cpp/CMakeLists.txt`, `cpp/tests/test_volumecontroller.cpp`.
+**Status:** Planowane. Wymaga zachowania threading contract (libpulse tylko z `PaWorker`, `std::atomic<bool>` dla flag, brak ścieżki do main thread).
+
+### 35. Podział `pwutils.cpp`
+
+**Problem:** Plik osiągnął ~530 linii i zaczyna mieszać snapshot registry, listowanie klientów, filtrowanie, odczyt node'ów i zapis `SPA_PARAM_Props`. Po dodaniu kolejnej funkcjonalności PipeWire (np. aliasy z #7b) szybko stanie się trudniejszy w utrzymaniu.
+**Rekomendacja:** Przed kolejnymi rozszerzeniami rozdzielić warstwy: registry snapshot, transformacja/filtr (filtrowanie klientów, mapping owner-by-`client.id`, normalizacja nazw), node control (read/write `SPA_PARAM_Props`).
+**Pliki:** `cpp/src/pwutils.{h,cpp}` — refactor wewnątrzplikowy lub split na 2–3 jednostki.
+**Status:** Planowane.
+
+### 36. Konfigurowalne filtry aplikacji audio
+
+**Problem:** `SYSTEM_BINARIES` i `SKIP_APP_NAMES` są stałymi w kodzie, współdzielonymi przez `pwutils` i `VolumeController`. Power user nie może dodać własnych wykluczeń, usunąć domyślnego ani sterować nietypową aplikacją działającą pod generycznym binary name.
+**Rekomendacja:** Dodać opcjonalną sekcję `audio_app_filters` w configu z deep-merge wartości domyślnych. UI w późniejszym etapie. Zachować kanoniczne nazwy (matching po `binary` zgodnie z #7a).
+**Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/pwutils.{h,cpp}`, `cpp/src/volumecontroller.cpp`, `cpp/tests/test_config.cpp`, `cpp/tests/test_pwutils.cpp`.
+**Status:** Planowane.
+
+### 37. D-Bus `setActiveApp()` → tray refresh
+
+**Problem:** `DbusInterface::setActiveApp()` zapisuje `Config::setSelectedApp(name)` i aktualizuje swój cache, ale wcześniej nie wymuszał jawnie odświeżenia stanu `TrayApp`/menu. Po zewnętrznej zmianie aktywnej aplikacji przez D-Bus UI mogło wymagać kolejnego eventu, żeby pokazać spójny stan.
+**Rekomendacja:** Sprawdzić zachowanie ręcznie (`qdbus … setActiveApp …` + obserwacja menu). Jeśli problem się potwierdzi: dodać jawny sygnał/slot do zmiany domyślnej aplikacji przez `TrayApp` albo wspólną ścieżkę `Config → UI refresh`.
+**Pliki:** `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/trayapp.{h,cpp}`, `cpp/tests/test_dbusinterface.cpp`.
+**Status:** Do weryfikacji. (Możliwe że zostało pośrednio domknięte przez wiring `TrayApp::appChanged` → `DbusInterface::onActiveAppChanged()` z PR #51/#53.)
+
+### 38. Uzupełnienie pokrycia testowego
+
+**Problem:** Mimo bogatego zestawu testów (test_config 38, test_inputhandler 26, test_mprisclient 13, test_dbusinterface 6 itd.) kilka obszarów wciąż nie ma jednostkowego pokrycia.
+**Rekomendacja:** Dodać:
+- testy `Config` dla uszkodzonego JSON i wariantów braku uprawnień (oprócz istniejącego `Config.SaveFailureKeepsExistingFile`),
+- testy reconnect/pending state w `VolumeController` bez realnego serwera PA (mock backend),
+- testy wiringu `App` po wydzieleniu z `main.cpp` (zależy od #33).
+**Pliki:** `cpp/tests/test_config.cpp`, `cpp/tests/test_volumecontroller.cpp`, ewentualnie nowy `cpp/tests/test_app.cpp` po #33.
+**Status:** Planowane.
+
+### 39. File / journald logging z `--log-level`
+
+**Problem:** `qWarning()` / `qDebug()` wszystko leci na stderr. Brak strukturalnego logowania utrudnia diagnostykę, gdy aplikacja działa jako systemd user service.
+**Rekomendacja:** Dodać `--log-level` do `QCommandLineParser` (off/warn/info/debug/trace), routing do journald (przez `sd_journal_print` lub `QtLogging` dispatcher), opcjonalnie plik logów w `XDG_STATE_HOME`.
+**Pliki:** `cpp/src/main.cpp`, ewentualnie nowy `cpp/src/logging.h/cpp`, `cpp/CMakeLists.txt`.
+**Status:** Planowane.
+
+### 40. D-Bus sygnały device/app lifecycle
+
+**Problem:** Klienci D-Bus muszą polować `Apps` lub łapać `appsChanged`, żeby zorientować się że aplikacja audio się pojawiła/zniknęła. Dla zewnętrznych wskaźników (panel, widget) brakuje wyraźnych sygnałów `deviceConnected`/`deviceDisconnected` (evdev) i `appStarted`/`appStopped` (PipeWire) z metadanymi.
+**Rekomendacja:** Dodać sygnały do `org.keyboardvolumeapp.VolumeControl` z minimum payload (`name`, `binary`). Emisja z `InputHandler` (evdev hot-plug) i `PaWatcherThread` (sink-input add/remove) przez async signal queued na main thread.
+**Pliki:** `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/inputhandler.{h,cpp}`, `cpp/src/volumecontroller.{h,cpp}`, `cpp/tests/test_dbusinterface.cpp`.
+**Status:** Planowane.
+
+### 41. Skróty „następna / poprzednia aplikacja"
+
+**Problem:** Aby przełączyć cel głośności (active app), trzeba kliknąć w tray menu albo zawołać `kv-ctl set active-app NAME`. Dla power usera bez tray menu (tiling WM) nie ma natywnego skrótu.
+**Rekomendacja:** Dodać dwie metody D-Bus `NextActiveApp()` / `PreviousActiveApp()` oraz odpowiadające im profilowe hotkeye (`hotkeys.next_app` / `hotkeys.prev_app` jako `HotkeyBinding`). `kv-ctl next-app` / `kv-ctl prev-app` w komplecie.
+**Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/inputhandler.{h,cpp}`, `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/kvctl*.{h,cpp}`, `cpp/src/i18n.cpp`, testy.
+**Status:** Planowane. Uwaga: lista aplikacji jest dynamiczna (sink-input add/remove), więc cykl powinien być stabilny w obrębie jednego wciśnięcia (snapshot na początku, kolejne wciśnięcia w 500 ms używają tego samego snapshotu).
+
+### Priorytetowa kolejność (z notatki)
+
+| Priorytet | Temat | Wpływ | Wysiłek | Status |
+|---|---|---:|---:|---|
+| 1 | #37 D-Bus `setActiveApp()` → tray refresh | spójność UI/API | mały | do weryfikacji |
+| 2 | #33 Wydzielenie `App` z `main.cpp` | testowalność | średni | planowane |
+| 3 | #34 Podział `volumecontroller.cpp` | maintainability | średni/duży | planowane |
+| 4 | #22 clang-tidy w CI | jakość | średni | planowane |
+| 5 | #36 Konfigurowalne filtry aplikacji | power user | średni | planowane |
+| 6 | #38 Testy edge case Config + reconnect VolumeController | regresje | średni | planowane |
+
+Punkty zamknięte przed datą notatki (volatile→atomic, Config thread-safety, OSDWindow leak, key repeat, singleton, PA reconnect, PipeWire bez subprocess, auto-refresh listy aplikacji, profile wieloaplikacyjne, PKGBUILD, atomic save) udokumentowane są w odpowiednich pozycjach #14, #5d, #7, #5c, #1 oraz w `CLAUDE.md` (Key Conventions) — nie powielamy ich w tej sekcji.
+
+---
+
 ## Weryfikacja (dla każdej zmiany)
 
 1. `cmake --build cpp/build -j$(nproc)` — build bez błędów
