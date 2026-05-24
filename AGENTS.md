@@ -98,6 +98,59 @@ The app registers two D-Bus services on the session bus:
 - `Qt6::DBus` is a separate CMake component — requires `find_package(Qt6 REQUIRED COMPONENTS ... DBus)`.
 - The MPRIS `Volume` property maps to `DbusInterface::volume()`. `PlaybackStatus` is always `"Stopped"`. Play/Pause/Next/Previous are no-ops. `Quit` → `qApp->quit()`.
 
+### `dbus-send` recipes (script-friendly, no `qdbus` dependency)
+
+`kv-ctl` is the recommended client. When debugging with no `kv-ctl` build available, or scripting against a system that does not ship `qdbus` (Qt6 makes `qdbus` an optional package on several distros), use `dbus-send`. End-user `qdbus` examples live in `README.md`.
+
+```bash
+# Bump volume / mute on the default profile
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeUp
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeDown
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.ToggleMute
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.SetMute boolean:true
+
+# Properties — Set (typed!) and Get
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
+  string:org.keyboardvolumeapp.VolumeControl string:Volume variant:double:0.5
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
+  string:org.keyboardvolumeapp.VolumeControl string:Muted variant:boolean:true
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
+  string:org.keyboardvolumeapp.VolumeControl string:ActiveApp variant:string:"Firefox"
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
+  string:org.keyboardvolumeapp.VolumeControl string:VolumeStep variant:int32:10
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
+  string:org.keyboardvolumeapp.VolumeControl string:Volume
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
+  string:org.keyboardvolumeapp.VolumeControl string:Apps
+
+# Per-profile and scenes
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.SetVolumeProfile \
+  string:firefox-ctrl double:0.35
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.SetMuteProfile \
+  string:firefox-ctrl boolean:true
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.ApplyScene \
+  string:meeting
+
+# Refresh app list
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.RefreshApps
+```
+
+`dbus-send` requires explicit `variant:<type>:` for property writes; missing the variant wrapper or the wrong inner type returns `org.freedesktop.DBus.Error.InvalidArgs` from the property setter. The MPRIS endpoint follows the same recipes against bus name `org.mpris.MediaPlayer2.keyboardvolumeapp` and path `/org/mpris/MediaPlayer2`, but is registered only when `OsdConfig::exposeMpris == true`.
+
 ## Icon / QRC
 
 The tray icon is embedded as a Qt resource: `cpp/resources.qrc` maps `../resources/icon.png` to `:/icon.png`. `CMAKE_AUTORCC` is ON so the `.qrc` only needs to be listed in `SOURCES`. Do not add separate `POST_BUILD` copy commands — the icon is already in the binary.
