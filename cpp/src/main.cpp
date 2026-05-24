@@ -205,7 +205,8 @@ class App : public QObject
     {
         if (m_config->autoProfileSwitch())
         {
-            m_autoActiveApp.clear();
+            m_autoActiveApp =
+                ::validateStickyAutoProfileTarget(m_autoActiveApp, m_config->profiles());
             startWindowTracker();
         }
         else
@@ -386,31 +387,14 @@ class App : public QObject
 
     void onFocusedBinaryChanged(const QString& binary)
     {
-        if (!m_config->autoProfileSwitch() || binary.isEmpty())
+        if (!m_config->autoProfileSwitch())
         {
             m_autoActiveApp.clear();
             return;
         }
 
-        // Match binary name against PipeWire app cache
-        const QString matchedApp = ::matchBinaryToApp(binary, m_appCache);
-        if (matchedApp.isEmpty())
-        {
-            m_autoActiveApp.clear();
-            return;
-        }
-
-        // Check if this app belongs to an auto-switch-enabled profile
-        const Profile matchedProfile = m_config->findProfileByApp(matchedApp);
-        if (matchedProfile.id.isEmpty())
-        {
-            m_autoActiveApp.clear();
-            return;
-        }
-
-        // Only switch if the auto-detected app differs from current
-        if (m_autoActiveApp == matchedApp) return;
-        m_autoActiveApp = matchedApp;
+        m_autoActiveApp = ::resolveStickyAutoProfileTarget(binary, m_appCache, m_config->profiles(),
+                                                           m_autoActiveApp);
     }
 
     QString effectiveApp(const QString& profileId) const

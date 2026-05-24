@@ -14,6 +14,16 @@ AudioApp makeApp(const QString& name, const QString& binary)
     return app;
 }
 
+Profile makeProfile(const QString& id, const QStringList& apps, bool autoSwitch = true)
+{
+    Profile profile;
+    profile.id = id;
+    profile.name = id;
+    profile.apps = apps;
+    profile.autoSwitch = autoSwitch;
+    return profile;
+}
+
 } // namespace
 
 TEST(AppMatcher, EmptyBinaryReturnsEmpty)
@@ -120,4 +130,76 @@ TEST(AppMatcher, MatchesAfterAppWithEmptyFields)
     cache.append(makeApp(QString(), QString()));
     cache.append(makeApp(QStringLiteral("Firefox"), QStringLiteral("firefox")));
     EXPECT_EQ(matchBinaryToApp(QStringLiteral("firefox"), cache), QStringLiteral("firefox"));
+}
+
+TEST(AppMatcher, StickyAutoProfileFocusOnProfiledAppSetsTarget)
+{
+    const QList<AudioApp> cache{makeApp(QStringLiteral("Spotify"), QStringLiteral("spotify"))};
+    const QList<Profile> profiles{
+        makeProfile(QStringLiteral("music"), {QStringLiteral("spotify")})};
+
+    EXPECT_EQ(resolveStickyAutoProfileTarget(QStringLiteral("spotify"), cache, profiles, QString()),
+              QStringLiteral("spotify"));
+}
+
+TEST(AppMatcher, StickyAutoProfileUnprofiledFocusKeepsPreviousTarget)
+{
+    const QList<AudioApp> cache{makeApp(QStringLiteral("Spotify"), QStringLiteral("spotify")),
+                                makeApp(QStringLiteral("Firefox"), QStringLiteral("firefox"))};
+    const QList<Profile> profiles{
+        makeProfile(QStringLiteral("music"), {QStringLiteral("spotify")})};
+
+    EXPECT_EQ(resolveStickyAutoProfileTarget(QStringLiteral("firefox"), cache, profiles,
+                                             QStringLiteral("spotify")),
+              QStringLiteral("spotify"));
+}
+
+TEST(AppMatcher, StickyAutoProfileEmptyFocusKeepsPreviousTarget)
+{
+    const QList<AudioApp> cache{makeApp(QStringLiteral("Spotify"), QStringLiteral("spotify"))};
+    const QList<Profile> profiles{
+        makeProfile(QStringLiteral("music"), {QStringLiteral("spotify")})};
+
+    EXPECT_EQ(resolveStickyAutoProfileTarget(QString(), cache, profiles, QStringLiteral("spotify")),
+              QStringLiteral("spotify"));
+}
+
+TEST(AppMatcher, StickyAutoProfileOtherProfiledFocusSwitchesTarget)
+{
+    const QList<AudioApp> cache{makeApp(QStringLiteral("Spotify"), QStringLiteral("spotify")),
+                                makeApp(QStringLiteral("Firefox"), QStringLiteral("firefox"))};
+    const QList<Profile> profiles{
+        makeProfile(QStringLiteral("music"), {QStringLiteral("spotify")}),
+        makeProfile(QStringLiteral("browser"), {QStringLiteral("firefox")})};
+
+    EXPECT_EQ(resolveStickyAutoProfileTarget(QStringLiteral("firefox"), cache, profiles,
+                                             QStringLiteral("spotify")),
+              QStringLiteral("firefox"));
+}
+
+TEST(AppMatcher, StickyAutoProfileDisabledProfileDoesNotSwitchTarget)
+{
+    const QList<AudioApp> cache{makeApp(QStringLiteral("Spotify"), QStringLiteral("spotify")),
+                                makeApp(QStringLiteral("Firefox"), QStringLiteral("firefox"))};
+    const QList<Profile> profiles{
+        makeProfile(QStringLiteral("music"), {QStringLiteral("spotify")}),
+        makeProfile(QStringLiteral("browser"), {QStringLiteral("firefox")}, false)};
+
+    EXPECT_EQ(resolveStickyAutoProfileTarget(QStringLiteral("firefox"), cache, profiles,
+                                             QStringLiteral("spotify")),
+              QStringLiteral("spotify"));
+}
+
+TEST(AppMatcher, StickyAutoProfileValidationClearsRemovedOrDisabledTarget)
+{
+    const QList<Profile> activeProfiles{
+        makeProfile(QStringLiteral("music"), {QStringLiteral("spotify")})};
+    const QList<Profile> disabledProfiles{
+        makeProfile(QStringLiteral("music"), {QStringLiteral("spotify")}, false)};
+
+    EXPECT_EQ(validateStickyAutoProfileTarget(QStringLiteral("spotify"), activeProfiles),
+              QStringLiteral("spotify"));
+    EXPECT_EQ(validateStickyAutoProfileTarget(QStringLiteral("spotify"), disabledProfiles),
+              QString());
+    EXPECT_EQ(validateStickyAutoProfileTarget(QStringLiteral("spotify"), {}), QString());
 }

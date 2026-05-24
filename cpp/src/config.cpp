@@ -861,24 +861,5 @@ void Config::setAutoProfileSwitch(bool enabled)
 
 Profile Config::findProfileByApp(const QString& appName) const
 {
-    if (appName.isEmpty()) return Profile{};
-    const QString lower = appName.toLower();
-    for (const Profile& p : profiles())
-    {
-        if (!p.autoSwitch) continue;
-        for (const QString& a : p.apps)
-        {
-            if (a.isEmpty()) continue;
-            const QString la = a.toLower();
-            if (la.contains(lower) || lower.contains(la)) return p;
-
-            const QString normalizedApp = normalizedAppId(a);
-            const QString normalizedNeedle = normalizedAppId(appName);
-            if (!normalizedApp.isEmpty() && !normalizedNeedle.isEmpty() &&
-                (normalizedApp.contains(normalizedNeedle) ||
-                 normalizedNeedle.contains(normalizedApp)))
-                return p;
-        }
-    }
-    return Profile{};
+    return ::findAutoSwitchProfileForApp(appName, profiles());
 }
