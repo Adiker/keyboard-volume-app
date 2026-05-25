@@ -111,7 +111,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Problem:** Lint formatowania (clang-format) jest już w CI, ale analiza statyczna (clang-tidy) nie jest uruchamiana automatycznie — błędy takie jak niezainicjowane zmienne, podejrzane rzutowania czy naruszenia wytycznych C++ Core Guidelines mogą trafiać do `main` bez ostrzeżenia. `CMakeLists.txt` już generuje `compile_commands.json` (`CMAKE_EXPORT_COMPILE_COMMANDS ON`), więc infrastruktura jest gotowa.
 **Rekomendacja:** Dodać job `clang-tidy` w `.github/workflows/ci.yml`, uruchamiany na zmienionych plikach `.cpp`/`.h` (analogicznie do istniejącego joba `format`). Dodać plik `.clang-tidy` w katalogu głównym repozytorium z zestawem checkerów: `clang-diagnostic-*`, `cppcoreguidelines-*`, `readability-*`, `performance-*`, `modernize-*`. Na start tryb ostrzegawczy (warnings nie blokują CI), docelowo — błędy blokujące merge.
 **Pliki:** `.github/workflows/ci.yml`, nowy `.clang-tidy`
-**Status:** Planowane.
+**Status:** Częściowo wdrożone / warning-only. Job "Clang-Tidy changed C++ files" dodany do CI z `continue-on-error: true` — nie blokuje merge. Plik `.clang-tidy` w katalogu głównym z konserwatywnym zestawem checkerów: `bugprone-*`, `performance-*`, `clang-analyzer-*`, wybrane `modernize-*` i `cppcoreguidelines-pro-type-member-init`. `readability-*` i `WarningsAsErrors` wyłączone do czasu wyczyszczenia istniejących ostrzeżeń.
 
 ### 23. Pasywne śledzenie modyfikatorów z niezależnych klawiatur (v2)
 
