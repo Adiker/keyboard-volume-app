@@ -550,6 +550,73 @@ MprisClient::playbackStatusChanged(status)
 
 D-Bus calls arrive on the main thread and are forwarded to `VolumeController` (which posts to `PaWorker`). `DbusInterface` property reads are served from main-thread caches — no blocking.
 
+---
+
+## D-Bus / MPRIS — `dbus-send` recipes
+
+`kv-ctl` is the recommended client. When debugging without a `kv-ctl` build, or scripting on systems that do not ship `qdbus` (Qt6 makes it an optional package on several distros), use `dbus-send`. End-user `qdbus` examples live in `README.md`.
+
+```bash
+# Bump volume / mute on the default profile
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeUp
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeDown
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.ToggleMute
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.SetMute boolean:true
+
+# Properties — Set (typed!) and Get
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
+  string:org.keyboardvolumeapp.VolumeControl string:Volume variant:double:0.5
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
+  string:org.keyboardvolumeapp.VolumeControl string:Muted variant:boolean:true
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
+  string:org.keyboardvolumeapp.VolumeControl string:ActiveApp variant:string:"Firefox"
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
+  string:org.keyboardvolumeapp.VolumeControl string:VolumeStep variant:int32:10
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
+  string:org.keyboardvolumeapp.VolumeControl string:Volume
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
+  string:org.keyboardvolumeapp.VolumeControl string:Apps
+
+# Per-profile and scenes
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.SetVolumeProfile \
+  string:firefox-ctrl double:0.35
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.SetMuteProfile \
+  string:firefox-ctrl boolean:true
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.ApplyScene \
+  string:meeting
+
+# Refresh app list
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.RefreshApps
+
+# Media controls (relayed to active MPRIS player)
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaPlayPause
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaNext
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaPrevious
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaStop
+```
+
+`dbus-send` requires explicit `variant:<type>:` for property writes; missing the variant wrapper or the wrong inner type returns `org.freedesktop.DBus.Error.InvalidArgs` from the property setter. The MPRIS endpoint follows the same recipes against bus name `org.mpris.MediaPlayer2.keyboardvolumeapp` and path `/org/mpris/MediaPlayer2`, but is registered only when `OsdConfig::exposeMpris == true`.
+
+---
+
 ### `pkg/arch/PKGBUILD` — Arch Linux package
 
 `keyboard-volume-app-git` package for Arch Linux / AUR. Builds from the `main` branch via `git clone`.
@@ -594,15 +661,7 @@ sudo usermod -aG input $USER
 
 ### Git Workflow
 
-- **Never commit directly to `main`** unless explicitly asked.
-- Always create a branch from the latest `origin/main`.
-- Use branch prefixes: `feature/`, `fix/`, `refactor/`, `docs/`, `chore/`.
-- Push the branch and open a PR to `main`.
-- Never force-push to `main`.
-- Never delete branches without explicit consent.
-- Never rewrite published history without explicit consent.
-- Before opening a PR, run relevant build/tests if the change warrants it.
-- For risky areas (evdev, libpulse, D-Bus, MPRIS, threading, CMake, config migration), add a short risk/rollback note in the PR description.
+See **Git Workflow (mandatory)** and **Branch hygiene** in `AGENTS.md` — that file is the canonical source for branch naming, PR rules, force-push policy, and risk/rollback notes.
 
 ### Adding a Translation Key
 

@@ -16,12 +16,7 @@ Comprehensive project docs are in `CLAUDE.md`. This file covers only the sharp e
 
 ## Branch Layout
 
-| Branch | Purpose |
-|---|---|
-| `main` | Primary C++/Qt6 implementation |
-| `python-legacy` | Archived Python/PyQt6 implementation |
-| `python-last` | Tag pointing to last Python `main` commit |
-| `cpp-rewrite` | Preserved migration branch, inactive for new changes |
+See **Branch Layout** in `CLAUDE.md` for the full table (`main`, `python-legacy`, `python-last`, `cpp-rewrite`).
 
 ## Branch hygiene
 
@@ -98,68 +93,7 @@ The app registers two D-Bus services on the session bus:
 - `Qt6::DBus` is a separate CMake component — requires `find_package(Qt6 REQUIRED COMPONENTS ... DBus)`.
 - The MPRIS `Volume` property maps to `DbusInterface::volume()`. `PlaybackStatus` is always `"Stopped"`. Play/Pause/Next/Previous are no-ops. `Quit` → `qApp->quit()`.
 
-### `dbus-send` recipes (script-friendly, no `qdbus` dependency)
-
-`kv-ctl` is the recommended client. When debugging with no `kv-ctl` build available, or scripting against a system that does not ship `qdbus` (Qt6 makes `qdbus` an optional package on several distros), use `dbus-send`. End-user `qdbus` examples live in `README.md`.
-
-```bash
-# Bump volume / mute on the default profile
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeUp
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.VolumeDown
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.ToggleMute
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.SetMute boolean:true
-
-# Properties — Set (typed!) and Get
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
-  string:org.keyboardvolumeapp.VolumeControl string:Volume variant:double:0.5
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
-  string:org.keyboardvolumeapp.VolumeControl string:Muted variant:boolean:true
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
-  string:org.keyboardvolumeapp.VolumeControl string:ActiveApp variant:string:"Firefox"
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Set \
-  string:org.keyboardvolumeapp.VolumeControl string:VolumeStep variant:int32:10
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
-  string:org.keyboardvolumeapp.VolumeControl string:Volume
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.freedesktop.DBus.Properties.Get \
-  string:org.keyboardvolumeapp.VolumeControl string:Apps
-
-# Per-profile and scenes
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.SetVolumeProfile \
-  string:firefox-ctrl double:0.35
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.SetMuteProfile \
-  string:firefox-ctrl boolean:true
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.ApplyScene \
-  string:meeting
-
-# Refresh app list
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.RefreshApps
-
-# Media controls (relayed to active MPRIS player)
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaPlayPause
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaNext
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaPrevious
-dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
-  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaStop
-```
-
-`dbus-send` requires explicit `variant:<type>:` for property writes; missing the variant wrapper or the wrong inner type returns `org.freedesktop.DBus.Error.InvalidArgs` from the property setter. The MPRIS endpoint follows the same recipes against bus name `org.mpris.MediaPlayer2.keyboardvolumeapp` and path `/org/mpris/MediaPlayer2`, but is registered only when `OsdConfig::exposeMpris == true`.
+For script-friendly `dbus-send` recipes (debugging without `kv-ctl` or `qdbus`), see **D-Bus / MPRIS → `dbus-send` recipes** in `CLAUDE.md`. End-user `qdbus` examples are in `README.md`.
 
 ## Icon / QRC
 
@@ -167,54 +101,9 @@ The tray icon is embedded as a Qt resource: `cpp/resources.qrc` maps `../resourc
 
 ## Tests
 
-Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 37 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / scroll hotkeys / show hotkey / id uniqueification, media hotkeys round-trip)
-- `test_i18n` — 7 tests (lookup, fallback)
-- `test_kvctlcommand` — 16 tests (subcommand parser, profile option, get/set fields, show command, mute on/off, media subcommand, invalid input)
-- `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
-- `test_volumecontroller` — 5 smoke tests
-- `test_inputhandler` — 31 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity, scroll binding matching, show volume action, `resolveMediaHotkey` matching for keys and scroll)
-- `test_dbusinterface` — 8 tests (absolute Volume/Muted property setters, ToggleMute method, Media* no-op without MprisClient, Media* slot scriptability)
-- `test_mprisclient` — slot wiring + position/track edge cases (requires session D-Bus; wrap with `dbus-run-session`)
+Test inventory, `ctest` invocation, and clang-tidy local recipes live in **Tests** in `CLAUDE.md`. Sharp edges only:
 
-Run locally: `cd cpp/build && ctest --output-on-failure`.
-
-GitHub Actions CI is enabled in `.github/workflows/ci.yml` for PRs and pushes to
-`main`. It builds and runs CTest in both Debug and Release, and checks
-`clang-format` only for changed C++ files under `cpp/src` and `cpp/tests`.
-All C++ changes in `cpp/src` and `cpp/tests` must be `clang-format` compliant.
-Before opening a PR that touches those paths, check the changed files with:
-`clang-format --dry-run --Werror <changed-cpp-files>`. If the check fails, run
-`clang-format -i` only on the changed C++ files rather than formatting the whole
-repo unnecessarily.
-The CI workflow is path-filtered: docs-only changes such as Markdown updates do
-not run CI, while changes under `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake
-files, or `.github/workflows/ci.yml` do.
-`clang-tidy` runs in CI as a warning-only job ("Clang-Tidy changed C++ files") on
-changed `.cpp`/`.cc`/`.cxx` files under `cpp/src` and `cpp/tests`. It does **not**
-block merge (`continue-on-error: true`). Configuration lives in `.clang-tidy` at
-the repo root.
-
-To run clang-tidy locally on changed files (requires a Debug build with
-`compile_commands.json`):
-
-```bash
-# 1. Configure with compile_commands.json (only needed once / after CMake changes)
-cmake -S cpp -B cpp/build-tidy -G Ninja \
-  -DCMAKE_BUILD_TYPE=Debug \
-  -DBUILD_TESTING=ON \
-  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-  -DCMAKE_C_COMPILER=clang \
-  -DCMAKE_CXX_COMPILER=clang++
-
-# 2. Run on a specific file
-clang-tidy -p cpp/build-tidy cpp/src/config.cpp
-
-# 3. Run on all changed files vs main
-git diff --name-only --diff-filter=ACMR origin/main...HEAD \
-  | grep -E '^cpp/(src|tests)/.*\.(cpp|cc|cxx)$' \
-  | xargs -r clang-tidy -p cpp/build-tidy
-```
-
-`Claude Code Review` is currently temporarily disabled via `if: false` in
-`.github/workflows/claude-code-review.yml`.
+- All C++ changes in `cpp/src` and `cpp/tests` must be `clang-format` compliant. Before opening a PR that touches those paths, run `clang-format --dry-run --Werror` on the changed files; if it fails, run `clang-format -i` only on the changed files rather than reformatting the whole repo.
+- CI is path-filtered: docs-only changes do not run CI; changes under `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake files, or `.github/workflows/ci.yml` do.
+- `clang-tidy` runs in CI as a warning-only job (`continue-on-error: true`) — it does **not** block merge.
+- `Claude Code Review` is currently disabled via `if: false` in `.github/workflows/claude-code-review.yml`.
