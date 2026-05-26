@@ -70,6 +70,91 @@ jobs:
           printf '  %s\n' "${files[@]}"
           clang-format --dry-run --Werror "${files[@]}"
 
+  clang-tidy:
+    name: Clang-Tidy changed C++ files
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            clang \
+            clang-tidy \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            libqt6dbus6 \
+            libgtest-dev \
+            libevdev-dev \
+            libpulse-dev \
+            libpipewire-0.3-dev \
+            libtag1-dev \
+            libwayland-dev \
+            dbus
+
+      - name: Configure (generate compile_commands.json)
+        run: >
+          cmake
+          -S cpp
+          -B cpp/build-tidy
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DBUILD_TESTING=ON
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
+
+      - name: Run clang-tidy on changed C++ files
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_sha="${{ github.event.pull_request.base.sha }}"
+          else
+            base_sha="${{ github.event.before }}"
+          fi
+
+          if git cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+            range="${base_sha}...HEAD"
+          else
+            range="HEAD~1...HEAD"
+          fi
+
+          mapfile -t files < <(
+            git diff --name-only --diff-filter=ACMR "${range}" \
+              | grep -E '^cpp/(src|tests)/.*\.(cpp|cc|cxx)$' \
+              || true
+          )
+
+          if [[ "${#files[@]}" -eq 0 ]]; then
+            echo "No changed C++ source files under cpp/src or cpp/tests."
+            exit 0
+          fi
+
+          printf 'Running clang-tidy on:\n'
+          printf '  %s\n' "${files[@]}"
+
+          exit_code=0
+          for f in "${files[@]}"; do
+            clang-tidy -p cpp/build-tidy "${f}" || exit_code=$?
+          done
+
+          if [[ "${exit_code}" -ne 0 ]]; then
+            echo "::warning::clang-tidy reported issues (warning-only, not blocking merge)."
+          fi
+          exit "${exit_code}"
+
   build:
     name: Build and test (${{ matrix.build_type }})
     runs-on: ubuntu-24.04

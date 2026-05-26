@@ -650,8 +650,34 @@ GitHub Actions CI is enabled in `.github/workflows/ci.yml` for PRs and pushes to
 The CI workflow is path-filtered: docs-only changes such as Markdown updates do
 not run CI, while changes under `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake
 files, or `.github/workflows/ci.yml` do.
-`clang-tidy` is not part of CI yet. `Claude Code Review` is currently
-temporarily disabled via `if: false` in `.github/workflows/claude-code-review.yml`.
+`clang-tidy` runs in CI as a warning-only job ("Clang-Tidy changed C++ files") on
+changed `.cpp`/`.cc`/`.cxx` files under `cpp/src` and `cpp/tests`. It does **not**
+block merge (`continue-on-error: true`). Configuration lives in `.clang-tidy` at
+the repo root.
+
+To run clang-tidy locally on changed files (requires a Debug build with
+`compile_commands.json`):
+
+```bash
+# 1. Configure with compile_commands.json (only needed once / after CMake changes)
+cmake -S cpp -B cpp/build-tidy -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DBUILD_TESTING=ON \
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  -DCMAKE_C_COMPILER=clang \
+  -DCMAKE_CXX_COMPILER=clang++
+
+# 2. Run on a specific file
+clang-tidy -p cpp/build-tidy cpp/src/config.cpp
+
+# 3. Run on all changed files vs main
+git diff --name-only --diff-filter=ACMR origin/main...HEAD \
+  | grep -E '^cpp/(src|tests)/.*\.(cpp|cc|cxx)$' \
+  | xargs -r clang-tidy -p cpp/build-tidy
+```
+
+`Claude Code Review` is currently temporarily disabled via `if: false` in
+`.github/workflows/claude-code-review.yml`.
 
 ---
 
