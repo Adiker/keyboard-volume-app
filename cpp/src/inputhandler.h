@@ -144,6 +144,9 @@ class InputHandler : public QThread
     void setProfiles(const QList<Profile>& profiles);
     QList<Profile> currentProfiles() const;
 
+    void setMediaHotkeys(const MediaHotkeyConfig& cfg);
+    MediaHotkeyConfig currentMediaHotkeys() const;
+
     QString devicePath() const
     {
         return m_devicePath;
@@ -165,6 +168,13 @@ class InputHandler : public QThread
     void ducking_toggle(const QString& profileId);
     void show_volume(const QString& profileId);
 
+    // Media controls — global, no profileId. Slots in App connect these to
+    // MprisClient. No-op when no MPRIS player is active.
+    void media_play_pause();
+    void media_next();
+    void media_previous();
+    void media_stop();
+
   protected:
     void run() override;
 
@@ -173,8 +183,10 @@ class InputHandler : public QThread
     std::atomic<bool> m_running{false};
 
     mutable QMutex m_profilesMutex;
-    QList<Profile> m_profiles; // guarded by m_profilesMutex
+    QList<Profile> m_profiles;        // guarded by m_profilesMutex
+    MediaHotkeyConfig m_mediaHotkeys; // guarded by m_profilesMutex
 
     // Per-(binding, profileId) last-trigger timestamp (ms) for 100 ms debounce.
+    // Media hotkeys reuse the same map with profileId == "__media__".
     QMap<QPair<HotkeyBinding, QString>, qint64> m_lastTriggerMs;
 };

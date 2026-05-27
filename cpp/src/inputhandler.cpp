@@ -405,6 +405,18 @@ QList<Profile> InputHandler::currentProfiles() const
     return m_profiles;
 }
 
+void InputHandler::setMediaHotkeys(const MediaHotkeyConfig& cfg)
+{
+    QMutexLocker lock(&m_profilesMutex);
+    m_mediaHotkeys = cfg;
+}
+
+MediaHotkeyConfig InputHandler::currentMediaHotkeys() const
+{
+    QMutexLocker lock(&m_profilesMutex);
+    return m_mediaHotkeys;
+}
+
 void InputHandler::startDevice(const QString& newPath)
 {
     stop();
@@ -429,12 +441,17 @@ void InputHandler::run()
 {
     if (m_devicePath.isEmpty()) return;
 
-    // Snapshot current profiles for the lifetime of this run. Caller (App)
-    // restarts the thread on profile changes, so this snapshot is fresh
-    // for each restart.
+    // Snapshot current profiles + media config for the lifetime of this run.
+    // Caller (App) restarts the thread on profile/media changes, so this
+    // snapshot is fresh for each restart.
     const QList<Profile> profiles = currentProfiles();
+    const MediaHotkeyConfig mediaCfg = currentMediaHotkeys();
 
-    // Union of every hotkey binding used by any profile.
+    // Sentinel profile id used as the second key of m_lastTriggerMs for media
+    // bindings, so debounce buckets never collide with real profile ids.
+    const QString kMediaProfile = QStringLiteral("__media__");
+
+    // Union of every hotkey binding used by any profile + global media bindings.
     QSet<HotkeyBinding> hotkeys;
     for (const Profile& p : profiles)
     {
@@ -444,11 +461,73 @@ void InputHandler::run()
         if (p.ducking.enabled && p.ducking.hotkey.isAssigned()) hotkeys.insert(p.ducking.hotkey);
         if (p.hotkeys.show.isAssigned()) hotkeys.insert(p.hotkeys.show);
     }
+    if (mediaCfg.playPause.isAssigned()) hotkeys.insert(mediaCfg.playPause);
+    if (mediaCfg.next.isAssigned()) hotkeys.insert(mediaCfg.next);
+    if (mediaCfg.previous.isAssigned()) hotkeys.insert(mediaCfg.previous);
+    if (mediaCfg.stop.isAssigned()) hotkeys.insert(mediaCfg.stop);
+
     if (hotkeys.isEmpty())
     {
         qWarning() << "[InputHandler] No hotkeys configured — nothing to grab";
         return;
     }
+
+    // Helper: dispatch a profile match (debounced). Returns true on dispatch.
+    auto dispatchProfile = [&](const HotkeyBinding& binding, const ProfileHotkeyMatch& match)
+    {
+        const QPair<HotkeyBinding, QString> key{binding, match.profileId};
+        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        qint64 last = m_lastTriggerMs.value(key, 0LL);
+        if (now - last < 100) return;
+        m_lastTriggerMs[key] = now;
+        switch (match.action)
+        {
+        case ProfileHotkeyAction::VolumeUp:
+            emit volume_up(match.profileId);
+            break;
+        case ProfileHotkeyAction::VolumeDown:
+            emit volume_down(match.profileId);
+            break;
+        case ProfileHotkeyAction::Mute:
+            emit volume_mute(match.profileId);
+            break;
+        case ProfileHotkeyAction::DuckingToggle:
+            emit ducking_toggle(match.profileId);
+            break;
+        case ProfileHotkeyAction::ShowVolume:
+            emit show_volume(match.profileId);
+            break;
+        case ProfileHotkeyAction::None:
+            break;
+        }
+    };
+
+    // Helper: dispatch a media match (debounced). Returns true on dispatch.
+    auto dispatchMedia = [&](const HotkeyBinding& binding, MediaAction action)
+    {
+        const QPair<HotkeyBinding, QString> key{binding, kMediaProfile};
+        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        qint64 last = m_lastTriggerMs.value(key, 0LL);
+        if (now - last < 100) return;
+        m_lastTriggerMs[key] = now;
+        switch (action)
+        {
+        case MediaAction::PlayPause:
+            emit media_play_pause();
+            break;
+        case MediaAction::Next:
+            emit media_next();
+            break;
+        case MediaAction::Previous:
+            emit media_previous();
+            break;
+        case MediaAction::Stop:
+            emit media_stop();
+            break;
+        case MediaAction::None:
+            break;
+        }
+    };
 
     const auto candidates = findHotkeyDevices(m_devicePath, hotkeys);
 
@@ -557,41 +636,31 @@ void InputHandler::run()
                                 binding, normalizeHeldModifiers(heldModifiers), profiles);
                             if (!match.profileId.isEmpty())
                             {
-                                const QPair<HotkeyBinding, QString> key{binding, match.profileId};
-                                qint64 now = QDateTime::currentMSecsSinceEpoch();
-                                qint64 last = m_lastTriggerMs.value(key, 0LL);
-                                if (now - last >= 100)
-                                {
-                                    m_lastTriggerMs[key] = now;
-                                    switch (match.action)
-                                    {
-                                    case ProfileHotkeyAction::VolumeUp:
-                                        emit volume_up(match.profileId);
-                                        break;
-                                    case ProfileHotkeyAction::VolumeDown:
-                                        emit volume_down(match.profileId);
-                                        break;
-                                    case ProfileHotkeyAction::Mute:
-                                        emit volume_mute(match.profileId);
-                                        break;
-                                    case ProfileHotkeyAction::DuckingToggle:
-                                        emit ducking_toggle(match.profileId);
-                                        break;
-                                    case ProfileHotkeyAction::ShowVolume:
-                                        emit show_volume(match.profileId);
-                                        break;
-                                    case ProfileHotkeyAction::None:
-                                        break;
-                                    }
-                                }
+                                dispatchProfile(binding, match);
                                 // Hotkey consumed — do NOT forward.
                                 continue;
                             }
-                            // No profile matched (unusual modifier combo) —
+                            // No profile matched — fall back to media. Media
+                            // dispatch ignores modifiers in v1: a profile that
+                            // requires modifiers had its chance above.
+                            const MediaAction maction = resolveMediaHotkey(binding, mediaCfg);
+                            if (maction != MediaAction::None)
+                            {
+                                dispatchMedia(binding, maction);
+                                continue;
+                            }
+                            // Nothing matched (e.g. modifier combo was wrong) —
                             // forward as a normal key so typing isn't blocked.
                         }
-                        // Release of a hotkey binding with no matched profile,
-                        // or value == 2 with no match — forward.
+                        else if (ev.value == 0)
+                        {
+                            // Release of a media-only binding must also be
+                            // consumed so the desktop doesn't see a key-up
+                            // without a key-down.
+                            if (resolveMediaHotkey(binding, mediaCfg) != MediaAction::None)
+                                continue;
+                        }
+                        // Forward releases / unhandled events.
                         forwardUinputEvent(e, ev);
                         continue;
                     }
@@ -618,7 +687,8 @@ void InputHandler::run()
                                 if (!matchesInputEvent(binding, companion)) continue;
                                 if (!resolveProfileHotkey(
                                          binding, normalizeHeldModifiers(heldModifiers), profiles)
-                                         .profileId.isEmpty())
+                                         .profileId.isEmpty() ||
+                                    resolveMediaHotkey(binding, mediaCfg) != MediaAction::None)
                                 {
                                     suppress = true;
                                     break;
@@ -646,34 +716,14 @@ void InputHandler::run()
                                 matchedBinding, normalizeHeldModifiers(heldModifiers), profiles);
                             if (!match.profileId.isEmpty())
                             {
-                                const QPair<HotkeyBinding, QString> key{matchedBinding,
-                                                                        match.profileId};
-                                qint64 now = QDateTime::currentMSecsSinceEpoch();
-                                qint64 last = m_lastTriggerMs.value(key, 0LL);
-                                if (now - last >= 100)
-                                {
-                                    m_lastTriggerMs[key] = now;
-                                    switch (match.action)
-                                    {
-                                    case ProfileHotkeyAction::VolumeUp:
-                                        emit volume_up(match.profileId);
-                                        break;
-                                    case ProfileHotkeyAction::VolumeDown:
-                                        emit volume_down(match.profileId);
-                                        break;
-                                    case ProfileHotkeyAction::Mute:
-                                        emit volume_mute(match.profileId);
-                                        break;
-                                    case ProfileHotkeyAction::DuckingToggle:
-                                        emit ducking_toggle(match.profileId);
-                                        break;
-                                    case ProfileHotkeyAction::ShowVolume:
-                                        emit show_volume(match.profileId);
-                                        break;
-                                    case ProfileHotkeyAction::None:
-                                        break;
-                                    }
-                                }
+                                dispatchProfile(matchedBinding, match);
+                                continue;
+                            }
+                            const MediaAction maction =
+                                resolveMediaHotkey(matchedBinding, mediaCfg);
+                            if (maction != MediaAction::None)
+                            {
+                                dispatchMedia(matchedBinding, maction);
                                 continue;
                             }
                         }
