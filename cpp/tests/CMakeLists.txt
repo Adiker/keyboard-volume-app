@@ -150,6 +150,7 @@ target_include_directories(test_dbusinterface PRIVATE
 target_link_libraries(test_dbusinterface PRIVATE
     GTest::gtest_main
     Qt6::Core
+    Qt6::DBus
     Qt6::Test
     PkgConfig::LIBPULSE
     PkgConfig::LIBPIPEWIRE

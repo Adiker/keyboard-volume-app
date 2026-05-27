@@ -1,5 +1,6 @@
 #include "dbusinterface.h"
 #include "config.h"
+#include "mprisclient.h"
 #include "volumecontroller.h"
 #include "audioapp.h"
 
@@ -213,6 +214,39 @@ void DbusInterface::ToggleDucking()
 void DbusInterface::RefreshApps()
 {
     m_volumeCtrl->listApps(true);
+}
+
+void DbusInterface::setMprisClient(MprisClient* client)
+{
+    m_mpris = client;
+}
+
+// ─── Media controls (MPRIS relay) ─────────────────────────────────────────────
+// MprisClient lives in the main thread. These slots are invoked on the D-Bus
+// dispatcher thread, so we use QMetaObject::invokeMethod with QueuedConnection
+// to hop into the main thread before touching libdbus state.
+void DbusInterface::MediaPlayPause()
+{
+    if (!m_mpris) return;
+    QMetaObject::invokeMethod(m_mpris, "playPause", Qt::QueuedConnection);
+}
+
+void DbusInterface::MediaNext()
+{
+    if (!m_mpris) return;
+    QMetaObject::invokeMethod(m_mpris, "next", Qt::QueuedConnection);
+}
+
+void DbusInterface::MediaPrevious()
+{
+    if (!m_mpris) return;
+    QMetaObject::invokeMethod(m_mpris, "previous", Qt::QueuedConnection);
+}
+
+void DbusInterface::MediaStop()
+{
+    if (!m_mpris) return;
+    QMetaObject::invokeMethod(m_mpris, "stop", Qt::QueuedConnection);
 }
 
 // ─── Profiles ────────────────────────────────────────────────────────────────
