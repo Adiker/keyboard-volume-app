@@ -58,7 +58,7 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
     if (profileSet && profile.trimmed().isEmpty())
         return fail(QStringLiteral("--profile requires a non-empty id"));
 
-    const QString action = positionalArgs[0];
+    const QString& action = positionalArgs[0];
 
     if (action == QStringLiteral("up") || action == QStringLiteral("down") ||
         action == QStringLiteral("duck") || action == QStringLiteral("show"))

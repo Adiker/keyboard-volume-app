@@ -46,7 +46,7 @@ QList<QString> findSiblingDevices(const QString& primaryPath)
 
     if (phys.isEmpty()) return {primaryPath};
 
-    int slashIdx = phys.lastIndexOf(QLatin1String("/input"));
+    qsizetype slashIdx = phys.lastIndexOf(QLatin1String("/input"));
     QString physPrefix = (slashIdx >= 0) ? phys.left(slashIdx) : phys;
 
     QList<QString> siblings;
@@ -309,7 +309,7 @@ ProfileHotkeyMatch resolveProfileHotkey(const HotkeyBinding& binding, const QSet
                                         const QList<Profile>& profiles)
 {
     ProfileHotkeyMatch best;
-    int bestSpec = -1;
+    qsizetype bestSpec = -1;
     for (const Profile& p : profiles)
     {
         const ProfileHotkeyAction action = actionForBinding(p, binding);
@@ -327,7 +327,7 @@ ProfileHotkeyMatch resolveProfileHotkey(const HotkeyBinding& binding, const QSet
         }
         if (!subset) continue;
 
-        const int spec = p.modifiers.size();
+        const qsizetype spec = p.modifiers.size();
         if (spec > bestSpec)
         {
             bestSpec = spec;

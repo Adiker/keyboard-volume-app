@@ -671,7 +671,7 @@ int SettingsDialog::selectedProfileRow() const
 
 void SettingsDialog::refreshProfilesTable()
 {
-    m_profilesTable->setRowCount(m_profiles.size());
+    m_profilesTable->setRowCount(static_cast<int>(m_profiles.size()));
     for (int row = 0; row < m_profiles.size(); ++row)
     {
         const Profile& p = m_profiles[row];
@@ -723,7 +723,7 @@ void SettingsDialog::onAddProfile()
     {
         m_profiles.append(dlg.result());
         refreshProfilesTable();
-        m_profilesTable->selectRow(m_profiles.size() - 1);
+        m_profilesTable->selectRow(static_cast<int>(m_profiles.size()) - 1);
     }
 }
 
@@ -751,7 +751,8 @@ void SettingsDialog::onRemoveProfile()
 
     m_profiles.removeAt(row);
     refreshProfilesTable();
-    if (!m_profiles.isEmpty()) m_profilesTable->selectRow(qMin(row, m_profiles.size() - 1));
+    if (!m_profiles.isEmpty())
+        m_profilesTable->selectRow(qMin(row, static_cast<int>(m_profiles.size()) - 1));
 }
 
 void SettingsDialog::onSetDefaultProfile()

@@ -742,11 +742,9 @@ TEST(ConfigScenes, SanitizesTargetsAndUniqueifiesIds)
     EXPECT_EQ(scenes[1].id.toStdString(), "scene-2");
     ASSERT_EQ(scenes[0].targets.size(), 1);
     EXPECT_EQ(scenes[0].targets[0].match.toStdString(), "Spotify");
-    ASSERT_TRUE(scenes[0].targets[0].volume);
-    EXPECT_EQ(*scenes[0].targets[0].volume, 100);
+    ASSERT_EQ(scenes[0].targets[0].volume, std::optional<int>(100));
     ASSERT_EQ(scenes[1].targets.size(), 1);
-    ASSERT_TRUE(scenes[1].targets[0].volume);
-    EXPECT_EQ(*scenes[1].targets[0].volume, 0);
+    ASSERT_EQ(scenes[1].targets[0].volume, std::optional<int>(0));
 }
 
 TEST(ConfigScenes, FindSceneByIdReturnsMatchingScene)
