@@ -121,6 +121,29 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
         return {true, cmd, QString()};
     }
 
+    if (action == QStringLiteral("media"))
+    {
+        if (profileSet) return fail(QStringLiteral("media does not accept --profile"));
+        if (positionalArgs.size() != 2)
+            return fail(QStringLiteral("usage: kv-ctl media play-pause|next|previous|stop"));
+
+        const QString sub = positionalArgs[1];
+        if (sub == QStringLiteral("play-pause"))
+            cmd.action = KvCtlCommand::Action::MediaPlayPause;
+        else if (sub == QStringLiteral("next"))
+            cmd.action = KvCtlCommand::Action::MediaNext;
+        else if (sub == QStringLiteral("previous"))
+            cmd.action = KvCtlCommand::Action::MediaPrevious;
+        else if (sub == QStringLiteral("stop"))
+            cmd.action = KvCtlCommand::Action::MediaStop;
+        else
+            return fail(QStringLiteral("unknown media subcommand '%1' "
+                                       "(expected play-pause|next|previous|stop)")
+                            .arg(sub));
+
+        return {true, cmd, QString()};
+    }
+
     if (action == QStringLiteral("get"))
     {
         if (profileSet) return fail(QStringLiteral("get does not accept --profile"));
@@ -178,6 +201,7 @@ QString kvCtlUsageText()
         "  kv-ctl duck [--profile ID]\n"
         "  kv-ctl show [--profile ID]\n"
         "  kv-ctl scene ID\n"
+        "  kv-ctl media play-pause|next|previous|stop\n"
         "  kv-ctl refresh\n"
         "  kv-ctl get "
         "volume|muted|active-app|apps|step|profiles|scenes|progress-enabled|auto-profile-switch\n"

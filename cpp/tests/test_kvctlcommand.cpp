@@ -275,3 +275,48 @@ TEST(KvCtlCommand, RejectsInvalidMuteState)
                           {}, false)
             .ok);
 }
+
+TEST(KvCtlCommand, ParsesMediaSubcommands)
+{
+    struct Case
+    {
+        const char* sub;
+        KvCtlCommand::Action expected;
+    };
+    const Case cases[] = {
+        {"play-pause", KvCtlCommand::Action::MediaPlayPause},
+        {"next", KvCtlCommand::Action::MediaNext},
+        {"previous", KvCtlCommand::Action::MediaPrevious},
+        {"stop", KvCtlCommand::Action::MediaStop},
+    };
+
+    for (const Case& c : cases)
+    {
+        auto result =
+            parseKvCtlCommand({QStringLiteral("media"), QString::fromUtf8(c.sub)}, {}, false);
+        ASSERT_TRUE(result.ok) << c.sub << ": " << result.error.toStdString();
+        EXPECT_EQ(result.command.action, c.expected) << c.sub;
+        EXPECT_TRUE(result.command.profile.isEmpty()) << c.sub;
+    }
+}
+
+TEST(KvCtlCommand, RejectsInvalidMediaSubcommand)
+{
+    // Missing subcommand
+    EXPECT_FALSE(parseKvCtlCommand({QStringLiteral("media")}, {}, false).ok);
+
+    // Unknown subcommand
+    EXPECT_FALSE(
+        parseKvCtlCommand({QStringLiteral("media"), QStringLiteral("rewind")}, {}, false).ok);
+
+    // Extra positional
+    EXPECT_FALSE(
+        parseKvCtlCommand(
+            {QStringLiteral("media"), QStringLiteral("next"), QStringLiteral("extra")}, {}, false)
+            .ok);
+
+    // --profile is rejected — media controls are global, not per-profile.
+    EXPECT_FALSE(parseKvCtlCommand({QStringLiteral("media"), QStringLiteral("play-pause")},
+                                   QStringLiteral("spotify"), true)
+                     .ok);
+}
