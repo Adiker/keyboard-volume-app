@@ -131,6 +131,12 @@ class App : public QObject
         connect(m_input, &InputHandler::show_volume, this,
                 [this](const QString& id) { onShowVolume(id); });
 
+        // Input → media (global, MPRIS dispatch via MprisClient)
+        connect(m_input, &InputHandler::media_play_pause, m_mpris, &MprisClient::playPause);
+        connect(m_input, &InputHandler::media_next, m_mpris, &MprisClient::next);
+        connect(m_input, &InputHandler::media_previous, m_mpris, &MprisClient::previous);
+        connect(m_input, &InputHandler::media_stop, m_mpris, &MprisClient::stop);
+
         // Tray
         connect(m_tray, &TrayApp::deviceChangeRequested, this,
                 [this]() { onDeviceChangeRequested(false); });
@@ -182,6 +188,7 @@ class App : public QObject
     void initDevice()
     {
         m_input->setProfiles(m_config->profiles());
+        m_input->setMediaHotkeys(m_config->mediaHotkeys());
         if (!m_config->inputDevice().isEmpty())
         {
             m_input->startDevice(m_config->inputDevice());
@@ -195,9 +202,13 @@ class App : public QObject
     void onHotkeysMaybeChanged()
     {
         const QList<Profile> newProfiles = m_config->profiles();
-        if (newProfiles == m_input->currentProfiles()) return;
+        const MediaHotkeyConfig newMedia = m_config->mediaHotkeys();
+        const bool profilesChanged = newProfiles != m_input->currentProfiles();
+        const bool mediaChanged = newMedia != m_input->currentMediaHotkeys();
+        if (!profilesChanged && !mediaChanged) return;
         m_input->stop();
-        m_input->setProfiles(newProfiles);
+        if (profilesChanged) m_input->setProfiles(newProfiles);
+        if (mediaChanged) m_input->setMediaHotkeys(newMedia);
         if (!m_config->inputDevice().isEmpty()) m_input->startDevice(m_config->inputDevice());
     }
 
