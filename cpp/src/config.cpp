@@ -176,6 +176,13 @@ QJsonObject Config::defaultJson()
              {QStringLiteral("volume_down"), 114},
              {QStringLiteral("mute"), 113},
          }},
+        {QStringLiteral("media_hotkeys"),
+         QJsonObject{
+             {QStringLiteral("play_pause"), 0},
+             {QStringLiteral("next"), 0},
+             {QStringLiteral("previous"), 0},
+             {QStringLiteral("stop"), 0},
+         }},
         {QStringLiteral("profiles"), QJsonArray{defaultProfile}},
         {QStringLiteral("scenes"), QJsonArray{}},
         {QStringLiteral("auto_profile_switch"), false},
@@ -718,6 +725,30 @@ void Config::setHotkeys(int volumeUp, int volumeDown, int mute)
         m_data[QStringLiteral("profiles")] = arr;
     }
     m_data[QStringLiteral("hotkeys")] = hk;
+    saveUnlocked();
+}
+
+MediaHotkeyConfig Config::mediaHotkeys() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    QJsonObject o = m_data[QStringLiteral("media_hotkeys")].toObject();
+    MediaHotkeyConfig m;
+    m.playPause = bindingFromJson(o[QStringLiteral("play_pause")], 0);
+    m.next = bindingFromJson(o[QStringLiteral("next")], 0);
+    m.previous = bindingFromJson(o[QStringLiteral("previous")], 0);
+    m.stop = bindingFromJson(o[QStringLiteral("stop")], 0);
+    return m;
+}
+
+void Config::setMediaHotkeys(const MediaHotkeyConfig& cfg)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_data[QStringLiteral("media_hotkeys")] = QJsonObject{
+        {QStringLiteral("play_pause"), bindingToJson(cfg.playPause)},
+        {QStringLiteral("next"), bindingToJson(cfg.next)},
+        {QStringLiteral("previous"), bindingToJson(cfg.previous)},
+        {QStringLiteral("stop"), bindingToJson(cfg.stop)},
+    };
     saveUnlocked();
 }
 

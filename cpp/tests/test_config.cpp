@@ -1150,3 +1150,107 @@ TEST(ConfigProfileVolumeLimits, JsonSerializationContainsKeys)
     EXPECT_EQ(profile["vol_min"].toInt(), 15);
     EXPECT_EQ(profile["vol_max"].toInt(), 85);
 }
+
+// ─── Media hotkeys ─────────────────────────────────────────────────────────────
+
+TEST(ConfigMediaHotkeys, DefaultsAreUnassigned)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    const auto m = config.mediaHotkeys();
+    EXPECT_FALSE(m.playPause.isAssigned());
+    EXPECT_FALSE(m.next.isAssigned());
+    EXPECT_FALSE(m.previous.isAssigned());
+    EXPECT_FALSE(m.stop.isAssigned());
+}
+
+TEST(ConfigMediaHotkeys, KeyRoundTrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    {
+        Config config(tmp.path());
+        MediaHotkeyConfig m;
+        m.playPause = HotkeyBinding::key(KEY_PLAYPAUSE);
+        m.next = HotkeyBinding::key(KEY_NEXTSONG);
+        m.previous = HotkeyBinding::key(KEY_PREVIOUSSONG);
+        m.stop = HotkeyBinding::key(KEY_STOPCD);
+        config.setMediaHotkeys(m);
+    }
+
+    Config reloaded(tmp.path());
+    const auto m = reloaded.mediaHotkeys();
+    EXPECT_EQ(m.playPause, HotkeyBinding::key(KEY_PLAYPAUSE));
+    EXPECT_EQ(m.next, HotkeyBinding::key(KEY_NEXTSONG));
+    EXPECT_EQ(m.previous, HotkeyBinding::key(KEY_PREVIOUSSONG));
+    EXPECT_EQ(m.stop, HotkeyBinding::key(KEY_STOPCD));
+}
+
+TEST(ConfigMediaHotkeys, RelativeRoundTrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    {
+        Config config(tmp.path());
+        MediaHotkeyConfig m;
+        m.next = HotkeyBinding::relative(REL_HWHEEL, 1);
+        m.previous = HotkeyBinding::relative(REL_HWHEEL, -1);
+        config.setMediaHotkeys(m);
+    }
+
+    Config reloaded(tmp.path());
+    const auto m = reloaded.mediaHotkeys();
+    EXPECT_EQ(m.next, HotkeyBinding::relative(REL_HWHEEL, 1));
+    EXPECT_EQ(m.previous, HotkeyBinding::relative(REL_HWHEEL, -1));
+    EXPECT_FALSE(m.playPause.isAssigned());
+    EXPECT_FALSE(m.stop.isAssigned());
+}
+
+TEST(ConfigMediaHotkeys, MissingInOldFileDefaultsToUnassigned)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    // Write a config file with profiles but no media_hotkeys key.
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject prof{{QStringLiteral("id"), QStringLiteral("default")},
+                     {QStringLiteral("name"), QStringLiteral("Default")}};
+    QJsonObject root{{QStringLiteral("profiles"), QJsonArray{prof}}};
+    f.write(QJsonDocument(root).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    const auto m = config.mediaHotkeys();
+    EXPECT_FALSE(m.playPause.isAssigned());
+    EXPECT_FALSE(m.next.isAssigned());
+    EXPECT_FALSE(m.previous.isAssigned());
+    EXPECT_FALSE(m.stop.isAssigned());
+}
+
+TEST(ConfigMediaHotkeys, SerializedAsTopLevelKey)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Config config(tmp.path());
+    MediaHotkeyConfig m;
+    m.playPause = HotkeyBinding::key(KEY_PLAYPAUSE);
+    config.setMediaHotkeys(m);
+
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    f.close();
+
+    ASSERT_TRUE(root.contains("media_hotkeys"));
+    const QJsonObject mh = root["media_hotkeys"].toObject();
+    EXPECT_EQ(mh["play_pause"].toInt(), KEY_PLAYPAUSE);
+    EXPECT_EQ(mh["next"].toInt(), 0);
+    EXPECT_EQ(mh["previous"].toInt(), 0);
+    EXPECT_EQ(mh["stop"].toInt(), 0);
+}
