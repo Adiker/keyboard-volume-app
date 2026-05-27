@@ -355,6 +355,21 @@ QString resolveProfile(int code, const QSet<Modifier>& held, const QList<Profile
     return resolveProfile(HotkeyBinding::key(code), held, profiles);
 }
 
+MediaAction resolveMediaHotkey(const HotkeyBinding& binding, const MediaHotkeyConfig& cfg)
+{
+    if (!binding.isAssigned()) return MediaAction::None;
+    if (cfg.playPause.isAssigned() && cfg.playPause == binding) return MediaAction::PlayPause;
+    if (cfg.next.isAssigned() && cfg.next == binding) return MediaAction::Next;
+    if (cfg.previous.isAssigned() && cfg.previous == binding) return MediaAction::Previous;
+    if (cfg.stop.isAssigned() && cfg.stop == binding) return MediaAction::Stop;
+    return MediaAction::None;
+}
+
+MediaAction resolveMediaHotkey(int code, const MediaHotkeyConfig& cfg)
+{
+    return resolveMediaHotkey(HotkeyBinding::key(code), cfg);
+}
+
 bool matchesInputEvent(const HotkeyBinding& binding, const input_event& ev)
 {
     if (!binding.isAssigned()) return false;

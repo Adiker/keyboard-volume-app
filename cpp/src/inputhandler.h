@@ -53,6 +53,23 @@ struct ProfileHotkeyMatch
     ProfileHotkeyAction action = ProfileHotkeyAction::None;
 };
 
+// ─── Media hotkey resolution (global, MPRIS dispatch) ────────────────────────
+// Profile-independent. Resolved after profile match fails so per-profile
+// bindings keep priority when a user has chosen to bind the same key with
+// modifiers (e.g. Ctrl+KEY_PLAYPAUSE → VolumeUp on a profile, bare
+// KEY_PLAYPAUSE → media play/pause).
+enum class MediaAction
+{
+    None,
+    PlayPause,
+    Next,
+    Previous,
+    Stop,
+};
+
+MediaAction resolveMediaHotkey(const HotkeyBinding& binding, const MediaHotkeyConfig& cfg);
+MediaAction resolveMediaHotkey(int code, const MediaHotkeyConfig& cfg);
+
 // Map a set of raw evdev modifier codes (KEY_LEFTCTRL, KEY_RIGHTCTRL,
 // KEY_LEFTSHIFT, KEY_RIGHTSHIFT) to the canonical Modifier set used by
 // profile matching. L/R variants collapse.

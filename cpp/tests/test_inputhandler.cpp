@@ -356,6 +356,55 @@ TEST(ResolveProfileHotkey, ShowVolumeRelativeWheelMatchesDirection)
         resolveProfileHotkey(HotkeyBinding::relative(REL_WHEEL, -1), {}, {p}).profileId.isEmpty());
 }
 
+// ─── Media hotkey resolution ──────────────────────────────────────────────────
+
+TEST(ResolveMediaHotkey, UnassignedConfigReturnsNone)
+{
+    MediaHotkeyConfig cfg;
+    EXPECT_EQ(resolveMediaHotkey(KEY_PLAYPAUSE, cfg), MediaAction::None);
+    EXPECT_EQ(resolveMediaHotkey(KEY_NEXTSONG, cfg), MediaAction::None);
+}
+
+TEST(ResolveMediaHotkey, KeyMatchesAction)
+{
+    MediaHotkeyConfig cfg;
+    cfg.playPause = HotkeyBinding::key(KEY_PLAYPAUSE);
+    cfg.next = HotkeyBinding::key(KEY_NEXTSONG);
+    cfg.previous = HotkeyBinding::key(KEY_PREVIOUSSONG);
+    cfg.stop = HotkeyBinding::key(KEY_STOPCD);
+
+    EXPECT_EQ(resolveMediaHotkey(KEY_PLAYPAUSE, cfg), MediaAction::PlayPause);
+    EXPECT_EQ(resolveMediaHotkey(KEY_NEXTSONG, cfg), MediaAction::Next);
+    EXPECT_EQ(resolveMediaHotkey(KEY_PREVIOUSSONG, cfg), MediaAction::Previous);
+    EXPECT_EQ(resolveMediaHotkey(KEY_STOPCD, cfg), MediaAction::Stop);
+}
+
+TEST(ResolveMediaHotkey, UnknownCodeReturnsNone)
+{
+    MediaHotkeyConfig cfg;
+    cfg.playPause = HotkeyBinding::key(KEY_PLAYPAUSE);
+    EXPECT_EQ(resolveMediaHotkey(KEY_VOLUMEUP, cfg), MediaAction::None);
+}
+
+TEST(ResolveMediaHotkey, UnassignedBindingReturnsNone)
+{
+    MediaHotkeyConfig cfg;
+    cfg.playPause = HotkeyBinding::key(KEY_PLAYPAUSE);
+    EXPECT_EQ(resolveMediaHotkey(HotkeyBinding{}, cfg), MediaAction::None);
+}
+
+TEST(ResolveMediaHotkey, RelativeWheelMatchesDirection)
+{
+    MediaHotkeyConfig cfg;
+    cfg.next = HotkeyBinding::relative(REL_HWHEEL, 1);
+    cfg.previous = HotkeyBinding::relative(REL_HWHEEL, -1);
+
+    EXPECT_EQ(resolveMediaHotkey(HotkeyBinding::relative(REL_HWHEEL, 1), cfg), MediaAction::Next);
+    EXPECT_EQ(resolveMediaHotkey(HotkeyBinding::relative(REL_HWHEEL, -1), cfg),
+              MediaAction::Previous);
+    EXPECT_EQ(resolveMediaHotkey(HotkeyBinding::relative(REL_WHEEL, 1), cfg), MediaAction::None);
+}
+
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
