@@ -90,7 +90,7 @@ The app registers two D-Bus services on the session bus:
 | `org.keyboardvolumeapp` | `/org/keyboardvolumeapp` | `org.keyboardvolumeapp.VolumeControl` |
 | `org.mpris.MediaPlayer2.keyboardvolumeapp` *(opt-in, default OFF)* | `/org/mpris/MediaPlayer2` | `org.mpris.MediaPlayer2` + `.Player` |
 
-- **`DbusInterface`** — `QObject` with `Q_CLASSINFO`, registered directly. Caches volume/mute/active-app/apps from `VolumeController`/`TrayApp` signals. D-Bus setters delegate to `VolumeController` async.
+- **`DbusInterface`** — `QObject` with `Q_CLASSINFO`, registered directly. Caches volume/mute/active-app/apps from `VolumeController`/`TrayApp` signals. D-Bus setters delegate to `VolumeController` async. Holds an optional `MprisClient*` (set via `setMprisClient()` from `App::initDbus()`); `Media{PlayPause,Next,Previous,Stop}` methods relay to `MprisClient` via `QMetaObject::invokeMethod(..., Qt::QueuedConnection)` because D-Bus dispatch happens on a worker thread while libdbus state must only be touched from the main thread. When `m_mpris` is null, the methods are silent no-ops (graceful degradation).
 - **MPRIS** — separate `QObject` endpoint with `MprisRootAdaptor` and `MprisPlayerAdaptor` (`QDBusAbstractAdaptor` subclasses). **Must include `ExportAdaptors` flag** when registering — Qt6 auto-detects adaptor children.
 - **MPRIS registration is conditional** on `OsdConfig::exposeMpris` (default `false`). The adaptors and endpoint `QObject` are always created in `initDbus()`, but the D-Bus service is only registered when the option is enabled. `App::registerMprisEndpoint()` / `App::unregisterMprisEndpoint()` handle the toggle at runtime; `m_mprisRegistered` tracks state. `App::onMprisExposureChanged()` is wired to `TrayApp::settingsChanged` so the change takes effect immediately without a restart.
 - **`QDBusConnection::sessionBus()` returns by value** in Qt6 (not `&`). Write `auto bus = QDBusConnection::sessionBus();`, not `auto &bus`.
@@ -147,6 +147,16 @@ dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-repl
 # Refresh app list
 dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
   /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.RefreshApps
+
+# Media controls (relayed to active MPRIS player)
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaPlayPause
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaNext
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaPrevious
+dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-reply \
+  /org/keyboardvolumeapp org.keyboardvolumeapp.VolumeControl.MediaStop
 ```
 
 `dbus-send` requires explicit `variant:<type>:` for property writes; missing the variant wrapper or the wrong inner type returns `org.freedesktop.DBus.Error.InvalidArgs` from the property setter. The MPRIS endpoint follows the same recipes against bus name `org.mpris.MediaPlayer2.keyboardvolumeapp` and path `/org/mpris/MediaPlayer2`, but is registered only when `OsdConfig::exposeMpris == true`.
@@ -158,12 +168,14 @@ The tray icon is embedded as a Qt resource: `cpp/resources.qrc` maps `../resourc
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 32 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / scroll hotkeys / show hotkey / id uniqueification)
+- `test_config` — 37 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / scroll hotkeys / show hotkey / id uniqueification, media hotkeys round-trip)
 - `test_i18n` — 7 tests (lookup, fallback)
-- `test_kvctlcommand` — 9 tests (subcommand parser, profile option, get/set fields, show command, invalid input)
+- `test_kvctlcommand` — 16 tests (subcommand parser, profile option, get/set fields, show command, mute on/off, media subcommand, invalid input)
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_volumecontroller` — 5 smoke tests
-- `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity, scroll binding matching, show volume action)
+- `test_inputhandler` — 31 tests (API, evdev device listing, modifier normalize, `resolveProfile` specificity, scroll binding matching, show volume action, `resolveMediaHotkey` matching for keys and scroll)
+- `test_dbusinterface` — 8 tests (absolute Volume/Muted property setters, ToggleMute method, Media* no-op without MprisClient, Media* slot scriptability)
+- `test_mprisclient` — slot wiring + position/track edge cases (requires session D-Bus; wrap with `dbus-run-session`)
 
 Run locally: `cd cpp/build && ctest --output-on-failure`.
 

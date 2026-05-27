@@ -130,6 +130,12 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
   },
   "volume_step": 5,
   "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
+  "media_hotkeys": {
+    "play_pause": 0,
+    "next": 0,
+    "previous": 0,
+    "stop": 0
+  },
   "auto_profile_switch": false,
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
@@ -157,6 +163,8 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 ```
 
 Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113). Scroll bindings use object form such as `{ "type": "rel", "code": 8, "direction": 1 }` for `EV_REL / REL_WHEEL`.
+
+**Media hotkeys (global, MPRIS dispatch).** `media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, `stop`. Each accepts the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Stored as `struct MediaHotkeyConfig { HotkeyBinding playPause, next, previous, stop; }` exposed via `Config::mediaHotkeys()` / `Config::setMediaHotkeys()`. Independent of profiles — `InputHandler` resolves profile bindings first (modifier-aware) and only falls back to `resolveMediaHotkey()` when no profile claims the event. Bound keys dispatch via signals `media_play_pause/next/previous/stop` from the InputHandler thread to `MprisClient` slots in the main thread (queued connection); `MprisClient` selects the active player using `tracked_players` priority and falls back to the first Playing → Paused player. The same controls are exposed on D-Bus as `org.keyboardvolumeapp.VolumeControl.Media{PlayPause,Next,Previous,Stop}` and via `kv-ctl media play-pause|next|previous|stop`. Debounce reuses the 100 ms profile debounce table with sentinel key `__media__`.
 
 **OSD playback progress config.** `progress_enabled` is the master toggle. `progress_interactive` allows OSD seek controls when the active MPRIS player is seekable. `progress_poll_ms` is clamped to `200..2000` because many players do not emit position changes. `progress_label_mode` is one of `app`, `track`, or `both`. `tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling.
 
