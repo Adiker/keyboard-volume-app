@@ -58,7 +58,7 @@ struct HotkeyBinding
     int direction = 0; // 0 for keys, sign (+/-) for EV_REL bindings
 
     HotkeyBinding() = default;
-    HotkeyBinding(int keyCode) : type(HotkeyBindingType::Key), code(std::max(0, keyCode)) {}
+    HotkeyBinding(int keyCode) : code(std::max(0, keyCode)) {}
 
     static HotkeyBinding key(int keyCode)
     {

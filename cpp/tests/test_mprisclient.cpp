@@ -46,7 +46,7 @@ static bool busAvailable()
 // returns true. Uses QEventLoop::exec() with a short timer — this is required
 // to deliver cross-thread signals from the sessionBus() background I/O thread
 // to the main thread. processEvents() alone is not sufficient for that.
-static bool waitFor(std::function<bool()> pred, int maxMs = 2000)
+static bool waitFor(const std::function<bool()>& pred, int maxMs = 2000)
 {
     QDeadlineTimer deadline(maxMs);
     while (!deadline.hasExpired())

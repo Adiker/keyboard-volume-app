@@ -70,7 +70,7 @@ HotkeyBinding bindingFromJson(const QJsonValue& value, int defaultKey)
 QStringList profileAppsFromObject(const QJsonObject& profile)
 {
     QStringList apps;
-    for (const QJsonValue& v : profile[QStringLiteral("apps")].toArray())
+    for (const auto& v : profile[QStringLiteral("apps")].toArray())
         if (v.isString() && !v.toString().isEmpty()) apps.append(v.toString());
 
     if (apps.isEmpty())
@@ -345,7 +345,7 @@ AudioScene Config::sceneFromJson(const QJsonObject& o)
     scene.name = o[QStringLiteral("name")].toString();
 
     const QJsonArray targets = o[QStringLiteral("targets")].toArray();
-    for (const QJsonValue& v : targets)
+    for (const auto& v : targets)
     {
         if (!v.isObject()) continue;
 
@@ -370,7 +370,7 @@ QList<AudioScene> Config::scenesFromJson(const QJsonArray& arr)
 {
     QList<AudioScene> out;
     out.reserve(arr.size());
-    for (const QJsonValue& v : arr)
+    for (const auto& v : arr)
     {
         if (!v.isObject()) continue;
         AudioScene scene = sceneFromJson(v.toObject());
@@ -434,7 +434,7 @@ void Config::mirrorDefaultProfileToLegacyUnlocked()
     QJsonObject p0 = arr.first().toObject();
     QJsonArray appsArr = p0[QStringLiteral("apps")].toArray();
     QString firstApp;
-    for (const QJsonValue& v : appsArr)
+    for (const auto& v : appsArr)
     {
         if (v.isString() && !v.toString().isEmpty())
         {
@@ -636,7 +636,7 @@ OsdConfig Config::osd() const
     if (o.contains(QStringLiteral("tracked_players")))
     {
         c.trackedPlayers.clear();
-        for (const QJsonValue& v : tp)
+        for (const auto& v : tp)
         {
             const QString s = v.toString().trimmed().toLower();
             if (!s.isEmpty()) c.trackedPlayers.append(s);

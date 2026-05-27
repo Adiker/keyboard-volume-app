@@ -52,7 +52,7 @@ DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, QObje
             });
 
     connect(m_volumeCtrl, &VolumeController::appsReady, this,
-            [this](QList<AudioApp> apps)
+            [this](const QList<AudioApp>& apps)
             {
                 QStringList names;
                 names.reserve(apps.size());
