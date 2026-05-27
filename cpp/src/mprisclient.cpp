@@ -645,6 +645,15 @@ void MprisClient::previous()
     m_bus.asyncCall(msg);
 }
 
+void MprisClient::stop()
+{
+    if (!m_hasActive) return;
+    QDBusMessage msg =
+        QDBusMessage::createMethodCall(m_active.service, QLatin1String(MPRIS_PATH),
+                                       QLatin1String(MPRIS_PLAYER_IFACE), QStringLiteral("Stop"));
+    m_bus.asyncCall(msg);
+}
+
 void MprisClient::pollPosition()
 {
     if (!m_hasActive || m_seeking) return;

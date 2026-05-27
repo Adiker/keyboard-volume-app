@@ -87,6 +87,7 @@ class MprisClient : public QObject
     void playPause(); // PlayPause(); no-op when no active player
     void next();      // Next(); no-op when !canGoNext
     void previous();  // Previous(); fallback to setPosition(0) when !canGoPrevious
+    void stop();      // Stop(); no-op when no active player
 
     // Called by MprisPlayerProxy — not for external use.
     void onPropertiesChanged(const QString& service, const QString& interface,
