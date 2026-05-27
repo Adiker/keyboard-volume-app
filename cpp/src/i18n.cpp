@@ -89,6 +89,12 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              // auto profile switch
              {QStringLiteral("settings.auto_profile_switch"),
               QStringLiteral("Auto-switch profile by focused window")},
+             // media hotkeys (global, MPRIS)
+             {QStringLiteral("settings.media.section"), QStringLiteral("Media hotkeys")},
+             {QStringLiteral("settings.media.play_pause"), QStringLiteral("Play / Pause:")},
+             {QStringLiteral("settings.media.next"), QStringLiteral("Next track:")},
+             {QStringLiteral("settings.media.previous"), QStringLiteral("Previous track:")},
+             {QStringLiteral("settings.media.stop"), QStringLiteral("Stop:")},
              // progress / MPRIS
              {QStringLiteral("settings.progress.section"), QStringLiteral("Playback progress")},
              {QStringLiteral("settings.progress.enabled"),
@@ -244,6 +250,13 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              // auto profile switch
              {QStringLiteral("settings.auto_profile_switch"),
               QStringLiteral("Auto-prze\u0142\u0105czanie profilu wg aktywnego okna")},
+             // media hotkeys (global, MPRIS)
+             {QStringLiteral("settings.media.section"),
+              QStringLiteral("Skr\u00f3ty multimedialne")},
+             {QStringLiteral("settings.media.play_pause"), QStringLiteral("Odtw\u00f3rz / Pauza:")},
+             {QStringLiteral("settings.media.next"), QStringLiteral("Nast\u0119pny utw\u00f3r:")},
+             {QStringLiteral("settings.media.previous"), QStringLiteral("Poprzedni utw\u00f3r:")},
+             {QStringLiteral("settings.media.stop"), QStringLiteral("Zatrzymaj:")},
              // progress / MPRIS
              {QStringLiteral("settings.progress.section"),
               QStringLiteral("Post\u0119p odtwarzania")},

@@ -155,6 +155,12 @@ class SettingsDialog : public QDialog
     QSpinBox* m_opacity = nullptr;
     QCheckBox* m_autoProfile = nullptr;
 
+    // Media hotkeys (global, MPRIS dispatch — independent of profiles)
+    HotkeyCapture* m_mediaPlayPause = nullptr;
+    HotkeyCapture* m_mediaNext = nullptr;
+    HotkeyCapture* m_mediaPrevious = nullptr;
+    HotkeyCapture* m_mediaStop = nullptr;
+
     // Progress / MPRIS section
     QCheckBox* m_progressEnabled = nullptr;
     QCheckBox* m_progressInteractive = nullptr;
