@@ -833,7 +833,9 @@ class PaWorker : public QObject
 
         // First pass: move sink-inputs to their pending sinks before adjusting
         // volume/mute so any device-specific behaviour (per-sink default cvolume,
-        // etc.) is settled by the time we write the volume.
+        // etc.) is settled by the time we write the volume. The success arg of
+        // PA's done callback is checked so a stale/unknown sink name doesn't
+        // get reported as a successful route.
         for (const auto& si : inputs)
         {
             for (auto it = pendSinks.begin(); it != pendSinks.end(); ++it)
@@ -842,9 +844,15 @@ class PaWorker : public QObject
                 if (!si.matches(app)) continue;
 
                 const QByteArray sinkBytes = it.value().toUtf8();
+                OperationOutcome outcome;
                 pa_operation* op = pa_context_move_sink_input_by_name(
-                    m_ctx, si.index, sinkBytes.constData(), operationDoneCallback, this);
-                if (waitForOperation(op, "apply pending sink move")) appliedSinks.insert(app);
+                    m_ctx, si.index, sinkBytes.constData(), operationOutcomeCallback, &outcome);
+                const bool completed = waitForOperation(op, "apply pending sink move");
+                if (completed && outcome.success)
+                    appliedSinks.insert(app);
+                else if (completed)
+                    qWarning() << "[PaWorker] pending sink move for" << app << "→" << it.value()
+                               << "rejected by PA";
             }
         }
 
@@ -898,13 +906,18 @@ class PaWorker : public QObject
         // doSetAppSink() already attempted this, but if the app had no existing
         // stream-restore entry at that time (idle app, cleared restore DB) the
         // write was a no-op. Now that the stream exists we can succeed.
+        // Only the apps where persistence actually wrote can be safely cleared
+        // from m_pendingSinks — otherwise we keep the parked route so the next
+        // sink-input appearance retries the SR write.
+        QSet<QString> persistedSinks;
         for (const auto& app : appliedSinks)
         {
             auto it = pendSinks.find(app);
-            if (it != pendSinks.end()) streamRestoreSetDevice(app, it.value());
+            if (it != pendSinks.end() && streamRestoreSetDevice(app, it.value()))
+                persistedSinks.insert(app);
         }
 
-        if (!applied.isEmpty() || !appliedSinks.isEmpty())
+        if (!applied.isEmpty() || !persistedSinks.isEmpty())
         {
             QMutexLocker lk(&m_pendingMutex);
             for (const auto& app : applied)
@@ -912,7 +925,7 @@ class PaWorker : public QObject
                 m_pendingVolumes.remove(app);
                 m_pendingMutes.remove(app);
             }
-            for (const auto& app : appliedSinks) m_pendingSinks.remove(app);
+            for (const auto& app : persistedSinks) m_pendingSinks.remove(app);
         }
     }
 
@@ -1014,13 +1027,19 @@ class PaWorker : public QObject
             {
                 if (!si.matches(appName)) continue;
 
+                OperationOutcome outcome;
                 pa_operation* op = pa_context_move_sink_input_by_name(
-                    m_ctx, si.index, sinkBytes.constData(), operationDoneCallback, this);
-                if (waitForOperation(op, "move sink input to sink"))
+                    m_ctx, si.index, sinkBytes.constData(), operationOutcomeCallback, &outcome);
+                const bool completed = waitForOperation(op, "move sink input to sink");
+                if (completed && outcome.success)
+                {
                     routedAny = true;
+                }
                 else
+                {
                     qWarning() << "[PaWorker] move sink input" << si.index << "→" << sinkName
-                               << "failed";
+                               << (completed ? "rejected by PA (stale sink name?)" : "timed out");
+                }
             }
             pa_threaded_mainloop_unlock(m_mainloop);
         }
@@ -1029,6 +1048,9 @@ class PaWorker : public QObject
         streamRestoreSetDevice(appName, sinkName);
 
         // 3. Park desired sink so future sink-inputs land on the right device.
+        // Always parked — even when the active move succeeded, so any future
+        // sink-inputs created by the same app (browser tabs, reconnects) land
+        // on the right device without waiting for the next profile activation.
         {
             QMutexLocker lk(&m_pendingMutex);
             m_pendingSinks[appName] = sinkName;
@@ -1184,6 +1206,21 @@ class PaWorker : public QObject
     static void operationDoneCallback(pa_context*, int, void* ud)
     {
         Q_UNUSED(ud);
+    }
+
+    // Outcome of a PA operation — used when we need to know whether libpulse
+    // accepted or rejected the call (e.g. moving to a stale sink name).
+    // pa_context completes the pa_operation either way; the rejection is
+    // surfaced only through the success argument of the done callback.
+    struct OperationOutcome
+    {
+        bool success = false;
+    };
+
+    static void operationOutcomeCallback(pa_context*, int success, void* ud)
+    {
+        auto* o = static_cast<OperationOutcome*>(ud);
+        if (o) o->success = (success != 0);
     }
 
     void startWatcher()
@@ -1558,9 +1595,12 @@ class PaWorker : public QObject
     // Persist routing target in PA's stream-restore database so the chosen
     // sink survives restarts of the target app. Reads existing entries via the
     // streamRestoreAppCandidates set and rewrites them with device=sinkName.
-    void streamRestoreSetDevice(const QString& app, const QString& sinkName)
+    // Returns true when at least one entry matched and was rewritten — callers
+    // (doApplyPending) use this to decide whether to keep pending parked for
+    // a future retry when PA's SR module hasn't yet materialised the entry.
+    bool streamRestoreSetDevice(const QString& app, const QString& sinkName)
     {
-        if (!contextReady() || sinkName.isEmpty()) return;
+        if (!contextReady() || sinkName.isEmpty()) return false;
         const QByteArray sinkBytes = sinkName.toUtf8();
 
         struct DeviceCbData
@@ -1568,6 +1608,7 @@ class PaWorker : public QObject
             PaWorker* self;
             QString target;
             const char* device;
+            bool wrote = false;
         };
 
         auto cb = [](pa_context* ctx, const pa_ext_stream_restore_info* info, int eol, void* ud)
@@ -1579,18 +1620,25 @@ class PaWorker : public QObject
             out.device = d->device;
             pa_operation* op = pa_ext_stream_restore_write(ctx, PA_UPDATE_REPLACE, &out, 1, 1,
                                                            operationDoneCallback, d->self);
-            if (op) pa_operation_unref(op);
+            if (op)
+            {
+                d->wrote = true;
+                pa_operation_unref(op);
+            }
         };
 
+        bool anyWritten = false;
         for (const QString& candidate : streamRestoreAppCandidates(app))
         {
             DeviceCbData d{this, QStringLiteral("sink-input-by-application-name:") + candidate,
-                           sinkBytes.constData()};
+                           sinkBytes.constData(), false};
             pa_threaded_mainloop_lock(m_mainloop);
             waitForOperation(pa_ext_stream_restore_read(m_ctx, cb, &d),
                              "stream restore set device");
             pa_threaded_mainloop_unlock(m_mainloop);
+            if (d.wrote) anyWritten = true;
         }
+        return anyWritten;
     }
 
     void removePending(const QString& app)
