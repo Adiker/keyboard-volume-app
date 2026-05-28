@@ -392,6 +392,7 @@ void DbusInterface::ApplyScene(const QString& sceneId)
     if (scene.id.isEmpty()) return;
     m_volumeCtrl->applyScene(scene);
 }
+}
 
 void DbusInterface::ShowVolume()
 {
