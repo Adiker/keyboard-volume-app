@@ -25,10 +25,25 @@ struct OsdConfig
     bool progressEnabled = false;    // master toggle (default OFF)
     bool progressInteractive = true; // allow click + drag to seek
     int progressPollMs = 500;        // position poll interval, 200–2000 ms
-    // "app"   — show audio app name (legacy behaviour)
-    // "track" — show track title / artist
-    // "both"  — show "<app> — <title>"
+    // Track label preset, one of:
+    //   "app"              — audio app name only (legacy default)
+    //   "title_artist"     — "Title — Artist" (legacy "track")
+    //   "artist_title"     — "Artist — Title"
+    //   "app_track"        — "<app>" + "Title — Artist" (legacy "both")
+    //   "player_track"     — "<MPRIS player>" + "Title — Artist"
+    //   "player_track_art" — player + track + album art on the left
+    //   "custom"           — render customLabelTop / customLabelBottom with tokens
+    //                        {app}, {player}, {title}, {artist}, {album}
     QString progressLabelMode = QStringLiteral("app");
+    // Custom label templates (used only when progressLabelMode == "custom").
+    // Supported tokens: {app}, {player}, {title}, {artist}, {album}. Empty
+    // string → that line is hidden. Orphan separators left by empty tokens are
+    // trimmed by the renderer (see formatOsdLabelTemplate in osdwindow).
+    QString customLabelTop = QStringLiteral("{app}");
+    QString customLabelBottom = QStringLiteral("{title} — {artist}");
+    // Custom-mode album-art toggle. For preset "player_track_art" the art is
+    // always shown; for "custom" it is gated by this flag.
+    bool customLabelShowArt = false;
     // Priority-ordered list of MPRIS service name substrings to track.
     // First Playing player wins; then first Paused; then noPlayer().
     QStringList trackedPlayers = {QStringLiteral("spotify"), QStringLiteral("youtube"),

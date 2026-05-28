@@ -123,6 +123,7 @@ add_test(NAME test_inputhandler COMMAND test_inputhandler)
 add_executable(test_osdwindow
     test_osdwindow.cpp
     ../src/osdwindow.cpp
+    ../src/osdlabelformat.cpp
     ../src/config.cpp
     ../src/i18n.cpp
 )
@@ -135,6 +136,20 @@ target_link_libraries(test_osdwindow PRIVATE
     Qt6::Widgets
 )
 add_test(NAME test_osdwindow COMMAND test_osdwindow)
+
+# ─── test_osdlabelformat ─────────────────────────────────────────────────────
+add_executable(test_osdlabelformat
+    test_osdlabelformat.cpp
+    ../src/osdlabelformat.cpp
+)
+target_include_directories(test_osdlabelformat PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(test_osdlabelformat PRIVATE
+    GTest::gtest_main
+    Qt6::Core
+)
+add_test(NAME test_osdlabelformat COMMAND test_osdlabelformat)
 
 # ─── test_dbusinterface ──────────────────────────────────────────────────────
 add_executable(test_dbusinterface

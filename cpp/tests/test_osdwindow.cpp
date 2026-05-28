@@ -47,6 +47,114 @@ TEST(OSDWindowProgress, SameTrackMetadataUpdatePreservesPosition)
     EXPECT_EQ(window.m_labelTime->text(), QStringLiteral("0:00 / 3:20"));
 }
 
+TEST(OSDWindowLabel, AppOnlyPresetHidesBottomLine)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OSDWindow window(&config);
+    window.showVolume(QStringLiteral("spotify"), 0.5, false);
+    window.setPlayerName(QStringLiteral("Spotify"));
+    window.updateTrack(QStringLiteral("T"), QStringLiteral("A"), QStringLiteral("Alb"), 100000000LL,
+                       true);
+
+    EXPECT_EQ(window.m_labelName->text().toStdString(), "spotify");
+    // Bottom track label hidden when progress row is not visible.
+    EXPECT_FALSE(window.m_labelTrack->isVisible());
+    EXPECT_FALSE(window.m_albumArtVisible);
+}
+
+TEST(OSDWindowLabel, PlayerTrackPresetPopulatesBothLines)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OsdConfig osd = config.osd();
+    osd.progressEnabled = true;
+    osd.progressLabelMode = QStringLiteral("player_track");
+    config.setOsd(osd);
+
+    OSDWindow window(&config);
+    window.setProgressEnabled(true);
+    window.setProgressVisible(true);
+    window.showVolume(QStringLiteral("spotify"), 0.5);
+    window.setPlayerName(QStringLiteral("Spotify"));
+    window.updateTrack(QStringLiteral("Title"), QStringLiteral("Artist"), QStringLiteral("Album"),
+                       60000000LL, true);
+
+    EXPECT_EQ(window.m_labelName->text().toStdString(), "Spotify");
+    EXPECT_EQ(window.m_labelTrack->text().toStdString(), "Title \xE2\x80\x94 Artist");
+    EXPECT_FALSE(window.m_albumArtVisible);
+}
+
+TEST(OSDWindowLabel, PlayerTrackArtPresetEnablesArt)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OsdConfig osd = config.osd();
+    osd.progressEnabled = true;
+    osd.progressLabelMode = QStringLiteral("player_track_art");
+    config.setOsd(osd);
+
+    OSDWindow window(&config);
+    window.setProgressEnabled(true);
+    window.setProgressVisible(true);
+
+    EXPECT_TRUE(window.m_albumArtVisible);
+}
+
+TEST(OSDWindowLabel, CustomPresetUsesTemplates)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OsdConfig osd = config.osd();
+    osd.progressEnabled = true;
+    osd.progressLabelMode = QStringLiteral("custom");
+    osd.customLabelTop = QStringLiteral("{player}");
+    osd.customLabelBottom = QStringLiteral("{album}");
+    osd.customLabelShowArt = true;
+    config.setOsd(osd);
+
+    OSDWindow window(&config);
+    window.setProgressEnabled(true);
+    window.setProgressVisible(true);
+    window.setPlayerName(QStringLiteral("Spotify"));
+    window.updateTrack(QStringLiteral("Title"), QStringLiteral("Artist"),
+                       QStringLiteral("My Album"), 60000000LL, true);
+
+    EXPECT_EQ(window.m_labelName->text().toStdString(), "Spotify");
+    EXPECT_EQ(window.m_labelTrack->text().toStdString(), "My Album");
+    EXPECT_TRUE(window.m_albumArtVisible);
+}
+
+TEST(OSDWindowLabel, CustomEmptyBottomHidesTrackLabel)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OsdConfig osd = config.osd();
+    osd.progressEnabled = true;
+    osd.progressLabelMode = QStringLiteral("custom");
+    osd.customLabelTop = QStringLiteral("{title}");
+    osd.customLabelBottom = QString{};
+    config.setOsd(osd);
+
+    OSDWindow window(&config);
+    window.setProgressEnabled(true);
+    window.setProgressVisible(true);
+    window.updateTrack(QStringLiteral("Hello"), QStringLiteral("X"), QString{}, 60000000LL, true);
+
+    EXPECT_EQ(window.m_labelName->text().toStdString(), "Hello");
+    EXPECT_FALSE(window.m_labelTrack->isVisible());
+}
+
 int main(int argc, char** argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))

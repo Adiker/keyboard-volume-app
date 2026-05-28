@@ -516,15 +516,55 @@ void SettingsDialog::buildUi()
     m_progressLabelMode = new QComboBox(this);
     m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_app")),
                                  QStringLiteral("app"));
-    m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_track")),
-                                 QStringLiteral("track"));
-    m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_both")),
-                                 QStringLiteral("both"));
+    m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_title_artist")),
+                                 QStringLiteral("title_artist"));
+    m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_artist_title")),
+                                 QStringLiteral("artist_title"));
+    m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_app_track")),
+                                 QStringLiteral("app_track"));
+    m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_player_track")),
+                                 QStringLiteral("player_track"));
+    m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_player_track_art")),
+                                 QStringLiteral("player_track_art"));
+    m_progressLabelMode->addItem(::tr(QStringLiteral("settings.progress.label_custom")),
+                                 QStringLiteral("custom"));
     {
         int idx = m_progressLabelMode->findData(osd.progressLabelMode);
         if (idx >= 0) m_progressLabelMode->setCurrentIndex(idx);
     }
     progressForm->addRow(::tr(QStringLiteral("settings.progress.label_mode")), m_progressLabelMode);
+
+    // Custom label group — visible only when "custom" is selected.
+    m_customLabelGroup = new QWidget(this);
+    QFormLayout* customForm = new QFormLayout(m_customLabelGroup);
+    customForm->setLabelAlignment(Qt::AlignRight);
+    customForm->setSpacing(8);
+    customForm->setContentsMargins(0, 0, 0, 0);
+
+    m_customLabelTop = new QLineEdit(m_customLabelGroup);
+    m_customLabelTop->setText(osd.customLabelTop);
+    customForm->addRow(::tr(QStringLiteral("settings.progress.custom_top")), m_customLabelTop);
+
+    m_customLabelBottom = new QLineEdit(m_customLabelGroup);
+    m_customLabelBottom->setText(osd.customLabelBottom);
+    customForm->addRow(::tr(QStringLiteral("settings.progress.custom_bottom")),
+                       m_customLabelBottom);
+
+    m_customLabelShowArt = new QCheckBox(::tr(QStringLiteral("settings.progress.custom_show_art")),
+                                         m_customLabelGroup);
+    m_customLabelShowArt->setChecked(osd.customLabelShowArt);
+    customForm->addRow(QString(), m_customLabelShowArt);
+
+    QLabel* tokensHint = new QLabel(::tr(QStringLiteral("settings.progress.custom_tokens_hint")),
+                                    m_customLabelGroup);
+    tokensHint->setStyleSheet(QStringLiteral("color: gray; font-style: italic; font-size: 9pt;"));
+    tokensHint->setWordWrap(true);
+    customForm->addRow(QString(), tokensHint);
+
+    progressForm->addRow(QString(), m_customLabelGroup);
+    connect(m_progressLabelMode, &QComboBox::currentIndexChanged, this,
+            &SettingsDialog::updateCustomLabelVisibility);
+    updateCustomLabelVisibility();
 
     m_trackedPlayers = new QLineEdit(this);
     m_trackedPlayers->setText(osd.trackedPlayers.join(QStringLiteral(", ")));
@@ -665,6 +705,9 @@ void SettingsDialog::saveAndAccept()
     osd.progressInteractive = m_progressInteractive->isChecked();
     osd.progressPollMs = m_progressPollMs->value();
     osd.progressLabelMode = m_progressLabelMode->currentData().toString();
+    osd.customLabelTop = m_customLabelTop->text();
+    osd.customLabelBottom = m_customLabelBottom->text();
+    osd.customLabelShowArt = m_customLabelShowArt->isChecked();
     {
         QStringList players;
         const QStringList raw =
@@ -743,6 +786,13 @@ void SettingsDialog::refreshProfilesTable()
     }
 
     m_btnRemove->setEnabled(m_profiles.size() > 1);
+}
+
+void SettingsDialog::updateCustomLabelVisibility()
+{
+    if (!m_customLabelGroup || !m_progressLabelMode) return;
+    const bool custom = m_progressLabelMode->currentData().toString() == QLatin1String("custom");
+    m_customLabelGroup->setVisible(custom);
 }
 
 void SettingsDialog::onAddProfile()

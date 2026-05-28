@@ -54,6 +54,8 @@ class MprisClient : public QObject
         QString trackId;     // ObjectPath — required for SetPosition
         QString title;
         QString artist;
+        QString album;  // xesam:album, may be empty
+        QString artUrl; // mpris:artUrl — file://, http(s)://, or data: URI; may be empty
     };
 
     explicit MprisClient(Config* config, QObject* parent = nullptr);
@@ -76,6 +78,9 @@ class MprisClient : public QObject
     void trackChanged(const QString& title, const QString& artist, qint64 lengthUs, bool canSeek);
     void positionChanged(qint64 positionUs);
     void playbackStatusChanged(const QString& status);
+    // Emitted whenever the album-art URL for the active player changes,
+    // including when the player vanishes (empty string).
+    void albumArtChanged(const QString& artUrl);
     void noPlayer();
 
   public slots:
@@ -117,6 +122,8 @@ class MprisClient : public QObject
         QString trackId;
         QString title;
         QString artist;
+        QString album;
+        QString artUrl;
     };
 
     void scanExistingServices();

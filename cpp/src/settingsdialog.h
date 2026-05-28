@@ -128,6 +128,7 @@ class SettingsDialog : public QDialog
     void emitPositionPreview();
     void emitStylePreview();
     void saveAndAccept();
+    void updateCustomLabelVisibility();
 
     // Profiles section
     void onAddProfile();
@@ -166,6 +167,11 @@ class SettingsDialog : public QDialog
     QCheckBox* m_progressInteractive = nullptr;
     QSpinBox* m_progressPollMs = nullptr;
     QComboBox* m_progressLabelMode = nullptr;
+    // Custom-mode label controls — hidden unless progressLabelMode == "custom".
+    QWidget* m_customLabelGroup = nullptr;
+    QLineEdit* m_customLabelTop = nullptr;
+    QLineEdit* m_customLabelBottom = nullptr;
+    QCheckBox* m_customLabelShowArt = nullptr;
     QLineEdit* m_trackedPlayers = nullptr;
     QCheckBox* m_mediaControlsEnabled = nullptr;
     QCheckBox* m_exposeMpris = nullptr;

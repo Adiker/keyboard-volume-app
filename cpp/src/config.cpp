@@ -82,6 +82,27 @@ QStringList profileAppsFromObject(const QJsonObject& profile)
     return apps;
 }
 
+// Canonical list of allowed progress label modes. Order is documentation-only;
+// validation is membership-based. Legacy values are mapped, not listed.
+const QStringList& validLabelModes()
+{
+    static const QStringList kModes = {
+        QStringLiteral("app"),          QStringLiteral("title_artist"),
+        QStringLiteral("artist_title"), QStringLiteral("app_track"),
+        QStringLiteral("player_track"), QStringLiteral("player_track_art"),
+        QStringLiteral("custom"),
+    };
+    return kModes;
+}
+
+// Map legacy values to new ones and reject unknowns to "app". Pure function.
+QString normalizeLabelMode(const QString& raw)
+{
+    if (raw == QLatin1String("track")) return QStringLiteral("title_artist");
+    if (raw == QLatin1String("both")) return QStringLiteral("app_track");
+    return validLabelModes().contains(raw) ? raw : QStringLiteral("app");
+}
+
 QJsonArray appsArrayWithPrimary(const QJsonObject& profile, const QString& primaryApp)
 {
     if (primaryApp.isEmpty()) return {};
@@ -163,6 +184,9 @@ QJsonObject Config::defaultJson()
              {QStringLiteral("progress_interactive"), true},
              {QStringLiteral("progress_poll_ms"), 500},
              {QStringLiteral("progress_label_mode"), QStringLiteral("app")},
+             {QStringLiteral("custom_label_top"), QStringLiteral("{app}")},
+             {QStringLiteral("custom_label_bottom"), QStringLiteral("{title} — {artist}")},
+             {QStringLiteral("custom_label_show_art"), false},
              {QStringLiteral("tracked_players"),
               QJsonArray{QStringLiteral("spotify"), QStringLiteral("youtube"),
                          QStringLiteral("strawberry"), QStringLiteral("harmonoid")}},
@@ -500,13 +524,14 @@ void Config::load()
             const bool needsProfileMigration =
                 !loaded.contains(QStringLiteral("profiles")) ||
                 profilesFromJson(m_data[QStringLiteral("profiles")].toArray()).isEmpty();
+            bool needsSave = false;
             if (needsProfileMigration)
             {
                 // Replace synthetic/invalid profiles with one built from legacy fields.
                 m_data[QStringLiteral("profiles")] = QJsonArray{};
                 migrateLegacyToProfilesUnlocked();
                 mirrorDefaultProfileToLegacyUnlocked();
-                saveUnlocked();
+                needsSave = true;
             }
             else
             {
@@ -514,6 +539,20 @@ void Config::load()
                 // so anything reading them sees current values.
                 mirrorDefaultProfileToLegacyUnlocked();
             }
+
+            // Persist legacy OSD label-mode rename: "track" → "title_artist",
+            // "both" → "app_track". Anything unknown collapses to "app".
+            QJsonObject osdObj = m_data[QStringLiteral("osd")].toObject();
+            const QString rawMode = osdObj[QStringLiteral("progress_label_mode")].toString();
+            const QString normMode = normalizeLabelMode(rawMode);
+            if (rawMode != normMode)
+            {
+                osdObj[QStringLiteral("progress_label_mode")] = normMode;
+                m_data[QStringLiteral("osd")] = osdObj;
+                needsSave = true;
+            }
+
+            if (needsSave) saveUnlocked();
             return;
         }
         qWarning() << "[Config] Parse error:" << err.errorString();
@@ -636,9 +675,12 @@ OsdConfig Config::osd() const
     c.progressEnabled = o[QStringLiteral("progress_enabled")].toBool(false);
     c.progressInteractive = o[QStringLiteral("progress_interactive")].toBool(true);
     c.progressPollMs = std::clamp(o[QStringLiteral("progress_poll_ms")].toInt(500), 200, 2000);
-    const QString lm = o[QStringLiteral("progress_label_mode")].toString(QStringLiteral("app"));
-    c.progressLabelMode =
-        (lm == QLatin1String("track") || lm == QLatin1String("both")) ? lm : QStringLiteral("app");
+    c.progressLabelMode = normalizeLabelMode(
+        o[QStringLiteral("progress_label_mode")].toString(QStringLiteral("app")));
+    c.customLabelTop = o[QStringLiteral("custom_label_top")].toString(QStringLiteral("{app}"));
+    c.customLabelBottom =
+        o[QStringLiteral("custom_label_bottom")].toString(QStringLiteral("{title} — {artist}"));
+    c.customLabelShowArt = o[QStringLiteral("custom_label_show_art")].toBool(false);
     const QJsonArray tp = o[QStringLiteral("tracked_players")].toArray();
     if (o.contains(QStringLiteral("tracked_players")))
     {
@@ -672,7 +714,10 @@ void Config::setOsd(const OsdConfig& c)
         {QStringLiteral("progress_enabled"), c.progressEnabled},
         {QStringLiteral("progress_interactive"), c.progressInteractive},
         {QStringLiteral("progress_poll_ms"), std::clamp(c.progressPollMs, 200, 2000)},
-        {QStringLiteral("progress_label_mode"), c.progressLabelMode},
+        {QStringLiteral("progress_label_mode"), normalizeLabelMode(c.progressLabelMode)},
+        {QStringLiteral("custom_label_top"), c.customLabelTop},
+        {QStringLiteral("custom_label_bottom"), c.customLabelBottom},
+        {QStringLiteral("custom_label_show_art"), c.customLabelShowArt},
         {QStringLiteral("tracked_players"), tp},
         {QStringLiteral("media_controls_enabled"), c.mediaControlsEnabled},
         {QStringLiteral("expose_mpris"), c.exposeMpris},
