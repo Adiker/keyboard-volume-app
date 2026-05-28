@@ -292,14 +292,18 @@ class App : public QObject
     // empty or VolumeController isn't ready.
     void activateProfile(const Profile& p)
     {
-        if (p.id.isEmpty() || p.id == m_lastActivatedProfileId) return;
-        m_lastActivatedProfileId = p.id;
-        if (p.sink.isEmpty() || !m_volumeCtrl) return;
-        for (const QString& app : p.apps)
+        if (p.id.isEmpty() || !m_volumeCtrl) return;
+        // Always attempt sink routing — the call is idempotent and the
+        // configured sink may have become available since the last try.
+        if (!p.sink.isEmpty())
         {
-            if (app.isEmpty()) continue;
-            m_volumeCtrl->setAppSink(app, p.sink);
+            for (const QString& app : p.apps)
+            {
+                if (app.isEmpty()) continue;
+                m_volumeCtrl->setAppSink(app, p.sink);
+            }
         }
+        m_lastActivatedProfileId = p.id;
     }
 
     void changeVolume(const QString& profileId, int direction)
