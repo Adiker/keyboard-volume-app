@@ -894,6 +894,16 @@ class PaWorker : public QObject
         }
         pa_threaded_mainloop_unlock(m_mainloop);
 
+        // Persist sink routing in stream-restore so it survives app restarts.
+        // doSetAppSink() already attempted this, but if the app had no existing
+        // stream-restore entry at that time (idle app, cleared restore DB) the
+        // write was a no-op. Now that the stream exists we can succeed.
+        for (const auto& app : appliedSinks)
+        {
+            auto it = pendSinks.find(app);
+            if (it != pendSinks.end()) streamRestoreSetDevice(app, it.value());
+        }
+
         if (!applied.isEmpty() || !appliedSinks.isEmpty())
         {
             QMutexLocker lk(&m_pendingMutex);
