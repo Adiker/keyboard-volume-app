@@ -55,7 +55,7 @@ class AlbumArtCache : public QObject
     void saveToDisk(const QString& url, const QByteArray& bytes) const;
 
     QHash<QString, QPixmap> m_memCache;
-    QStringList m_lruOrder;          // most-recent at back
+    QStringList m_lruOrder; // most-recent at back
     QHash<QString, QNetworkReply*> m_pending;
     QNetworkAccessManager* m_nam = nullptr;
 

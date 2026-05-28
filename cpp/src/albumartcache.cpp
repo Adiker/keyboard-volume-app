@@ -144,7 +144,8 @@ void AlbumArtCache::storeAndEmit(const QString& url, QPixmap pixmap)
 
 QString AlbumArtCache::diskPathFor(const QString& url) const
 {
-    const QByteArray hash = QCryptographicHash::hash(url.toUtf8(), QCryptographicHash::Sha1).toHex();
+    const QByteArray hash =
+        QCryptographicHash::hash(url.toUtf8(), QCryptographicHash::Sha1).toHex();
     const QString base = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) +
                          QStringLiteral("/keyboard-volume-app/art");
     return base + QLatin1Char('/') + QString::fromLatin1(hash) + QStringLiteral(".bin");
