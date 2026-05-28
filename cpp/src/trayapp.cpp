@@ -130,6 +130,7 @@ void TrayApp::onApplyScene(const QString& sceneId)
     if (scene.id.isEmpty()) return;
     m_volumeCtrl->applyScene(scene);
 }
+}
 
 void TrayApp::onRefresh()
 {
