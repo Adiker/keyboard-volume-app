@@ -698,9 +698,9 @@ TEST(ConfigScenes, RoundTripSceneTargets)
     scene.id = "meeting";
     scene.name = "Meeting";
     scene.targets = {
-        SceneTarget{QStringLiteral("Spotify"), 10, false},
-        SceneTarget{QStringLiteral("Discord"), 80, std::nullopt},
-        SceneTarget{QStringLiteral("Steam"), std::nullopt, true},
+        SceneTarget{QStringLiteral("Spotify"), 10, false, std::nullopt},
+        SceneTarget{QStringLiteral("Discord"), 80, std::nullopt, std::nullopt},
+        SceneTarget{QStringLiteral("Steam"), std::nullopt, true, std::nullopt},
     };
 
     {
@@ -723,15 +723,15 @@ TEST(ConfigScenes, SanitizesTargetsAndUniqueifiesIds)
     a.id = "scene";
     a.name = "A";
     a.targets = {
-        SceneTarget{QStringLiteral(" Spotify "), 150, std::nullopt},
-        SceneTarget{QStringLiteral(""), 50, false},
-        SceneTarget{QStringLiteral("Ignored"), std::nullopt, std::nullopt},
+        SceneTarget{QStringLiteral(" Spotify "), 150, std::nullopt, std::nullopt},
+        SceneTarget{QStringLiteral(""), 50, false, std::nullopt},
+        SceneTarget{QStringLiteral("Ignored"), std::nullopt, std::nullopt, std::nullopt},
     };
 
     AudioScene b;
     b.id = "scene";
     b.name = "B";
-    b.targets = {SceneTarget{QStringLiteral("Discord"), -10, true}};
+    b.targets = {SceneTarget{QStringLiteral("Discord"), -10, true, std::nullopt}};
 
     Config config(tmp.path());
     config.setScenes({a, b});
@@ -755,12 +755,12 @@ TEST(ConfigScenes, FindSceneByIdReturnsMatchingScene)
     AudioScene meeting;
     meeting.id = "meeting";
     meeting.name = "Meeting";
-    meeting.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt}};
+    meeting.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt, std::nullopt}};
 
     AudioScene gaming;
     gaming.id = "gaming";
     gaming.name = "Gaming";
-    gaming.targets = {SceneTarget{QStringLiteral("Discord"), 50, std::nullopt}};
+    gaming.targets = {SceneTarget{QStringLiteral("Discord"), 50, std::nullopt, std::nullopt}};
 
     Config config(tmp.path());
     config.setScenes({meeting, gaming});
@@ -777,7 +777,7 @@ TEST(ConfigScenes, FindSceneByIdReturnsEmptyForUnknownId)
     AudioScene scene;
     scene.id = "meeting";
     scene.name = "Meeting";
-    scene.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt}};
+    scene.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt, std::nullopt}};
 
     Config config(tmp.path());
     config.setScenes({scene});
@@ -1419,4 +1419,157 @@ TEST(ConfigMediaHotkeys, SerializedAsTopLevelKey)
     EXPECT_EQ(mh["next"].toInt(), 0);
     EXPECT_EQ(mh["previous"].toInt(), 0);
     EXPECT_EQ(mh["stop"].toInt(), 0);
+}
+
+// ─── Sink routing ────────────────────────────────────────────────────────────
+TEST(ConfigProfiles, RoundTripProfileSink)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Profile a;
+    a.id = "default";
+    a.name = "Default";
+    a.apps = {"spotify"};
+    a.hotkeys = {115, 114, 113, {}};
+
+    Profile b;
+    b.id = "discord";
+    b.name = "Discord";
+    b.apps = {"Discord"};
+    b.hotkeys = {115, 114, 113, {}};
+    b.sink = "alsa_output.usb-headset.iec958-stereo";
+
+    {
+        Config config(tmp.path());
+        config.setProfiles({a, b});
+    }
+
+    Config config2(tmp.path());
+    auto profs = config2.profiles();
+    ASSERT_EQ(profs.size(), 2);
+    EXPECT_TRUE(profs[0].sink.isEmpty());
+    EXPECT_EQ(profs[1].sink.toStdString(), "alsa_output.usb-headset.iec958-stereo");
+}
+
+TEST(ConfigProfiles, ProfileSinkTrimsWhitespace)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    Profile p;
+    p.id = "default";
+    p.name = "Default";
+    p.apps = {"spotify"};
+    p.hotkeys = {115, 114, 113, {}};
+    p.sink = "   alsa_output.foo   ";
+
+    config.setProfiles({p});
+    auto profs = config.profiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_EQ(profs[0].sink.toStdString(), "alsa_output.foo");
+}
+
+TEST(ConfigProfiles, LegacyConfigWithoutSinkLoadsEmpty)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    QFile f(tmp.path() + "/config.json");
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject profile{
+        {"id", "default"},
+        {"name", "Default"},
+        {"app", "spotify"},
+        {"modifiers", QJsonArray{}},
+        {"hotkeys",
+         QJsonObject{
+             {"volume_up", 115},
+             {"volume_down", 114},
+             {"mute", 113},
+         }},
+    };
+    QJsonObject json{{"profiles", QJsonArray{profile}}};
+    f.write(QJsonDocument(json).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    auto profs = config.profiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_TRUE(profs[0].sink.isEmpty());
+}
+
+TEST(ConfigScenes, RoundTripSceneTargetWithSink)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AudioScene scene;
+    scene.id = "gaming";
+    scene.name = "Gaming";
+    SceneTarget t1{QStringLiteral("Discord"), std::nullopt, std::nullopt,
+                   QStringLiteral("alsa_output.usb-headset")};
+    SceneTarget t2{QStringLiteral("Spotify"), 10, std::nullopt,
+                   QStringLiteral("alsa_output.speakers")};
+    SceneTarget t3{QStringLiteral("Steam"), std::nullopt, true, std::nullopt};
+    scene.targets = {t1, t2, t3};
+
+    {
+        Config config(tmp.path());
+        config.setScenes({scene});
+    }
+
+    Config config2(tmp.path());
+    const auto scenes = config2.scenes();
+    ASSERT_EQ(scenes.size(), 1);
+    ASSERT_EQ(scenes[0].targets.size(), 3);
+    EXPECT_EQ(scenes[0].targets[0].sink->toStdString(), "alsa_output.usb-headset");
+    EXPECT_FALSE(scenes[0].targets[0].volume.has_value());
+    EXPECT_FALSE(scenes[0].targets[0].muted.has_value());
+    EXPECT_EQ(scenes[0].targets[1].sink->toStdString(), "alsa_output.speakers");
+    EXPECT_EQ(scenes[0].targets[1].volume, std::optional<int>(10));
+    EXPECT_FALSE(scenes[0].targets[2].sink.has_value());
+}
+
+TEST(ConfigScenes, SinkOnlyTargetPersists)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AudioScene scene;
+    scene.id = "route-only";
+    scene.name = "Route only";
+    // Sink-only target — no volume, no mute. Should survive sanitizer.
+    SceneTarget t{QStringLiteral("Discord"), std::nullopt, std::nullopt,
+                  QStringLiteral("alsa_output.headset")};
+    scene.targets = {t};
+
+    Config config(tmp.path());
+    config.setScenes({scene});
+
+    const auto scenes = config.scenes();
+    ASSERT_EQ(scenes.size(), 1);
+    ASSERT_EQ(scenes[0].targets.size(), 1);
+    EXPECT_EQ(scenes[0].targets[0].sink->toStdString(), "alsa_output.headset");
+}
+
+TEST(ConfigScenes, EmptySinkStringIsDropped)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AudioScene scene;
+    scene.id = "x";
+    scene.name = "X";
+    // Only whitespace sink + nothing else → target should be dropped.
+    SceneTarget t{QStringLiteral("Discord"), std::nullopt, std::nullopt, QStringLiteral("   ")};
+    scene.targets = {t};
+
+    Config config(tmp.path());
+    config.setScenes({scene});
+
+    const auto scenes = config.scenes();
+    ASSERT_EQ(scenes.size(), 1);
+    EXPECT_TRUE(scenes[0].targets.isEmpty());
 }

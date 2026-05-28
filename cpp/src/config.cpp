@@ -163,6 +163,7 @@ QJsonObject Config::defaultJson()
          }},
         {QStringLiteral("vol_min"), 0},
         {QStringLiteral("vol_max"), 100},
+        {QStringLiteral("sink"), QString{}},
     };
 
     return QJsonObject{
@@ -285,6 +286,7 @@ QJsonObject Config::profileToJson(const Profile& p)
         {QStringLiteral("auto_switch"), p.autoSwitch},
         {QStringLiteral("vol_min"), std::clamp(p.volMin, 0, 100)},
         {QStringLiteral("vol_max"), std::clamp(p.volMax, 0, 100)},
+        {QStringLiteral("sink"), p.sink.trimmed()},
     };
 }
 
@@ -324,6 +326,7 @@ Profile Config::profileFromJson(const QJsonObject& o)
     p.volMin = std::clamp(o[QStringLiteral("vol_min")].toInt(0), 0, 100);
     p.volMax = std::clamp(o[QStringLiteral("vol_max")].toInt(100), 0, 100);
     if (p.volMin > p.volMax) std::swap(p.volMin, p.volMax);
+    p.sink = o[QStringLiteral("sink")].toString().trimmed();
     return p;
 }
 
@@ -359,6 +362,8 @@ QJsonObject Config::sceneToJson(const AudioScene& scene)
         QJsonObject o{{QStringLiteral("match"), target.match.trimmed()}};
         if (target.volume) o[QStringLiteral("volume")] = std::clamp(*target.volume, 0, 100);
         if (target.muted) o[QStringLiteral("muted")] = *target.muted;
+        if (target.sink && !target.sink->trimmed().isEmpty())
+            o[QStringLiteral("sink")] = target.sink->trimmed();
         targets.append(o);
     }
 
@@ -392,8 +397,13 @@ AudioScene Config::sceneFromJson(const QJsonObject& o)
             target.volume = std::clamp(to[QStringLiteral("volume")].toInt(), 0, 100);
         if (to.contains(QStringLiteral("muted")) && to[QStringLiteral("muted")].isBool())
             target.muted = to[QStringLiteral("muted")].toBool();
+        if (to.contains(QStringLiteral("sink")) && to[QStringLiteral("sink")].isString())
+        {
+            QString s = to[QStringLiteral("sink")].toString().trimmed();
+            if (!s.isEmpty()) target.sink = s;
+        }
 
-        if (!target.volume && !target.muted) continue;
+        if (!target.volume && !target.muted && !target.sink) continue;
         scene.targets.append(target);
     }
 
@@ -835,6 +845,7 @@ void Config::setProfiles(const QList<Profile>& profiles)
         p.volMin = std::clamp(p.volMin, 0, 100);
         p.volMax = std::clamp(p.volMax, 0, 100);
         if (p.volMin > p.volMax) std::swap(p.volMin, p.volMax);
+        p.sink = p.sink.trimmed();
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -872,7 +883,15 @@ void Config::setScenes(const QList<AudioScene>& scenes)
             target.match = target.match.trimmed();
             if (target.match.isEmpty()) continue;
             if (target.volume) target.volume = std::clamp(*target.volume, 0, 100);
-            if (!target.volume && !target.muted) continue;
+            if (target.sink)
+            {
+                QString s = target.sink->trimmed();
+                if (s.isEmpty())
+                    target.sink.reset();
+                else
+                    target.sink = s;
+            }
+            if (!target.volume && !target.muted && !target.sink) continue;
             targets.append(target);
         }
         scene.targets = targets;
