@@ -1543,7 +1543,6 @@ class PaWorker : public QObject
         QMutexLocker lk(&m_pendingMutex);
         m_pendingVolumes.remove(app);
         m_pendingMutes.remove(app);
-        m_pendingSinks.remove(app);
     }
 
     void clearDuckingState()
