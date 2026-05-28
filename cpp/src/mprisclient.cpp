@@ -555,8 +555,8 @@ void MprisClient::reevaluateActive(bool forceTrackChanged)
     // boundaries must not trigger trackChanged, which would reset the OSD progress bar.
     const bool trackChanged =
         serviceChanged || m_active.title != chosen->title || m_active.artist != chosen->artist ||
-        m_active.lengthUs != chosen->lengthUs || m_active.canSeek != chosen->canSeek ||
-        m_active.trackId != chosen->trackId;
+        m_active.album != chosen->album || m_active.lengthUs != chosen->lengthUs ||
+        m_active.canSeek != chosen->canSeek || m_active.trackId != chosen->trackId;
     const bool statusChanged = !m_hasActive || m_active.status != chosen->status;
     const PlayerInfo previous = m_active;
 

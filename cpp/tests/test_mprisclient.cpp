@@ -1086,6 +1086,30 @@ TEST_F(MprisClientTest, ParsesAlbumAndArtUrl)
     EXPECT_EQ(artSpy.last().first().toString().toStdString(), "https://example.com/art.jpg");
 }
 
+TEST_F(MprisClientTest, AlbumOnlyChangeEmitsTrackChanged)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Title"), QStringLiteral("Artist"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+
+    QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
+    ASSERT_TRUE(waitFor([&] { return trackSpy.count() > 0; }, 2000));
+    trackSpy.clear();
+
+    // Album-only update (title/artist/trackid identical). Without album in the
+    // identity check, trackChanged would not fire and the OSD would keep stale
+    // album text in the custom label preset.
+    fp.player->setAlbumArt(QStringLiteral("New Album"), QString{});
+
+    ASSERT_TRUE(waitFor([&] { return trackSpy.count() > 0; }, 2000));
+    EXPECT_EQ(client.activePlayer().album.toStdString(), "New Album");
+}
+
 TEST_F(MprisClientTest, AlbumArtChangedEmptyOnNoPlayer)
 {
     SKIP_IF_NO_DBUS();
