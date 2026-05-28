@@ -2,9 +2,11 @@
 #include "applistwidget.h"
 #include "settingsdialog.h" // HotkeyCapture
 #include "i18n.h"
+#include "volumecontroller.h"
 
 #include <QLineEdit>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QVBoxLayout>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -17,8 +19,10 @@
 #include <QMessageBox>
 
 ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
-                                     InputHandler* inputHandler, QWidget* parent)
-    : QDialog(parent), m_initial(initial), m_config(config), m_inputHandler(inputHandler)
+                                     InputHandler* inputHandler, VolumeController* volumeCtrl,
+                                     QWidget* parent)
+    : QDialog(parent), m_initial(initial), m_config(config), m_inputHandler(inputHandler),
+      m_volumeCtrl(volumeCtrl)
 {
     setWindowTitle(::tr(QStringLiteral("settings.profiles.edit_title")));
     setMinimumWidth(420);
@@ -113,6 +117,35 @@ ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
     auto* appsWidget = new QWidget(this);
     appsWidget->setLayout(appsLayout);
     form->addRow(::tr(QStringLiteral("app_selector.subtitle")), appsWidget);
+
+    // Output sink (PA device). First entry maps to empty string ("leave routing
+    // unchanged"). If the stored sink name is not in the current enumeration —
+    // e.g. the USB headset is unplugged — we still preserve the value so the
+    // user doesn't silently lose their selection on save.
+    m_sink = new QComboBox(this);
+    m_sink->addItem(::tr(QStringLiteral("settings.profiles.sink_default")), QString{});
+    bool storedSinkPresent = initial.sink.isEmpty();
+    if (m_volumeCtrl)
+    {
+        for (const SinkInfo& s : m_volumeCtrl->listSinks())
+        {
+            QString label = s.description.isEmpty() ? s.name : s.description;
+            if (s.isDefault) label += QStringLiteral(" *");
+            m_sink->addItem(label, s.name);
+            if (s.name == initial.sink) storedSinkPresent = true;
+        }
+    }
+    if (!storedSinkPresent && !initial.sink.isEmpty())
+    {
+        // Keep the orphan entry visible so the user can see and re-confirm.
+        m_sink->addItem(::tr(QStringLiteral("settings.profiles.sink_missing")).arg(initial.sink),
+                        initial.sink);
+    }
+    {
+        int idx = m_sink->findData(initial.sink);
+        if (idx >= 0) m_sink->setCurrentIndex(idx);
+    }
+    form->addRow(::tr(QStringLiteral("settings.profiles.sink_label")), m_sink);
 
     // Modifiers
     m_modCtrl = new QCheckBox(::tr(QStringLiteral("settings.profiles.modifier_ctrl")), this);
@@ -236,6 +269,7 @@ Profile ProfileEditDialog::result() const
     p.autoSwitch = m_autoSwitch->isChecked();
     p.volMin = m_volMin->value();
     p.volMax = m_volMax->value();
+    p.sink = m_sink ? m_sink->currentData().toString() : QString{};
 
     return p;
 }
