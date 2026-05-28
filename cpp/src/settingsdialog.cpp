@@ -797,7 +797,29 @@ void SettingsDialog::saveAndAccept()
     media.stop = m_mediaStop->binding();
     m_config->setMediaHotkeys(media);
 
+    // Capture pre-save sinks so we can clear PA stream-restore for any profile
+    // whose sink was explicitly switched back to "(system default)". Without
+    // this, the previous device pref keeps re-routing the app on next launch
+    // even though the UI shows "system default".
+    QList<Profile> previousProfiles;
+    if (m_volumeCtrl && !m_profiles.isEmpty()) previousProfiles = m_config->profiles();
+
     if (!m_profiles.isEmpty()) m_config->setProfiles(m_profiles);
+
+    if (m_volumeCtrl && !previousProfiles.isEmpty())
+    {
+        for (const Profile& neu : m_profiles)
+        {
+            if (!neu.sink.isEmpty()) continue;
+            for (const Profile& old : previousProfiles)
+            {
+                if (old.id != neu.id || old.sink.isEmpty()) continue;
+                for (const QString& app : neu.apps)
+                    if (!app.isEmpty()) m_volumeCtrl->clearAppSinkOverride(app);
+                break;
+            }
+        }
+    }
     m_config->setScenes(m_scenes);
     accept();
 }

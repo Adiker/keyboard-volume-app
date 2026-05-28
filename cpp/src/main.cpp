@@ -169,6 +169,13 @@ class App : public QObject
         connect(m_volumeCtrl, &VolumeController::appsReady, this,
                 [this](QList<AudioApp> apps) { m_appCache = std::move(apps); });
 
+        // Sink hot-plug (USB headset connect/disconnect, default sink change)
+        // clears the profile-activation guard so the very next hotkey press
+        // re-applies the configured sink — addresses the "device appeared after
+        // a failed first attempt" case without rerouting on every press.
+        connect(m_volumeCtrl, &VolumeController::sinksReady, this,
+                [this](const QList<SinkInfo>&) { m_lastActivatedProfileId.clear(); });
+
         // MprisClient → OSDWindow progress row
         connect(m_mpris, &MprisClient::trackChanged, m_osd,
                 [this](const QString& title, const QString& artist, qint64 lengthUs, bool canSeek)
@@ -288,22 +295,20 @@ class App : public QObject
     }
 
     // Route a profile's apps to its configured sink — runs once per profile-id
-    // transition so repeated hotkey presses don't spam PA. No-op when sink is
-    // empty or VolumeController isn't ready.
+    // transition so repeated hotkey presses don't spam PA. The guard is cleared
+    // on settingsChanged and on sinksReady so a freshly plugged USB device or a
+    // sink edit in Settings triggers an automatic re-route on the next press.
     void activateProfile(const Profile& p)
     {
         if (p.id.isEmpty() || !m_volumeCtrl) return;
-        // Always attempt sink routing — the call is idempotent and the
-        // configured sink may have become available since the last try.
-        if (!p.sink.isEmpty())
-        {
-            for (const QString& app : p.apps)
-            {
-                if (app.isEmpty()) continue;
-                m_volumeCtrl->setAppSink(app, p.sink);
-            }
-        }
+        if (p.id == m_lastActivatedProfileId) return;
         m_lastActivatedProfileId = p.id;
+        if (p.sink.isEmpty()) return;
+        for (const QString& app : p.apps)
+        {
+            if (app.isEmpty()) continue;
+            m_volumeCtrl->setAppSink(app, p.sink);
+        }
     }
 
     void changeVolume(const QString& profileId, int direction)

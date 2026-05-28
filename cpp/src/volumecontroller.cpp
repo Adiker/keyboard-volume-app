@@ -949,6 +949,51 @@ class PaWorker : public QObject
         emit sinksReady(sinks);
     }
 
+    // Drop the persisted stream-restore device override for an app so the next
+    // stream falls back to the system default. Also clears any pending sink so
+    // it doesn't re-park the stream on the previous device.
+    void doClearAppSinkOverride(const QString& appName)
+    {
+        if (m_stopping || appName.isEmpty()) return;
+
+        {
+            QMutexLocker lk(&m_pendingMutex);
+            m_pendingSinks.remove(appName);
+        }
+        m_appSinks.remove(appName);
+
+        if (!contextReady()) return;
+
+        struct ClearCbData
+        {
+            PaWorker* self;
+            QString target;
+        };
+
+        auto cb = [](pa_context* ctx, const pa_ext_stream_restore_info* info, int eol, void* ud)
+        {
+            auto* d = static_cast<ClearCbData*>(ud);
+            if (eol || !info || !d) return;
+            if (QString::fromUtf8(info->name) != d->target) return;
+            pa_ext_stream_restore_info out = *info;
+            out.device = nullptr; // drop preferred device → system default
+            pa_operation* op = pa_ext_stream_restore_write(ctx, PA_UPDATE_REPLACE, &out, 1, 1,
+                                                           operationDoneCallback, d->self);
+            if (op) pa_operation_unref(op);
+        };
+
+        for (const QString& candidate : streamRestoreAppCandidates(appName))
+        {
+            ClearCbData d{this, QStringLiteral("sink-input-by-application-name:") + candidate};
+            pa_threaded_mainloop_lock(m_mainloop);
+            waitForOperation(pa_ext_stream_restore_read(m_ctx, cb, &d),
+                             "stream restore clear device");
+            pa_threaded_mainloop_unlock(m_mainloop);
+        }
+
+        emit sinkChanged(appName, QString{});
+    }
+
     // ── Route an app's sink-input(s) to the named PA sink ────────────────────
     // Mirrors the volume/mute cascade: active sink-input(s) → stream-restore
     // device persistence → parking. Empty sinkName is a no-op.
@@ -1663,6 +1708,14 @@ void VolumeController::setAppSink(const QString& appName, const QString& sinkNam
 
     QMetaObject::invokeMethod(m_worker, "doSetAppSink", Qt::QueuedConnection,
                               Q_ARG(QString, appName), Q_ARG(QString, sinkName));
+}
+
+void VolumeController::clearAppSinkOverride(const QString& appName)
+{
+    if (m_closing || !m_worker || appName.isEmpty()) return;
+
+    QMetaObject::invokeMethod(m_worker, "doClearAppSinkOverride", Qt::QueuedConnection,
+                              Q_ARG(QString, appName));
 }
 
 void VolumeController::changeVolume(const QString& appName, double delta, double minVol,

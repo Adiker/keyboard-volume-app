@@ -55,6 +55,12 @@ class VolumeController : public QObject
     // logged but do not raise.
     virtual void setAppSink(const QString& appName, const QString& sinkName);
 
+    // Drop the persisted stream-restore device override for an app so the next
+    // sink-input created by that app falls back to the system default sink.
+    // Called from Settings when a profile's sink is changed back to "(system
+    // default)" so the previous routing doesn't keep sticking after restart.
+    virtual void clearAppSinkOverride(const QString& appName);
+
     // Apply an audio scene: iterate its targets and set per-target volume/mute.
     // Scenes intentionally bypass per-profile volume limits (explicit presets).
     // Single entry point shared by tray, D-Bus, hotkey, and Settings so the
