@@ -155,6 +155,8 @@ class App : public QObject
         connect(m_tray, &TrayApp::settingsChanged, m_tray, &TrayApp::rebuildMenu);
         connect(m_tray, &TrayApp::settingsChanged, this, &App::onHotkeysMaybeChanged);
         connect(m_tray, &TrayApp::settingsChanged, this, &App::onAutoSwitchMaybeChanged);
+        connect(m_tray, &TrayApp::settingsChanged, this,
+                [this]() { m_lastActivatedProfileId.clear(); });
         connect(m_tray, &TrayApp::osdPreviewRequested, m_osd,
                 [this](int s, int x, int y) { m_osd->showPreview(s, x, y); });
         connect(m_tray, &TrayApp::osdPreviewFinished, m_osd, &OSDWindow::hidePreview);

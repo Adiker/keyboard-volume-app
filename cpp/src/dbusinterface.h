@@ -138,6 +138,8 @@ class DbusInterface : public QObject
     QVariantList buildScenesProp() const;
     // Resolve a profile id to a Profile (or empty Profile if unknown).
     Profile findProfile(const QString& id) const;
+    // Route profile apps to its configured sink (no-op if sink empty or ctrl null).
+    void applyProfileSink(const Profile& p);
 
     Config* m_config = nullptr;
     VolumeController* m_volumeCtrl = nullptr;

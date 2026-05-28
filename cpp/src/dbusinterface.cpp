@@ -328,6 +328,15 @@ Profile DbusInterface::findProfile(const QString& id) const
     return Profile{};
 }
 
+void DbusInterface::applyProfileSink(const Profile& p)
+{
+    if (!m_volumeCtrl || p.sink.isEmpty()) return;
+    for (const QString& app : p.apps)
+    {
+        if (!app.isEmpty()) m_volumeCtrl->setAppSink(app, p.sink);
+    }
+}
+
 void DbusInterface::reloadProfiles()
 {
     QVariantList fresh = buildProfilesProp();
@@ -355,6 +364,7 @@ void DbusInterface::VolumeUpProfile(const QString& profileId)
 {
     Profile p = findProfile(profileId);
     if (p.primaryApp().isEmpty()) return;
+    applyProfileSink(p);
     double step = m_volumeStep / 100.0;
     m_volumeCtrl->changeVolume(p.primaryApp(), step, p.volMin / 100.0, p.volMax / 100.0);
 }
@@ -363,6 +373,7 @@ void DbusInterface::VolumeDownProfile(const QString& profileId)
 {
     Profile p = findProfile(profileId);
     if (p.primaryApp().isEmpty()) return;
+    applyProfileSink(p);
     double step = m_volumeStep / 100.0;
     m_volumeCtrl->changeVolume(p.primaryApp(), -step, p.volMin / 100.0, p.volMax / 100.0);
 }
@@ -371,6 +382,7 @@ void DbusInterface::ToggleMuteProfile(const QString& profileId)
 {
     Profile p = findProfile(profileId);
     if (p.primaryApp().isEmpty()) return;
+    applyProfileSink(p);
     m_volumeCtrl->toggleMute(p.primaryApp());
 }
 
@@ -378,6 +390,7 @@ void DbusInterface::SetMuteProfile(const QString& profileId, bool muted)
 {
     Profile p = findProfile(profileId);
     if (p.primaryApp().isEmpty()) return;
+    applyProfileSink(p);
     m_volumeCtrl->setMuted(p.primaryApp(), muted);
 }
 
@@ -385,6 +398,7 @@ void DbusInterface::ToggleDuckingProfile(const QString& profileId)
 {
     Profile p = findProfile(profileId);
     if (p.primaryApp().isEmpty() || !p.ducking.enabled) return;
+    applyProfileSink(p);
     m_volumeCtrl->toggleDucking(p.primaryApp(), p.ducking.volume / 100.0);
 }
 
@@ -392,6 +406,7 @@ void DbusInterface::SetVolumeProfile(const QString& profileId, double vol)
 {
     Profile p = findProfile(profileId);
     if (p.primaryApp().isEmpty()) return;
+    applyProfileSink(p);
     m_volumeCtrl->setVolume(p.primaryApp(), std::clamp(vol, 0.0, 1.0), p.volMin / 100.0,
                             p.volMax / 100.0);
 }
