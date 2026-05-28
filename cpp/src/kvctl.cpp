@@ -64,6 +64,10 @@ QString propertyName(KvCtlCommand::Field field)
         return QStringLiteral("ProgressEnabled");
     case KvCtlCommand::Field::AutoProfileSwitch:
         return QStringLiteral("AutoProfileSwitch");
+    case KvCtlCommand::Field::Sinks:
+        return QStringLiteral("Sinks");
+    case KvCtlCommand::Field::Sink:
+        return QStringLiteral("Sink"); // not a real property — dispatched as method
     case KvCtlCommand::Field::None:
         return QString();
     }
@@ -268,6 +272,8 @@ QVariant setValueForCommand(const KvCtlCommand& cmd, bool* ok)
     case KvCtlCommand::Field::Apps:
     case KvCtlCommand::Field::Profiles:
     case KvCtlCommand::Field::Scenes:
+    case KvCtlCommand::Field::Sinks:
+    case KvCtlCommand::Field::Sink:
         *ok = false;
         return {};
     }
@@ -395,6 +401,33 @@ int getProperty(KvCtlCommand::Field field)
 
 int setProperty(const KvCtlCommand& cmd)
 {
+    // `set sink APP DEVICE` is a method call (SetAppSink), not a property write.
+    if (cmd.field == KvCtlCommand::Field::Sink)
+    {
+        if (cmd.target.isEmpty() || cmd.value.isEmpty())
+        {
+            printError(QStringLiteral("set sink: missing APP or DEVICE"));
+            return ExitInvalidValue;
+        }
+        if (!ensureDaemonAvailable()) return ExitUnavailable;
+
+        QDBusInterface control(Service, ObjectPath, ControlInterface,
+                               QDBusConnection::sessionBus());
+        if (!control.isValid())
+        {
+            printError(control.lastError().message());
+            return ExitDbusError;
+        }
+
+        QDBusMessage reply = control.call(QStringLiteral("SetAppSink"), cmd.target, cmd.value);
+        if (reply.type() == QDBusMessage::ErrorMessage)
+        {
+            printError(reply.errorMessage());
+            return ExitDbusError;
+        }
+        return ExitOk;
+    }
+
     bool ok = false;
     const QVariant value = setValueForCommand(cmd, &ok);
     if (!ok)

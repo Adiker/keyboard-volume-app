@@ -20,6 +20,7 @@ class DbusInterface : public QObject
     Q_PROPERTY(int VolumeStep READ volumeStep WRITE setVolumeStep)
     Q_PROPERTY(QVariantList Profiles READ profilesProp NOTIFY profilesChanged)
     Q_PROPERTY(QVariantList Scenes READ scenesProp NOTIFY scenesChanged)
+    Q_PROPERTY(QVariantList Sinks READ sinksProp NOTIFY sinksChanged)
     Q_PROPERTY(bool ProgressEnabled READ progressEnabled WRITE setProgressEnabled NOTIFY
                    progressEnabledChanged)
     Q_PROPERTY(bool AutoProfileSwitch READ autoProfileSwitch WRITE setAutoProfileSwitch NOTIFY
@@ -61,6 +62,10 @@ class DbusInterface : public QObject
     {
         return m_scenesProp;
     }
+    QVariantList sinksProp() const
+    {
+        return m_sinksProp;
+    }
     bool progressEnabled() const;
     bool autoProfileSwitch() const;
 
@@ -75,6 +80,9 @@ class DbusInterface : public QObject
     void reloadProfiles();
     void reloadProgressEnabled();
     void reloadAutoProfileSwitch();
+    // Rebuild Sinks property from VolumeController's cached list. Called when
+    // VolumeController::sinksReady fires.
+    void reloadSinks();
 
     // Update the cached active-app state when the tray (or any other source)
     // changes the selected application. Wired up by main.cpp.
@@ -102,6 +110,10 @@ class DbusInterface : public QObject
     Q_SCRIPTABLE void ShowVolume();
     Q_SCRIPTABLE void ShowVolumeProfile(const QString& profileId);
 
+    // Route an app's active sink-input(s) to the named PA sink, and persist via
+    // stream-restore. Empty arguments are no-ops.
+    Q_SCRIPTABLE void SetAppSink(const QString& app, const QString& sink);
+
     // Media controls — relayed to MprisClient when one is wired. Each is a
     // no-op when no MprisClient is set or when no MPRIS player is active.
     Q_SCRIPTABLE void MediaPlayPause();
@@ -116,6 +128,7 @@ class DbusInterface : public QObject
     void appsUpdated();
     void profilesChanged(const QVariantList& profiles);
     void scenesChanged(const QVariantList& scenes);
+    void sinksChanged(const QVariantList& sinks);
     void progressEnabledChanged(bool on);
     void autoProfileSwitchChanged(bool on);
 
@@ -139,4 +152,5 @@ class DbusInterface : public QObject
     bool m_autoProfileSwitch = false;
     QVariantList m_profilesProp;
     QVariantList m_scenesProp;
+    QVariantList m_sinksProp;
 };

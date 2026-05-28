@@ -36,6 +36,14 @@ DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, QObje
     m_profilesProp = buildProfilesProp();
     m_scenesProp = buildScenesProp();
 
+    if (m_volumeCtrl)
+    {
+        connect(m_volumeCtrl, &VolumeController::sinksReady, this,
+                [this](const QList<SinkInfo>&) { reloadSinks(); });
+        // Seed from any cache already populated on the controller side.
+        reloadSinks();
+    }
+
     connect(m_volumeCtrl, &VolumeController::volumeChanged, this,
             [this](const QString& app, double vol, bool muted)
             {
@@ -278,6 +286,7 @@ QVariantList DbusInterface::buildProfilesProp() const
         m[QStringLiteral("modifiers")] = mods;
         m[QStringLiteral("hotkeys")] = hk;
         m[QStringLiteral("ducking")] = ducking;
+        m[QStringLiteral("sink")] = p.sink;
         out.append(m);
     }
     return out;
@@ -296,6 +305,7 @@ QVariantList DbusInterface::buildScenesProp() const
             tm[QStringLiteral("match")] = target.match;
             if (target.volume) tm[QStringLiteral("volume")] = *target.volume;
             if (target.muted) tm[QStringLiteral("muted")] = *target.muted;
+            if (target.sink && !target.sink->isEmpty()) tm[QStringLiteral("sink")] = *target.sink;
             targets.append(tm);
         }
 
@@ -384,6 +394,32 @@ void DbusInterface::SetVolumeProfile(const QString& profileId, double vol)
     if (p.primaryApp().isEmpty()) return;
     m_volumeCtrl->setVolume(p.primaryApp(), std::clamp(vol, 0.0, 1.0), p.volMin / 100.0,
                             p.volMax / 100.0);
+}
+
+void DbusInterface::SetAppSink(const QString& app, const QString& sink)
+{
+    if (!m_volumeCtrl) return;
+    if (app.trimmed().isEmpty() || sink.trimmed().isEmpty()) return;
+    m_volumeCtrl->setAppSink(app.trimmed(), sink.trimmed());
+}
+
+void DbusInterface::reloadSinks()
+{
+    if (!m_volumeCtrl) return;
+    QVariantList fresh;
+    for (const SinkInfo& s : m_volumeCtrl->listSinks())
+    {
+        QVariantMap m;
+        m[QStringLiteral("name")] = s.name;
+        m[QStringLiteral("description")] = s.description;
+        m[QStringLiteral("is_default")] = s.isDefault;
+        fresh.append(m);
+    }
+    if (fresh != m_sinksProp)
+    {
+        m_sinksProp = fresh;
+        emit sinksChanged(m_sinksProp);
+    }
 }
 
 void DbusInterface::ApplyScene(const QString& sceneId)
