@@ -53,6 +53,23 @@ struct ProfileHotkeyMatch
     ProfileHotkeyAction action = ProfileHotkeyAction::None;
 };
 
+// ─── Media hotkey resolution (global, MPRIS dispatch) ────────────────────────
+// Profile-independent. Resolved after profile match fails so per-profile
+// bindings keep priority when a user has chosen to bind the same key with
+// modifiers (e.g. Ctrl+KEY_PLAYPAUSE → VolumeUp on a profile, bare
+// KEY_PLAYPAUSE → media play/pause).
+enum class MediaAction
+{
+    None,
+    PlayPause,
+    Next,
+    Previous,
+    Stop,
+};
+
+MediaAction resolveMediaHotkey(const HotkeyBinding& binding, const MediaHotkeyConfig& cfg);
+MediaAction resolveMediaHotkey(int code, const MediaHotkeyConfig& cfg);
+
 // Map a set of raw evdev modifier codes (KEY_LEFTCTRL, KEY_RIGHTCTRL,
 // KEY_LEFTSHIFT, KEY_RIGHTSHIFT) to the canonical Modifier set used by
 // profile matching. L/R variants collapse.
@@ -127,6 +144,9 @@ class InputHandler : public QThread
     void setProfiles(const QList<Profile>& profiles);
     QList<Profile> currentProfiles() const;
 
+    void setMediaHotkeys(const MediaHotkeyConfig& cfg);
+    MediaHotkeyConfig currentMediaHotkeys() const;
+
     QString devicePath() const
     {
         return m_devicePath;
@@ -148,6 +168,13 @@ class InputHandler : public QThread
     void ducking_toggle(const QString& profileId);
     void show_volume(const QString& profileId);
 
+    // Media controls — global, no profileId. Slots in App connect these to
+    // MprisClient. No-op when no MPRIS player is active.
+    void media_play_pause();
+    void media_next();
+    void media_previous();
+    void media_stop();
+
   protected:
     void run() override;
 
@@ -156,8 +183,10 @@ class InputHandler : public QThread
     std::atomic<bool> m_running{false};
 
     mutable QMutex m_profilesMutex;
-    QList<Profile> m_profiles; // guarded by m_profilesMutex
+    QList<Profile> m_profiles;        // guarded by m_profilesMutex
+    MediaHotkeyConfig m_mediaHotkeys; // guarded by m_profilesMutex
 
     // Per-(binding, profileId) last-trigger timestamp (ms) for 100 ms debounce.
+    // Media hotkeys reuse the same map with profileId == "__media__".
     QMap<QPair<HotkeyBinding, QString>, qint64> m_lastTriggerMs;
 };

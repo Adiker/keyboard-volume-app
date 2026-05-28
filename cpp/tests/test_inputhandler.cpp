@@ -63,11 +63,38 @@ TEST(InputHandler, SignalsConnectable)
     QSignalSpy spyDown(&handler, &InputHandler::volume_down);
     QSignalSpy spyMute(&handler, &InputHandler::volume_mute);
     QSignalSpy spyDuck(&handler, &InputHandler::ducking_toggle);
+    QSignalSpy spyPlayPause(&handler, &InputHandler::media_play_pause);
+    QSignalSpy spyNext(&handler, &InputHandler::media_next);
+    QSignalSpy spyPrev(&handler, &InputHandler::media_previous);
+    QSignalSpy spyStop(&handler, &InputHandler::media_stop);
 
     EXPECT_TRUE(spyUp.isValid());
     EXPECT_TRUE(spyDown.isValid());
     EXPECT_TRUE(spyMute.isValid());
     EXPECT_TRUE(spyDuck.isValid());
+    EXPECT_TRUE(spyPlayPause.isValid());
+    EXPECT_TRUE(spyNext.isValid());
+    EXPECT_TRUE(spyPrev.isValid());
+    EXPECT_TRUE(spyStop.isValid());
+}
+
+TEST(InputHandler, MediaHotkeysRoundTrip)
+{
+    InputHandler handler;
+    EXPECT_FALSE(handler.currentMediaHotkeys().playPause.isAssigned());
+
+    MediaHotkeyConfig cfg;
+    cfg.playPause = HotkeyBinding::key(KEY_PLAYPAUSE);
+    cfg.next = HotkeyBinding::key(KEY_NEXTSONG);
+    cfg.previous = HotkeyBinding::key(KEY_PREVIOUSSONG);
+    cfg.stop = HotkeyBinding::key(KEY_STOPCD);
+    handler.setMediaHotkeys(cfg);
+
+    const auto got = handler.currentMediaHotkeys();
+    EXPECT_EQ(got.playPause, HotkeyBinding::key(KEY_PLAYPAUSE));
+    EXPECT_EQ(got.next, HotkeyBinding::key(KEY_NEXTSONG));
+    EXPECT_EQ(got.previous, HotkeyBinding::key(KEY_PREVIOUSSONG));
+    EXPECT_EQ(got.stop, HotkeyBinding::key(KEY_STOPCD));
 }
 
 TEST(InputHandler, ListEvdevDevices)
@@ -354,6 +381,55 @@ TEST(ResolveProfileHotkey, ShowVolumeRelativeWheelMatchesDirection)
 
     EXPECT_TRUE(
         resolveProfileHotkey(HotkeyBinding::relative(REL_WHEEL, -1), {}, {p}).profileId.isEmpty());
+}
+
+// ─── Media hotkey resolution ──────────────────────────────────────────────────
+
+TEST(ResolveMediaHotkey, UnassignedConfigReturnsNone)
+{
+    MediaHotkeyConfig cfg;
+    EXPECT_EQ(resolveMediaHotkey(KEY_PLAYPAUSE, cfg), MediaAction::None);
+    EXPECT_EQ(resolveMediaHotkey(KEY_NEXTSONG, cfg), MediaAction::None);
+}
+
+TEST(ResolveMediaHotkey, KeyMatchesAction)
+{
+    MediaHotkeyConfig cfg;
+    cfg.playPause = HotkeyBinding::key(KEY_PLAYPAUSE);
+    cfg.next = HotkeyBinding::key(KEY_NEXTSONG);
+    cfg.previous = HotkeyBinding::key(KEY_PREVIOUSSONG);
+    cfg.stop = HotkeyBinding::key(KEY_STOPCD);
+
+    EXPECT_EQ(resolveMediaHotkey(KEY_PLAYPAUSE, cfg), MediaAction::PlayPause);
+    EXPECT_EQ(resolveMediaHotkey(KEY_NEXTSONG, cfg), MediaAction::Next);
+    EXPECT_EQ(resolveMediaHotkey(KEY_PREVIOUSSONG, cfg), MediaAction::Previous);
+    EXPECT_EQ(resolveMediaHotkey(KEY_STOPCD, cfg), MediaAction::Stop);
+}
+
+TEST(ResolveMediaHotkey, UnknownCodeReturnsNone)
+{
+    MediaHotkeyConfig cfg;
+    cfg.playPause = HotkeyBinding::key(KEY_PLAYPAUSE);
+    EXPECT_EQ(resolveMediaHotkey(KEY_VOLUMEUP, cfg), MediaAction::None);
+}
+
+TEST(ResolveMediaHotkey, UnassignedBindingReturnsNone)
+{
+    MediaHotkeyConfig cfg;
+    cfg.playPause = HotkeyBinding::key(KEY_PLAYPAUSE);
+    EXPECT_EQ(resolveMediaHotkey(HotkeyBinding{}, cfg), MediaAction::None);
+}
+
+TEST(ResolveMediaHotkey, RelativeWheelMatchesDirection)
+{
+    MediaHotkeyConfig cfg;
+    cfg.next = HotkeyBinding::relative(REL_HWHEEL, 1);
+    cfg.previous = HotkeyBinding::relative(REL_HWHEEL, -1);
+
+    EXPECT_EQ(resolveMediaHotkey(HotkeyBinding::relative(REL_HWHEEL, 1), cfg), MediaAction::Next);
+    EXPECT_EQ(resolveMediaHotkey(HotkeyBinding::relative(REL_HWHEEL, -1), cfg),
+              MediaAction::Previous);
+    EXPECT_EQ(resolveMediaHotkey(HotkeyBinding::relative(REL_WHEEL, 1), cfg), MediaAction::None);
 }
 
 int main(int argc, char** argv)

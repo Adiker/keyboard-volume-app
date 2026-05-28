@@ -231,6 +231,7 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
     bool playPauseCalled = false;
     bool nextCalled = false;
     bool previousCalled = false;
+    bool stopCalled = false;
     bool setPositionCalled = false;
     qint64 setPositionPos = -1;
 
@@ -241,7 +242,10 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
     {
         playPauseCalled = true;
     }
-    Q_SCRIPTABLE void Stop() {}
+    Q_SCRIPTABLE void Stop()
+    {
+        stopCalled = true;
+    }
     Q_SCRIPTABLE void Next()
     {
         nextCalled = true;
@@ -766,6 +770,38 @@ TEST_F(MprisClientTest, PreviousFallsBackToSetPositionZeroWhenCanNotGoPrevious)
 
     EXPECT_TRUE(waitFor([&] { return fp.player->setPositionCalled; }));
     EXPECT_EQ(fp.player->setPositionPos, 0LL);
+}
+
+TEST_F(MprisClientTest, StopCallsDBusMethod)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor([&] { return !client.activePlayer().service.isEmpty(); }));
+
+    client.stop();
+
+    EXPECT_TRUE(waitFor([&] { return fp.player->stopCalled; }));
+}
+
+TEST_F(MprisClientTest, StopIsNoOpWhenNoActivePlayer)
+{
+    SKIP_IF_NO_DBUS();
+
+    MprisClient client(m_config.get());
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 200);
+    ASSERT_TRUE(client.activePlayer().service.isEmpty());
+
+    // No FakePlayer registered → no active player. stop() must not crash and
+    // must not throw any D-Bus errors.
+    client.stop();
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+    SUCCEED();
 }
 
 // ─── Harmonoid-style Position via PropertiesChanged ───────────────────────────

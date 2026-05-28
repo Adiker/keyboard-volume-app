@@ -16,7 +16,11 @@ struct KvCtlCommand
         Refresh,
         Get,
         Set,
-        Show
+        Show,
+        MediaPlayPause,
+        MediaNext,
+        MediaPrevious,
+        MediaStop
     };
 
     enum class Field

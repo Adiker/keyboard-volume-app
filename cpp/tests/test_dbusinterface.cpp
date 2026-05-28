@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include <QCoreApplication>
+#include <QMetaMethod>
 #include <QTemporaryDir>
 
 #include "config.h"
@@ -160,6 +161,56 @@ TEST(DbusInterface, ToggleMuteMethodStillRoutesThroughToggle)
     ASSERT_EQ(h.vc.toggleMuteCalls.size(), 1);
     EXPECT_EQ(h.vc.toggleMuteCalls.first(), QStringLiteral("spotify"));
     EXPECT_TRUE(h.vc.setMutedCalls.isEmpty());
+}
+
+// ─── Media controls ───────────────────────────────────────────────────────────
+// We exercise the no-MprisClient path here: each Media* method must be a safe
+// no-op (no crash, no VolumeController traffic). The positive path — that the
+// methods actually relay to MprisClient slots — is covered by test_mprisclient
+// (slot wiring) and verified manually via dbus-send. Building a mock that can
+// stand in for MprisClient* would require either a virtual API on MprisClient
+// or constructing a real one (which connects to the session bus), neither of
+// which fits this unit test layer.
+
+TEST(DbusInterface, MediaMethodsNoOpWithoutMprisClient)
+{
+    Harness h;
+    // No setMprisClient() call → m_mpris stays null.
+
+    h.dbus.MediaPlayPause();
+    h.dbus.MediaNext();
+    h.dbus.MediaPrevious();
+    h.dbus.MediaStop();
+
+    EXPECT_TRUE(h.vc.changeVolumeCalls.isEmpty());
+    EXPECT_TRUE(h.vc.setVolumeCalls.isEmpty());
+    EXPECT_TRUE(h.vc.toggleMuteCalls.isEmpty());
+    EXPECT_TRUE(h.vc.setMutedCalls.isEmpty());
+}
+
+TEST(DbusInterface, MediaMethodsAreScriptable)
+{
+    Harness h;
+    const QMetaObject* mo = h.dbus.metaObject();
+
+    // Walk methods and confirm each Media* slot is registered as scriptable
+    // (so it's exposed over D-Bus when the interface is registered).
+    auto isScriptableSlot = [mo](const char* name)
+    {
+        for (int i = 0; i < mo->methodCount(); ++i)
+        {
+            QMetaMethod m = mo->method(i);
+            if (m.methodType() != QMetaMethod::Slot) continue;
+            if (m.name() != QByteArray(name)) continue;
+            return (m.attributes() & QMetaMethod::Scriptable) != 0;
+        }
+        return false;
+    };
+
+    EXPECT_TRUE(isScriptableSlot("MediaPlayPause"));
+    EXPECT_TRUE(isScriptableSlot("MediaNext"));
+    EXPECT_TRUE(isScriptableSlot("MediaPrevious"));
+    EXPECT_TRUE(isScriptableSlot("MediaStop"));
 }
 
 int main(int argc, char** argv)

@@ -462,6 +462,32 @@ void SettingsDialog::buildUi()
 
     layout->addLayout(form);
 
+    // ── Media hotkeys section ────────────────────────────────────────────
+    // Global media bindings — independent of profiles. Bound keys dispatch
+    // play-pause / next / previous / stop to the active MPRIS player chosen
+    // by MprisClient. Defaults are unassigned so the app does not silently
+    // capture the user's media keys.
+    QLabel* mediaHeader = new QLabel(::tr(QStringLiteral("settings.media.section")), this);
+    mediaHeader->setStyleSheet(QStringLiteral("font-weight: bold; margin-top: 8px;"));
+    layout->addWidget(mediaHeader);
+
+    QFormLayout* mediaForm = new QFormLayout;
+    mediaForm->setLabelAlignment(Qt::AlignRight);
+    mediaForm->setSpacing(8);
+
+    const MediaHotkeyConfig media = m_config->mediaHotkeys();
+    m_mediaPlayPause = new HotkeyCapture(media.playPause, m_inputHandler, this);
+    m_mediaNext = new HotkeyCapture(media.next, m_inputHandler, this);
+    m_mediaPrevious = new HotkeyCapture(media.previous, m_inputHandler, this);
+    m_mediaStop = new HotkeyCapture(media.stop, m_inputHandler, this);
+
+    mediaForm->addRow(::tr(QStringLiteral("settings.media.play_pause")), m_mediaPlayPause);
+    mediaForm->addRow(::tr(QStringLiteral("settings.media.next")), m_mediaNext);
+    mediaForm->addRow(::tr(QStringLiteral("settings.media.previous")), m_mediaPrevious);
+    mediaForm->addRow(::tr(QStringLiteral("settings.media.stop")), m_mediaStop);
+
+    layout->addLayout(mediaForm);
+
     // ── Playback progress section ────────────────────────────────────────
     QLabel* progressHeader = new QLabel(::tr(QStringLiteral("settings.progress.section")), this);
     progressHeader->setStyleSheet(QStringLiteral("font-weight: bold; margin-top: 8px;"));
@@ -657,6 +683,18 @@ void SettingsDialog::saveAndAccept()
 
     m_config->setVolumeStep(m_step->value());
     m_config->setAutoProfileSwitch(m_autoProfile->isChecked());
+
+    // Persist media hotkeys (global). Note: we do not validate conflicts with
+    // profile bindings here — profile resolution is checked first at dispatch
+    // time, so a profile binding always wins, and an overlap simply means the
+    // media binding is shadowed when the matching profile is active.
+    MediaHotkeyConfig media;
+    media.playPause = m_mediaPlayPause->binding();
+    media.next = m_mediaNext->binding();
+    media.previous = m_mediaPrevious->binding();
+    media.stop = m_mediaStop->binding();
+    m_config->setMediaHotkeys(media);
+
     if (!m_profiles.isEmpty()) m_config->setProfiles(m_profiles);
     accept();
 }

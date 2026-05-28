@@ -6,6 +6,7 @@
 #include <QVariantList>
 
 class VolumeController;
+class MprisClient;
 
 class DbusInterface : public QObject
 {
@@ -26,6 +27,11 @@ class DbusInterface : public QObject
 
   public:
     explicit DbusInterface(Config* config, VolumeController* volumeCtrl, QObject* parent = nullptr);
+
+    // Wire an MprisClient instance for the Media* methods. Optional — if not
+    // set, all Media* methods are silent no-ops (graceful degradation when
+    // the app is built/run without MPRIS support). Caller retains ownership.
+    void setMprisClient(MprisClient* client);
 
     double volume() const
     {
@@ -96,6 +102,13 @@ class DbusInterface : public QObject
     Q_SCRIPTABLE void ShowVolume();
     Q_SCRIPTABLE void ShowVolumeProfile(const QString& profileId);
 
+    // Media controls — relayed to MprisClient when one is wired. Each is a
+    // no-op when no MprisClient is set or when no MPRIS player is active.
+    Q_SCRIPTABLE void MediaPlayPause();
+    Q_SCRIPTABLE void MediaNext();
+    Q_SCRIPTABLE void MediaPrevious();
+    Q_SCRIPTABLE void MediaStop();
+
   signals:
     void volumeChanged(double vol);
     void mutedChanged(bool muted);
@@ -115,6 +128,7 @@ class DbusInterface : public QObject
 
     Config* m_config = nullptr;
     VolumeController* m_volumeCtrl = nullptr;
+    MprisClient* m_mpris = nullptr;
 
     double m_volume = 0.0;
     bool m_muted = false;

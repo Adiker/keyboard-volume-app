@@ -41,6 +41,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **`kv-ctl` CLI** — script-friendly command-line client for D-Bus control without calling the external `qdbus` program
 - **MPRIS v2** — optionally registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client; disabled by default to avoid conflicts with apps like Discord Music Presence; enable via Settings → Playback progress → "Expose fake MPRIS player endpoint"
 - **MPRIS playback tracking** — consumes other players' MPRIS metadata, position, seek support and player priority for the optional OSD playback progress features
+- **Media hotkeys** — global play-pause / next / previous / stop bindings dispatched to the active MPRIS player; configurable in Settings → Media hotkeys, also reachable via `kv-ctl media <action>` and D-Bus `MediaPlayPause/Next/Previous/Stop`
 - **Marquee labels** — app and track names that exceed the OSD width scroll automatically; short labels display statically
 - **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
 - **Unit tests** — GTest + Qt Test suite covering Config, i18n, `kv-ctl` parsing, PipeWire utilities, VolumeController, InputHandler, and the MPRIS client
@@ -167,6 +168,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    - OSD colors (background, text, progress bar)
    - **Playback progress** — enable the MPRIS progress row, allow/disable interactive seeking, choose poll interval, choose app/track/both label mode, edit the comma-separated tracked-player priority list, and optionally expose a fake MPRIS v2 endpoint for desktop widgets (disabled by default)
    - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app, and optional Focus audio ducking hotkey; right-click any hotkey field to **Unassign** it; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls); hotkeys are shown as `"Volume Up (115)"` — human-readable name first, evdev code in parentheses
+   - **Media hotkeys** — global play-pause / next / previous / stop bindings that dispatch to the active MPRIS player chosen by the built-in MPRIS consumer (priority order from *Tracked players*). Independent of profiles — when an active profile claims the same key the profile binding wins, otherwise the media binding fires. Defaults are unassigned so the app does not silently capture your existing media keys.
 
 7. **CLI / D-Bus remote control** — use `kv-ctl` to drive the running tray app from scripts, custom keybinds, or external tools without calling the external `qdbus` program:
 
@@ -213,6 +215,12 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    kv-ctl get auto-profile-switch
    kv-ctl set auto-profile-switch true
    kv-ctl set auto-profile-switch false
+
+   # Media playback (relayed to the active MPRIS player)
+   kv-ctl media play-pause
+   kv-ctl media next
+   kv-ctl media previous
+   kv-ctl media stop
    ```
 
    `kv-ctl` still uses the app's existing session D-Bus API under the hood, so `keyboard-volume-app` must already be running.
@@ -267,6 +275,16 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
      org.keyboardvolumeapp.VolumeControl.ApplyScene meeting
 
+   # Custom interface — media controls (relayed to the active MPRIS player)
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.MediaPlayPause
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.MediaNext
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.MediaPrevious
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.MediaStop
+
    # Debug — read everything at once / introspect
    qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
      org.freedesktop.DBus.Properties.GetAll \
@@ -319,6 +337,12 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
     "volume_down": 114,
     "mute": 113
   },
+  "media_hotkeys": {
+    "play_pause": 0,
+    "next": 0,
+    "previous": 0,
+    "stop": 0
+  },
   "auto_profile_switch": false,
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
@@ -345,6 +369,8 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
 ```
 
 Hotkey values are evdev bindings: legacy integers are `EV_KEY` codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), while scroll bindings use objects such as `{ "type": "rel", "code": 8, "direction": 1 }` for `REL_WHEEL` up and `"direction": -1` for down. `show` defaults to `0` (unassigned) and supports the same key/scroll binding formats. The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch. Scene target `match` values use the same app/binary names as `kv-ctl get apps`; `volume` is a `0..100` percent value, and omitted `volume` or `muted` fields leave that part unchanged.
+
+`media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, and `stop`, each accepting the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Bound keys dispatch to whichever MPRIS player is currently active (resolved by the `tracked_players` priority list, then by playback state). When the same key is also claimed by an active profile binding the profile wins; the media binding only fires when no profile is matched.
 
 `auto_profile_switch` (default `false`) globally enables auto-profile switching by focused window. Per-profile `auto_switch` (default `true`) controls whether a given profile participates in auto-switching.
 
@@ -460,6 +486,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **CLI `kv-ctl`** — wygodny klient wiersza poleceń do sterowania przez D-Bus bez wywoływania zewnętrznego programu `qdbus`
 - **MPRIS v2** — opcjonalnie rejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS; domyślnie wyłączony, aby uniknąć konfliktów z aplikacjami takimi jak Discord Music Presence; włącz przez Ustawienia → Postęp odtwarzania → „Eksponuj fałszywy endpoint MPRIS"
 - **Śledzenie odtwarzania MPRIS** — odczytuje metadane, pozycję, możliwość seekowania i priorytet innych odtwarzaczy dla opcjonalnego paska postępu OSD
+- **Skróty multimedialne** — globalne powiązania play-pause / next / previous / stop przekazywane do aktywnego odtwarzacza MPRIS; konfigurowalne w Ustawienia → Skróty multimedialne, dostępne też przez `kv-ctl media <akcja>` i D-Bus `MediaPlayPause/Next/Previous/Stop`
 - **Etykiety marquee** — nazwy aplikacji i utworów przekraczające szerokość OSD przewijają się automatycznie; krótkie etykiety wyświetlają się statycznie
 - **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
 - **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, parsera `kv-ctl`, narzędzi PipeWire, VolumeController, InputHandler i klienta MPRIS
@@ -586,6 +613,7 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
    - Kolory OSD (tło, tekst, pasek)
     - **Postęp odtwarzania** — włączenie wiersza MPRIS, włączenie/wyłączenie interaktywnego seekowania, interwał odpytywania, tryb etykiety app/track/both, rozdzielona przecinkami lista priorytetów odtwarzaczy oraz opcjonalne eksponowanie fałszywego endpointu MPRIS v2 (domyślnie wyłączone)
     - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift`, docelową aplikacją i opcjonalnym skrótem trybu skupienia; prawy klik na polu hotkeya = **Wyczyść**; pierwszy wiersz jest profilem domyślnym (używanym przez zasobnik oraz przez metody D-Bus / MPRIS bez wskazania profilu); hotkeye wyświetlane są jako `"Volume Up (115)"` — czytelna nazwa i kod evdev w nawiasie
+    - **Skróty multimedialne** — globalne powiązania play-pause / next / previous / stop, które są przekazywane do aktywnego odtwarzacza MPRIS wybranego przez wbudowany konsument MPRIS (kolejność z listy *Obserwowane odtwarzacze*). Niezależne od profili — gdy aktywny profil przejmie ten sam klawisz, wygrywa powiązanie profilu, w przeciwnym razie uruchamia się powiązanie multimedialne. Domyślnie nieprzypisane, więc aplikacja nie przechwytuje po cichu istniejących klawiszy multimedialnych.
 
 7. **Zdalne sterowanie CLI / D-Bus** — użyj `kv-ctl` do kontrolowania działającej aplikacji ze skryptów, własnych skrótów lub zewnętrznych narzędzi bez uruchamiania zewnętrznego programu `qdbus`:
 
@@ -632,6 +660,12 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
    kv-ctl get auto-profile-switch
    kv-ctl set auto-profile-switch true
    kv-ctl set auto-profile-switch false
+
+   # Sterowanie odtwarzaniem (przekazane do aktywnego odtwarzacza MPRIS)
+   kv-ctl media play-pause
+   kv-ctl media next
+   kv-ctl media previous
+   kv-ctl media stop
    ```
 
    `kv-ctl` nadal używa istniejącego API D-Bus aplikacji, więc `keyboard-volume-app` musi już działać.
@@ -686,6 +720,16 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
    qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
      org.keyboardvolumeapp.VolumeControl.ApplyScene meeting
 
+   # Własny interfejs — sterowanie odtwarzaniem (przekazane do aktywnego odtwarzacza MPRIS)
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.MediaPlayPause
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.MediaNext
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.MediaPrevious
+   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
+     org.keyboardvolumeapp.VolumeControl.MediaStop
+
    # Debug — odczyt wszystkiego naraz / introspekcja
    qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
      org.freedesktop.DBus.Properties.GetAll \
@@ -738,6 +782,12 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
     "volume_down": 114,
     "mute": 113
   },
+  "media_hotkeys": {
+    "play_pause": 0,
+    "next": 0,
+    "previous": 0,
+    "stop": 0
+  },
   "auto_profile_switch": false,
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
@@ -764,6 +814,8 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
 ```
 
 Wartości skrótów to bindingi evdev: starsze liczby oznaczają kody `EV_KEY` (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), a scroll używa obiektów takich jak `{ "type": "rel", "code": 8, "direction": 1 }` dla `REL_WHEEL` w górę i `"direction": -1` w dół. `show` domyślnie ma `0` (nieprzypisany) i obsługuje te same formaty klawiszy oraz scrolla. Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu. `match` w targetach scen używa tych samych nazw aplikacji/binarek co `kv-ctl get apps`; `volume` to procent `0..100`, a pominięte pola `volume` lub `muted` pozostawiają daną część stanu bez zmian.
+
+`media_hotkeys` to obiekt na najwyższym poziomie z polami `play_pause`, `next`, `previous` i `stop`. Każde pole akceptuje ten sam format co skróty profilu (kod `EV_KEY` jako liczba albo obiekt scrolla). Wszystkie cztery domyślnie są `0` (nieprzypisane). Naciśnięcie powiązanego klawisza wysyła komendę do aktywnego odtwarzacza MPRIS (wybranego wg listy `tracked_players`, a następnie wg stanu odtwarzania). Jeśli ten sam klawisz jest też zajęty przez aktywny profil, wygrywa profil — powiązanie multimedialne uruchamia się tylko wtedy, gdy żaden profil nie pasuje.
 
 `auto_profile_switch` (domyślnie `false`) globalnie włącza auto-przełączanie profilu wg aktywnego okna. Per-profilowe `auto_switch` (domyślnie `true`) kontroluje, czy dany profil bierze udział w auto-przełączaniu.
 

@@ -86,6 +86,19 @@ struct HotkeyConfig
     HotkeyBinding show;             // unassigned by default
 };
 
+// ─── Media hotkeys (global, MPRIS dispatch) ──────────────────────────────────
+// Independent of profiles — media bindings target the active MPRIS player
+// chosen by MprisClient, not an audio app. Defaults are intentionally
+// unassigned so installing the app does not silently capture the desktop's
+// media keys.
+struct MediaHotkeyConfig
+{
+    HotkeyBinding playPause; // unassigned by default
+    HotkeyBinding next;      // unassigned by default
+    HotkeyBinding previous;  // unassigned by default
+    HotkeyBinding stop;      // unassigned by default
+};
+
 struct DuckingConfig
 {
     bool enabled = false;
@@ -179,6 +192,16 @@ inline bool operator!=(const HotkeyConfig& a, const HotkeyConfig& b)
     return !(a == b);
 }
 
+inline bool operator==(const MediaHotkeyConfig& a, const MediaHotkeyConfig& b)
+{
+    return a.playPause == b.playPause && a.next == b.next && a.previous == b.previous &&
+           a.stop == b.stop;
+}
+inline bool operator!=(const MediaHotkeyConfig& a, const MediaHotkeyConfig& b)
+{
+    return !(a == b);
+}
+
 inline bool operator==(const DuckingConfig& a, const DuckingConfig& b)
 {
     return a.enabled == b.enabled && a.volume == b.volume && a.hotkey == b.hotkey;
@@ -264,6 +287,12 @@ class Config
     // setter updates the default profile too)
     HotkeyConfig hotkeys() const;
     void setHotkeys(int volumeUp, int volumeDown, int mute);
+
+    // Media hotkeys (global — MPRIS dispatch, profile-independent).
+    // Defaults are all unassigned so we never silently capture the desktop's
+    // media keys on first install.
+    MediaHotkeyConfig mediaHotkeys() const;
+    void setMediaHotkeys(const MediaHotkeyConfig& cfg);
 
     // Profiles (point 8 — multi-app routing). After load() / migration there
     // is always at least one profile (profiles().first() == defaultProfile()).
