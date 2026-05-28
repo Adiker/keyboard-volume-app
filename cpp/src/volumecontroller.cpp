@@ -78,6 +78,7 @@ class PaWatcherThread : public QThread
   signals:
     void sinkInputAppeared();
     void sinkInputRemoved();
+    void sinkChanged();
     void connectionReady();
 
   protected:
@@ -144,7 +145,11 @@ class PaWatcherThread : public QThread
             pa_context_state_t st = pa_context_get_state(m_ctx);
             if (st == PA_CONTEXT_READY)
             {
-                pa_context_subscribe(m_ctx, PA_SUBSCRIPTION_MASK_SINK_INPUT, nullptr, nullptr);
+                pa_context_subscribe(
+                    m_ctx,
+                    static_cast<pa_subscription_mask_t>(PA_SUBSCRIPTION_MASK_SINK_INPUT |
+                                                        PA_SUBSCRIPTION_MASK_SINK),
+                    nullptr, nullptr);
                 pa_context_set_subscribe_callback(m_ctx, subscribeCallback, this);
                 pa_threaded_mainloop_unlock(m_mainloop);
                 return true;
@@ -207,6 +212,10 @@ class PaWatcherThread : public QThread
             else if (type == PA_SUBSCRIPTION_EVENT_REMOVE)
                 emit self->sinkInputRemoved();
         }
+        else if (facility == PA_SUBSCRIPTION_EVENT_SINK)
+        {
+            emit self->sinkChanged();
+        }
     }
 };
 
@@ -237,6 +246,13 @@ class PaWorker : public QObject
         connect(m_refreshTimer, &QTimer::timeout, this,
                 [this]() { doListApps(/*forceRefresh=*/true); });
 
+        // Debounced sink-list refresh on PA sink changes (500ms).
+        m_sinkRefreshTimer = new QTimer(this);
+        m_sinkRefreshTimer->setSingleShot(true);
+        m_sinkRefreshTimer->setInterval(500);
+        connect(m_sinkRefreshTimer, &QTimer::timeout, this,
+                [this]() { doListSinks(/*forceRefresh=*/true); });
+
         m_reconnectTimer = new QTimer(this);
         m_reconnectTimer->setSingleShot(true);
         connect(m_reconnectTimer, &QTimer::timeout, this, &PaWorker::attemptReconnect);
@@ -260,6 +276,10 @@ class PaWorker : public QObject
         if (m_refreshTimer)
         {
             m_refreshTimer->stop();
+        }
+        if (m_sinkRefreshTimer)
+        {
+            m_sinkRefreshTimer->stop();
         }
 
         if (m_watcher)
@@ -289,6 +309,7 @@ class PaWorker : public QObject
         {
             m_reconnectBackoffMs = 0;
             startWatcher();
+            doListSinks(/*forceRefresh=*/true);
             doApplyPending();
             doListApps(/*forceRefresh=*/true);
             return;
@@ -795,16 +816,37 @@ class PaWorker : public QObject
 
         QMap<QString, double> pendVols;
         QMap<QString, bool> pendMutes;
+        QMap<QString, QString> pendSinks;
         {
             QMutexLocker lk(&m_pendingMutex);
-            if (m_pendingVolumes.isEmpty() && m_pendingMutes.isEmpty()) return;
+            if (m_pendingVolumes.isEmpty() && m_pendingMutes.isEmpty() && m_pendingSinks.isEmpty())
+                return;
             pendVols = m_pendingVolumes;
             pendMutes = m_pendingMutes;
+            pendSinks = m_pendingSinks;
         }
 
         pa_threaded_mainloop_lock(m_mainloop);
         const auto inputs = getSinkInputs();
         QSet<QString> applied;
+        QSet<QString> appliedSinks;
+
+        // First pass: move sink-inputs to their pending sinks before adjusting
+        // volume/mute so any device-specific behaviour (per-sink default cvolume,
+        // etc.) is settled by the time we write the volume.
+        for (const auto& si : inputs)
+        {
+            for (auto it = pendSinks.begin(); it != pendSinks.end(); ++it)
+            {
+                const QString& app = it.key();
+                if (!si.matches(app)) continue;
+
+                const QByteArray sinkBytes = it.value().toUtf8();
+                pa_operation* op = pa_context_move_sink_input_by_name(
+                    m_ctx, si.index, sinkBytes.constData(), operationDoneCallback, this);
+                if (waitForOperation(op, "apply pending sink move")) appliedSinks.insert(app);
+            }
+        }
 
         for (const auto& si : inputs)
         {
@@ -852,7 +894,7 @@ class PaWorker : public QObject
         }
         pa_threaded_mainloop_unlock(m_mainloop);
 
-        if (!applied.isEmpty())
+        if (!applied.isEmpty() || !appliedSinks.isEmpty())
         {
             QMutexLocker lk(&m_pendingMutex);
             for (const auto& app : applied)
@@ -860,12 +902,92 @@ class PaWorker : public QObject
                 m_pendingVolumes.remove(app);
                 m_pendingMutes.remove(app);
             }
+            for (const auto& app : appliedSinks) m_pendingSinks.remove(app);
         }
+    }
+
+    // ── Sink enumeration ──────────────────────────────────────────────────────
+    void doListSinks(bool forceRefresh)
+    {
+        if (m_stopping || !contextReady()) return;
+
+        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (!forceRefresh && (now - m_sinkCacheTs) < LIST_CACHE_TTL_MS) return;
+
+        QList<SinkInfo> sinks;
+        QString defaultName;
+
+        pa_threaded_mainloop_lock(m_mainloop);
+
+        ServerInfoCbData srv{&defaultName};
+        waitForOperation(pa_context_get_server_info(m_ctx, serverInfoCallback, &srv),
+                         "get server info");
+
+        SinkInfoListCbData sd{&sinks};
+        waitForOperation(pa_context_get_sink_info_list(m_ctx, sinkInfoListCallback, &sd),
+                         "list sinks");
+
+        pa_threaded_mainloop_unlock(m_mainloop);
+
+        for (SinkInfo& s : sinks) s.isDefault = (s.name == defaultName);
+
+        m_sinkNamesByIdx.clear();
+        for (const SinkInfo& s : std::as_const(sinks)) m_sinkNamesByIdx.insert(s.index, s.name);
+
+        m_sinkCache = sinks;
+        m_sinkCacheTs = now;
+        emit sinksReady(sinks);
+    }
+
+    // ── Route an app's sink-input(s) to the named PA sink ────────────────────
+    // Mirrors the volume/mute cascade: active sink-input(s) → stream-restore
+    // device persistence → parking. Empty sinkName is a no-op.
+    void doSetAppSink(const QString& appName, const QString& sinkName)
+    {
+        if (m_stopping) return;
+        if (sinkName.isEmpty()) return;
+
+        bool routedAny = false;
+
+        // 1. Active sink inputs — move every matching stream (browser-tab case).
+        if (contextReady())
+        {
+            const QByteArray sinkBytes = sinkName.toUtf8();
+            pa_threaded_mainloop_lock(m_mainloop);
+            const auto inputs = getSinkInputs();
+            for (const auto& si : inputs)
+            {
+                if (!si.matches(appName)) continue;
+
+                pa_operation* op = pa_context_move_sink_input_by_name(
+                    m_ctx, si.index, sinkBytes.constData(), operationDoneCallback, this);
+                if (waitForOperation(op, "move sink input to sink"))
+                    routedAny = true;
+                else
+                    qWarning() << "[PaWorker] move sink input" << si.index << "→" << sinkName
+                               << "failed";
+            }
+            pa_threaded_mainloop_unlock(m_mainloop);
+        }
+
+        // 2. Persist via stream-restore so the routing survives app restart.
+        streamRestoreSetDevice(appName, sinkName);
+
+        // 3. Park desired sink so future sink-inputs land on the right device.
+        {
+            QMutexLocker lk(&m_pendingMutex);
+            m_pendingSinks[appName] = sinkName;
+        }
+        m_appSinks[appName] = sinkName;
+
+        emit sinkChanged(appName, routedAny ? sinkName : QString{});
     }
 
   signals:
     void volumeChanged(const QString& app, double newVol, bool muted);
     void appsReady(QList<AudioApp> apps);
+    void sinksReady(QList<SinkInfo> sinks);
+    void sinkChanged(const QString& app, const QString& sinkName);
     void cleanupFinished();
 
   private:
@@ -881,18 +1003,24 @@ class PaWorker : public QObject
     bool m_cleanedUp = false;
 
     QTimer* m_refreshTimer = nullptr;
+    QTimer* m_sinkRefreshTimer = nullptr;
     QTimer* m_reconnectTimer = nullptr;
     int m_reconnectBackoffMs = 0;
     QMutex m_pendingMutex;
     QMap<QString, double> m_pendingVolumes;
     QMap<QString, bool> m_pendingMutes;
+    QMap<QString, QString> m_pendingSinks;
     QMap<QString, double> m_appVolumes;
     QMap<QString, bool> m_appMutes;
+    QMap<QString, QString> m_appSinks; // last-known sink name per app
     bool m_duckingActive = false;
     QString m_duckingKeepApp;
     QMap<QString, DuckingSnapshot> m_duckingSnapshot;
     QList<AudioApp> m_listCache;
     qint64 m_listCacheTs = 0;
+    QList<SinkInfo> m_sinkCache;
+    qint64 m_sinkCacheTs = 0;
+    QMap<uint32_t, QString> m_sinkNamesByIdx;
     static constexpr qint64 LIST_CACHE_TTL_MS = 5000;
 
     // ── PA context ────────────────────────────────────────────────────────────
@@ -1028,10 +1156,16 @@ class PaWorker : public QObject
                 {
                     if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
                 });
+        connect(m_watcher, &PaWatcherThread::sinkChanged, this,
+                [this]()
+                {
+                    if (!m_stopping && m_sinkRefreshTimer) m_sinkRefreshTimer->start();
+                });
         connect(m_watcher, &PaWatcherThread::connectionReady, this,
                 [this]()
                 {
                     if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
+                    if (!m_stopping && m_sinkRefreshTimer) m_sinkRefreshTimer->start();
                 });
 
         m_watcher->start();
@@ -1338,11 +1472,78 @@ class PaWorker : public QObject
         return std::nullopt;
     }
 
+    // ── Sink enumeration callbacks ────────────────────────────────────────────
+    struct ServerInfoCbData
+    {
+        QString* defaultSinkName;
+    };
+    static void serverInfoCallback(pa_context*, const pa_server_info* info, void* ud)
+    {
+        auto* d = static_cast<ServerInfoCbData*>(ud);
+        if (!info || !d || !d->defaultSinkName) return;
+        if (info->default_sink_name)
+            *d->defaultSinkName = QString::fromUtf8(info->default_sink_name);
+    }
+
+    struct SinkInfoListCbData
+    {
+        QList<SinkInfo>* result;
+    };
+    static void sinkInfoListCallback(pa_context*, const pa_sink_info* info, int eol, void* ud)
+    {
+        auto* d = static_cast<SinkInfoListCbData*>(ud);
+        if (eol || !info || !d) return;
+        SinkInfo s;
+        s.name = QString::fromUtf8(info->name ? info->name : "");
+        s.description = QString::fromUtf8(info->description ? info->description : "");
+        s.index = info->index;
+        d->result->append(s);
+    }
+
+    // Persist routing target in PA's stream-restore database so the chosen
+    // sink survives restarts of the target app. Reads existing entries via the
+    // streamRestoreAppCandidates set and rewrites them with device=sinkName.
+    void streamRestoreSetDevice(const QString& app, const QString& sinkName)
+    {
+        if (!contextReady() || sinkName.isEmpty()) return;
+        const QByteArray sinkBytes = sinkName.toUtf8();
+
+        struct DeviceCbData
+        {
+            PaWorker* self;
+            QString target;
+            const char* device;
+        };
+
+        auto cb = [](pa_context* ctx, const pa_ext_stream_restore_info* info, int eol, void* ud)
+        {
+            auto* d = static_cast<DeviceCbData*>(ud);
+            if (eol || !info || !d) return;
+            if (QString::fromUtf8(info->name) != d->target) return;
+            pa_ext_stream_restore_info out = *info;
+            out.device = d->device;
+            pa_operation* op = pa_ext_stream_restore_write(ctx, PA_UPDATE_REPLACE, &out, 1, 1,
+                                                           operationDoneCallback, d->self);
+            if (op) pa_operation_unref(op);
+        };
+
+        for (const QString& candidate : streamRestoreAppCandidates(app))
+        {
+            DeviceCbData d{this, QStringLiteral("sink-input-by-application-name:") + candidate,
+                           sinkBytes.constData()};
+            pa_threaded_mainloop_lock(m_mainloop);
+            waitForOperation(pa_ext_stream_restore_read(m_ctx, cb, &d),
+                             "stream restore set device");
+            pa_threaded_mainloop_unlock(m_mainloop);
+        }
+    }
+
     void removePending(const QString& app)
     {
         QMutexLocker lk(&m_pendingMutex);
         m_pendingVolumes.remove(app);
         m_pendingMutes.remove(app);
+        m_pendingSinks.remove(app);
     }
 
     void clearDuckingState()
@@ -1356,6 +1557,8 @@ class PaWorker : public QObject
 // ─── VolumeController ─────────────────────────────────────────────────────────
 VolumeController::VolumeController(QObject* parent) : QObject(parent)
 {
+    qRegisterMetaType<QList<SinkInfo>>("QList<SinkInfo>");
+
     m_paThread = new QThread(this);
     m_worker = new PaWorker(); // no parent — will live in m_paThread
     m_worker->moveToThread(m_paThread);
@@ -1368,6 +1571,13 @@ VolumeController::VolumeController(QObject* parent) : QObject(parent)
                 m_listCache = apps;
                 emit appsReady(apps);
             });
+    connect(m_worker, &PaWorker::sinksReady, this,
+            [this](const QList<SinkInfo>& sinks)
+            {
+                m_sinkCache = sinks;
+                emit sinksReady(sinks);
+            });
+    connect(m_worker, &PaWorker::sinkChanged, this, &VolumeController::sinkChanged);
 
     // Clean up worker when thread finishes
     connect(m_paThread, &QThread::finished, m_worker, &QObject::deleteLater);
@@ -1426,6 +1636,24 @@ QList<AudioApp> VolumeController::listApps(bool forceRefresh)
     QMetaObject::invokeMethod(m_worker, "doListApps", Qt::QueuedConnection,
                               Q_ARG(bool, forceRefresh));
     return m_listCache; // return cached data immediately — no blocking
+}
+
+QList<SinkInfo> VolumeController::listSinks(bool forceRefresh)
+{
+    if (m_closing || !m_worker) return m_sinkCache;
+
+    QMetaObject::invokeMethod(m_worker, "doListSinks", Qt::QueuedConnection,
+                              Q_ARG(bool, forceRefresh));
+    return m_sinkCache;
+}
+
+void VolumeController::setAppSink(const QString& appName, const QString& sinkName)
+{
+    if (m_closing || !m_worker) return;
+    if (appName.isEmpty() || sinkName.isEmpty()) return;
+
+    QMetaObject::invokeMethod(m_worker, "doSetAppSink", Qt::QueuedConnection,
+                              Q_ARG(QString, appName), Q_ARG(QString, sinkName));
 }
 
 void VolumeController::changeVolume(const QString& appName, double delta, double minVol,

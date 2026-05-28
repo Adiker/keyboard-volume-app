@@ -55,6 +55,37 @@ TEST(VolumeController, CloseIsIdempotent)
     SUCCEED();
 }
 
+TEST(VolumeController, ListSinksReturnsCacheWithoutBlocking)
+{
+    VolumeController vc;
+
+    // listSinks() returns cached list immediately — never blocks.
+    auto sinks = vc.listSinks();
+    (void)sinks;
+    vc.listSinks(true);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    SUCCEED();
+}
+
+TEST(VolumeController, SetAppSinkDoesNotCrashOnInvalidInput)
+{
+    VolumeController vc;
+
+    // Empty sinkName is a no-op (does not even reach the worker).
+    vc.setAppSink("nonexistent_app", "");
+    // Empty appName is a no-op.
+    vc.setAppSink("", "alsa_output.unknown");
+    // Both empty.
+    vc.setAppSink("", "");
+
+    // Non-empty but unknown sink — worker logs failure and parks.
+    vc.setAppSink("nonexistent_app", "alsa_output.totally-not-real");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    SUCCEED();
+}
+
 TEST(VolumeController, UnavailablePulseAudioDoesNotBlockOperations)
 {
     const bool hadPulseServer = qEnvironmentVariableIsSet("PULSE_SERVER");
@@ -65,9 +96,11 @@ TEST(VolumeController, UnavailablePulseAudioDoesNotBlockOperations)
         VolumeController vc;
 
         vc.listApps(true);
+        vc.listSinks(true);
         vc.changeVolume("nonexistent_app", 0.05);
         vc.toggleMute("nonexistent_app");
         vc.toggleDucking("nonexistent_app", 0.25);
+        vc.setAppSink("nonexistent_app", "alsa_output.fake");
 
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         vc.close();
