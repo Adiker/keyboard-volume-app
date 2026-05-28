@@ -49,7 +49,7 @@ class AlbumArtCache : public QObject
     void onReplyFinished(QNetworkReply* reply);
 
   private:
-    void storeAndEmit(const QString& url, QPixmap pixmap);
+    void storeAndEmit(const QString& url, const QPixmap& pixmap);
     QString diskPathFor(const QString& url) const;
     QPixmap tryLoadFromDisk(const QString& url) const;
     void saveToDisk(const QString& url, const QByteArray& bytes) const;

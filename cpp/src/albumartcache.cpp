@@ -19,7 +19,7 @@ namespace
 QPixmap decodeDataUri(const QString& url)
 {
     // data:[<mime>][;base64],<payload>
-    const int commaIdx = url.indexOf(QLatin1Char(','));
+    const qsizetype commaIdx = url.indexOf(QLatin1Char(','));
     if (commaIdx < 0) return {};
     const QStringView header = QStringView(url).left(commaIdx);
     const QString payload = url.mid(commaIdx + 1);
@@ -129,7 +129,7 @@ void AlbumArtCache::onReplyFinished(QNetworkReply* reply)
     storeAndEmit(url, pm);
 }
 
-void AlbumArtCache::storeAndEmit(const QString& url, QPixmap pixmap)
+void AlbumArtCache::storeAndEmit(const QString& url, const QPixmap& pixmap)
 {
     if (m_memCache.size() >= kMaxMemoryEntries && !m_lruOrder.isEmpty())
     {

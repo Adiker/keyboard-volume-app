@@ -39,10 +39,10 @@ QString formatOsdLabelTemplate(const QString& tpl, const LabelTokens& tokens)
     sub(QLatin1String("{artist}"), tokens.artist);
     sub(QLatin1String("{album}"), tokens.album);
 
-    int idx = 0;
+    qsizetype idx = 0;
     while ((idx = s.indexOf(kMark, idx)) >= 0)
     {
-        int end = idx + 1;
+        qsizetype end = idx + 1;
         while (end < s.size() && (s[end] == kMark || isOrphanSeparator(s[end]))) ++end;
         s.remove(idx, end - idx);
         // Continue from idx — the position now holds the first kept character
