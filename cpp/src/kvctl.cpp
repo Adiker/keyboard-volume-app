@@ -159,9 +159,22 @@ QString mapToText(const QVariantMap& map)
                               .arg(target.value(QStringLiteral("muted")).toBool()
                                        ? QStringLiteral("true")
                                        : QStringLiteral("false"));
+            if (target.contains(QStringLiteral("sink")))
+                fields << QStringLiteral("sink=%1").arg(
+                    target.value(QStringLiteral("sink")).toString());
             renderedTargets << fields.join(QLatin1Char(','));
         }
         return QStringLiteral("%1\t%2\t%3").arg(id, name, renderedTargets.join(QLatin1Char(';')));
+    }
+
+    // Sink map: {name, description, is_default}
+    if (map.contains(QStringLiteral("description")) && map.contains(QStringLiteral("is_default")))
+    {
+        const QString sinkName = map.value(QStringLiteral("name")).toString();
+        const QString desc = map.value(QStringLiteral("description")).toString();
+        const bool isDefault = map.value(QStringLiteral("is_default")).toBool();
+        return QStringLiteral("%1\t%2%3")
+            .arg(sinkName, desc, isDefault ? QStringLiteral(" (default)") : QString());
     }
 
     if (!id.isEmpty() || !name.isEmpty() || !app.isEmpty())
