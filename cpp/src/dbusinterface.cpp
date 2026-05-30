@@ -454,5 +454,6 @@ void DbusInterface::ShowVolumeProfile(const QString& profileId)
 {
     const Profile p = findProfile(profileId);
     if (p.primaryApp().isEmpty()) return;
+    applyProfileSink(p);
     m_volumeCtrl->queryVolume(p.primaryApp());
 }

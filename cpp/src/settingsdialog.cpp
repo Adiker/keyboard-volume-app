@@ -810,14 +810,35 @@ void SettingsDialog::saveAndAccept()
     {
         for (const Profile& neu : m_profiles)
         {
-            if (!neu.sink.isEmpty()) continue;
+            const Profile* oldPtr = nullptr;
             for (const Profile& old : previousProfiles)
             {
-                if (old.id != neu.id || old.sink.isEmpty()) continue;
-                for (const QString& app : old.apps)
-                    if (!app.isEmpty()) m_volumeCtrl->clearAppSinkOverride(app);
-                break;
+                if (old.id == neu.id)
+                {
+                    oldPtr = &old;
+                    break;
+                }
             }
+            if (!oldPtr) continue;
+            const Profile& old = *oldPtr;
+
+            if (old.sink.isEmpty() && neu.sink.isEmpty()) continue;
+
+            QStringList toClear;
+            if (neu.sink.isEmpty() && !old.sink.isEmpty())
+            {
+                toClear = old.apps;
+            }
+            else
+            {
+                for (const QString& app : old.apps)
+                {
+                    if (!app.isEmpty() && !neu.apps.contains(app)) toClear.append(app);
+                }
+            }
+
+            for (const QString& app : toClear)
+                if (!app.isEmpty()) m_volumeCtrl->clearAppSinkOverride(app);
         }
     }
     m_config->setScenes(m_scenes);
