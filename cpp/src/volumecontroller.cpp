@@ -149,7 +149,8 @@ class PaWatcherThread : public QThread
                 pa_context_subscribe(
                     m_ctx,
                     static_cast<pa_subscription_mask_t>(PA_SUBSCRIPTION_MASK_SINK_INPUT |
-                                                        PA_SUBSCRIPTION_MASK_SINK),
+                                                        PA_SUBSCRIPTION_MASK_SINK |
+                                                        PA_SUBSCRIPTION_MASK_SERVER),
                     nullptr, nullptr);
                 pa_context_set_subscribe_callback(m_ctx, subscribeCallback, this);
                 pa_threaded_mainloop_unlock(m_mainloop);
@@ -213,7 +214,8 @@ class PaWatcherThread : public QThread
             else if (type == PA_SUBSCRIPTION_EVENT_REMOVE)
                 emit self->sinkInputRemoved();
         }
-        else if (facility == PA_SUBSCRIPTION_EVENT_SINK)
+        else if (facility == PA_SUBSCRIPTION_EVENT_SINK ||
+                 facility == PA_SUBSCRIPTION_EVENT_SERVER)
         {
             emit self->sinkChanged();
         }
