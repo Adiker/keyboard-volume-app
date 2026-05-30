@@ -1,4 +1,5 @@
 #include "settingsdialog.h"
+#include "appmatcher.h"
 #include "config.h"
 #include "i18n.h"
 #include "inputhandler.h"
@@ -808,13 +809,23 @@ void SettingsDialog::saveAndAccept()
 
     if (m_volumeCtrl && !previousProfiles.isEmpty())
     {
-        const auto appStillRouted = [this](const QString& app)
+        const auto profileListsApp = [](const QStringList& apps, const QString& app)
         {
             if (app.isEmpty()) return false;
+            const QString lower = app.toLower();
+            for (const QString& candidate : apps)
+            {
+                if (appIdMatches(candidate, lower)) return true;
+            }
+            return false;
+        };
+
+        const auto appStillRouted = [&](const QString& app)
+        {
             for (const Profile& p : m_profiles)
             {
                 if (p.sink.isEmpty()) continue;
-                if (p.apps.contains(app)) return true;
+                if (profileListsApp(p.apps, app)) return true;
             }
             return false;
         };
@@ -844,7 +855,7 @@ void SettingsDialog::saveAndAccept()
             {
                 for (const QString& app : old.apps)
                 {
-                    if (!app.isEmpty() && !neu.apps.contains(app)) toClear.append(app);
+                    if (!app.isEmpty() && !profileListsApp(neu.apps, app)) toClear.append(app);
                 }
             }
 
