@@ -339,7 +339,7 @@ class App : public QObject
         if (app.isEmpty()) return;
         const Profile p = findProfile(profileId);
         if (!p.ducking.enabled || !p.ducking.hotkey.isAssigned()) return;
-        activateProfile(p);
+        activateProfile(effectiveProfile(profileId));
         m_volumeCtrl->toggleDucking(app, p.ducking.volume / 100.0);
     }
 
