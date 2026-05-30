@@ -193,7 +193,10 @@ QString mapToText(const QVariantMap& map)
                                hotkeyToText(hotkeyMap.value(QStringLiteral("mute"))));
         }
 
-        return QStringLiteral("%1\t%2\t%3\t%4\t%5").arg(id, name, app, modifiers, hotkeys);
+        QString sink = map.value(QStringLiteral("sink")).toString();
+        if (sink.isEmpty()) sink = QStringLiteral("-");
+
+        return QStringLiteral("%1\t%2\t%3\t%4\t%5\t%6").arg(id, name, app, modifiers, hotkeys, sink);
     }
 
     QStringList parts;
