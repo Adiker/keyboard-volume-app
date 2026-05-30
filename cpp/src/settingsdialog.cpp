@@ -802,7 +802,7 @@ void SettingsDialog::saveAndAccept()
     // this, the previous device pref keeps re-routing the app on next launch
     // even though the UI shows "system default".
     QList<Profile> previousProfiles;
-    if (m_volumeCtrl && !m_profiles.isEmpty()) previousProfiles = m_config->profiles();
+    if (m_volumeCtrl) previousProfiles = m_config->profiles();
 
     if (!m_profiles.isEmpty()) m_config->setProfiles(m_profiles);
 
@@ -838,6 +838,23 @@ void SettingsDialog::saveAndAccept()
             }
 
             for (const QString& app : toClear)
+                if (!app.isEmpty()) m_volumeCtrl->clearAppSinkOverride(app);
+        }
+
+        for (const Profile& old : previousProfiles)
+        {
+            if (old.sink.isEmpty()) continue;
+            bool stillPresent = false;
+            for (const Profile& neu : m_profiles)
+            {
+                if (neu.id == old.id)
+                {
+                    stillPresent = true;
+                    break;
+                }
+            }
+            if (stillPresent) continue;
+            for (const QString& app : old.apps)
                 if (!app.isEmpty()) m_volumeCtrl->clearAppSinkOverride(app);
         }
     }
