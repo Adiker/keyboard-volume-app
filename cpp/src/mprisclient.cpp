@@ -399,6 +399,9 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
         else
             trackId = tidVar.toString();
 
+        QString album = unwrapDBusVariant(meta.value(QStringLiteral("xesam:album"))).toString();
+        QString artUrl = unwrapDBusVariant(meta.value(QStringLiteral("mpris:artUrl"))).toString();
+
         const QVariant urlVar = unwrapDBusVariant(meta.value(QStringLiteral("xesam:url")));
         if (isHarmonoidService(service))
         {
@@ -415,12 +418,16 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
                 artist = kp.artist;
                 trackId = kp.trackId;
                 lengthUs = kp.lengthUs;
+                album = kp.album;
+                artUrl = kp.artUrl;
             }
             else if (sameTrackId)
             {
                 if (title.isEmpty()) title = kp.title;
                 if (artist.isEmpty()) artist = kp.artist;
                 if (lengthUs <= 0) lengthUs = kp.lengthUs;
+                if (album.isEmpty()) album = kp.album;
+                if (artUrl.isEmpty()) artUrl = kp.artUrl;
             }
 
             const QString lengthKey =
@@ -454,6 +461,8 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
         kp.artist = artist;
         kp.lengthUs = lengthUs;
         kp.trackId = trackId;
+        kp.album = album;
+        kp.artUrl = artUrl;
     }
 
     // Also handle Position when it arrives alongside other properties (e.g. during
@@ -531,9 +540,11 @@ void MprisClient::reevaluateActive(bool forceTrackChanged)
             if (progressDebugEnabled() && isHarmonoidService(m_active.service))
                 qDebug() << "[ProgressDebug][MPRIS] emit noPlayer previous=" << m_active.service
                          << m_active.title << m_active.lengthUs;
+            const bool hadArt = !m_active.artUrl.isEmpty();
             m_hasActive = false;
             m_active = {};
             if (m_pollTimer) m_pollTimer->stop();
+            if (hadArt) emit albumArtChanged(QString{});
             emit noPlayer();
         }
         return;
@@ -544,8 +555,8 @@ void MprisClient::reevaluateActive(bool forceTrackChanged)
     // boundaries must not trigger trackChanged, which would reset the OSD progress bar.
     const bool trackChanged =
         serviceChanged || m_active.title != chosen->title || m_active.artist != chosen->artist ||
-        m_active.lengthUs != chosen->lengthUs || m_active.canSeek != chosen->canSeek ||
-        m_active.trackId != chosen->trackId;
+        m_active.album != chosen->album || m_active.lengthUs != chosen->lengthUs ||
+        m_active.canSeek != chosen->canSeek || m_active.trackId != chosen->trackId;
     const bool statusChanged = !m_hasActive || m_active.status != chosen->status;
     const PlayerInfo previous = m_active;
 
@@ -562,8 +573,13 @@ void MprisClient::reevaluateActive(bool forceTrackChanged)
     m_active.trackId = chosen->trackId;
     m_active.title = chosen->title;
     m_active.artist = chosen->artist;
+    m_active.album = chosen->album;
+    m_active.artUrl = chosen->artUrl;
+
+    const bool artChanged = serviceChanged || previous.artUrl != chosen->artUrl;
 
     if (serviceChanged) emit activePlayerChanged(m_active);
+    if (artChanged || forceTrackChanged) emit albumArtChanged(m_active.artUrl);
 
     if (trackChanged || forceTrackChanged)
     {

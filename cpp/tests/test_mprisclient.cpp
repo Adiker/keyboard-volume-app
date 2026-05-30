@@ -173,6 +173,19 @@ class FakeMprisPlayerAdaptor : public QDBusAbstractAdaptor
         emitPropertiesChanged({{QStringLiteral("Metadata"), m_metadata}});
     }
 
+    void setAlbumArt(const QString& album, const QString& artUrl)
+    {
+        if (album.isEmpty())
+            m_metadata.remove(QStringLiteral("xesam:album"));
+        else
+            m_metadata[QStringLiteral("xesam:album")] = album;
+        if (artUrl.isEmpty())
+            m_metadata.remove(QStringLiteral("mpris:artUrl"));
+        else
+            m_metadata[QStringLiteral("mpris:artUrl")] = artUrl;
+        emitPropertiesChanged({{QStringLiteral("Metadata"), m_metadata}});
+    }
+
     void setPosition(qlonglong pos)
     {
         m_position = pos;
@@ -1047,6 +1060,77 @@ TEST_F(MprisClientTest, MetadataLengthExtractedCorrectlyViaPropertiesChanged)
     const qint64 emittedLength = trackSpy.first().at(2).toLongLong();
     EXPECT_EQ(emittedLength, 147401588LL)
         << "mpris:length was not correctly unwrapped from QDBusVariant";
+}
+
+TEST_F(MprisClientTest, ParsesAlbumAndArtUrl)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+
+    QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
+    QSignalSpy artSpy(&client, &MprisClient::albumArtChanged);
+
+    fp.player->setAlbumArt(QStringLiteral("Some Album"),
+                           QStringLiteral("https://example.com/art.jpg"));
+
+    ASSERT_TRUE(waitFor([&] { return artSpy.count() > 0; }, 2000));
+
+    EXPECT_EQ(client.activePlayer().album.toStdString(), "Some Album");
+    EXPECT_EQ(client.activePlayer().artUrl.toStdString(), "https://example.com/art.jpg");
+    EXPECT_EQ(artSpy.last().first().toString().toStdString(), "https://example.com/art.jpg");
+}
+
+TEST_F(MprisClientTest, AlbumOnlyChangeEmitsTrackChanged)
+{
+    SKIP_IF_NO_DBUS();
+
+    FakePlayer fp(QStringLiteral("spotify"));
+    fp.player->setStatus(QStringLiteral("Playing"));
+    fp.player->setMetadata(QStringLiteral("Title"), QStringLiteral("Artist"), 100000000LL,
+                           QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+
+    QSignalSpy trackSpy(&client, &MprisClient::trackChanged);
+    ASSERT_TRUE(waitFor([&] { return trackSpy.count() > 0; }, 2000));
+    trackSpy.clear();
+
+    // Album-only update (title/artist/trackid identical). Without album in the
+    // identity check, trackChanged would not fire and the OSD would keep stale
+    // album text in the custom label preset.
+    fp.player->setAlbumArt(QStringLiteral("New Album"), QString{});
+
+    ASSERT_TRUE(waitFor([&] { return trackSpy.count() > 0; }, 2000));
+    EXPECT_EQ(client.activePlayer().album.toStdString(), "New Album");
+}
+
+TEST_F(MprisClientTest, AlbumArtChangedEmptyOnNoPlayer)
+{
+    SKIP_IF_NO_DBUS();
+
+    auto fp = std::make_unique<FakePlayer>(QStringLiteral("spotify"));
+    fp->player->setStatus(QStringLiteral("Playing"));
+    fp->player->setMetadata(QStringLiteral("T"), QStringLiteral("A"), 100000000LL,
+                            QStringLiteral("/t/1"));
+
+    MprisClient client(m_config.get());
+
+    QSignalSpy artSpy(&client, &MprisClient::albumArtChanged);
+    fp->player->setAlbumArt(QStringLiteral("Album"), QStringLiteral("file:///tmp/art.png"));
+    ASSERT_TRUE(waitFor([&] { return artSpy.count() > 0; }, 2000));
+    artSpy.clear();
+
+    // Drop the player — albumArtChanged with empty url should fire.
+    fp.reset();
+    const bool gotEmpty = waitFor(
+        [&] { return !artSpy.isEmpty() && artSpy.last().first().toString().isEmpty(); }, 2000);
+    EXPECT_TRUE(gotEmpty);
 }
 
 #include "test_mprisclient.moc"

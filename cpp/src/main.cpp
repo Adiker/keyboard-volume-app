@@ -1,3 +1,4 @@
+#include "albumartcache.h"
 #include "appmatcher.h"
 #include "audioapp.h"
 #include "config.h"
@@ -92,6 +93,7 @@ class App : public QObject
         m_input = new InputHandler(this);
         m_tray = new TrayApp(m_config.get(), m_volumeCtrl, m_input, this);
         m_mpris = new MprisClient(m_config.get(), this);
+        m_albumArtCache = new AlbumArtCache(this);
 
         connectSignals();
         initDevice();
@@ -160,12 +162,35 @@ class App : public QObject
         connect(m_mpris, &MprisClient::trackChanged, m_osd,
                 [this](const QString& title, const QString& artist, qint64 lengthUs, bool canSeek)
                 {
-                    m_osd->updateTrack(title, artist, lengthUs, canSeek);
+                    const auto info = m_mpris->activePlayer();
+                    m_osd->updateTrack(title, artist, info.album, lengthUs, canSeek);
                     m_osd->setProgressVisible(true);
+                });
+        connect(m_mpris, &MprisClient::activePlayerChanged, m_osd,
+                [this](const MprisClient::PlayerInfo& info)
+                {
+                    // Capitalize first letter so {player} reads "Spotify", not
+                    // the lowercase service suffix "spotify". Mirrors how end
+                    // users refer to these apps.
+                    QString name = info.displayName;
+                    if (!name.isEmpty()) name[0] = name[0].toUpper();
+                    m_osd->setPlayerName(name);
+                });
+        connect(m_mpris, &MprisClient::albumArtChanged, this,
+                [this](const QString& url)
+                {
+                    if (m_albumArtCache && !url.isEmpty())
+                        m_albumArtCache->request(url);
+                    else if (m_osd)
+                        m_osd->setAlbumArt(QPixmap{});
                 });
         connect(m_mpris, &MprisClient::positionChanged, m_osd, &OSDWindow::updatePosition);
         connect(m_mpris, &MprisClient::noPlayer, m_osd,
-                [this]() { m_osd->setProgressVisible(false); });
+                [this]()
+                {
+                    m_osd->setProgressVisible(false);
+                    m_osd->setPlayerName(QString{});
+                });
 
         // OSDWindow seek interaction → MprisClient
         connect(m_osd, &OSDWindow::seekStarted, m_mpris, [this]() { m_mpris->setSeeking(true); });
@@ -183,6 +208,16 @@ class App : public QObject
 
         // Settings change → reload MprisClient config
         connect(m_tray, &TrayApp::settingsChanged, m_mpris, &MprisClient::reload);
+
+        // AlbumArtCache → OSDWindow
+        connect(m_albumArtCache, &AlbumArtCache::ready, m_osd,
+                [this](const QString& url, const QPixmap& pixmap)
+                {
+                    // Ignore stale results — only apply art if it still matches
+                    // the active player's current art URL.
+                    if (m_mpris && m_mpris->activePlayer().artUrl == url)
+                        m_osd->setAlbumArt(pixmap);
+                });
     }
 
     void initDevice()
@@ -436,6 +471,7 @@ class App : public QObject
     InputHandler* m_input = nullptr;
     TrayApp* m_tray = nullptr;
     MprisClient* m_mpris = nullptr;
+    AlbumArtCache* m_albumArtCache = nullptr;
 
     DbusInterface* m_dbus = nullptr;
     QObject* m_mprisEndpoint = nullptr;

@@ -1,6 +1,7 @@
 #pragma once
 #include <QWidget>
 #include <QColor>
+#include <QPixmap>
 #include <QTimer>
 
 #ifdef HAVE_LAYER_SHELL_QT
@@ -78,6 +79,9 @@ class OSDWindow : public QWidget
     // Update track metadata. canSeek == false disables bar interaction.
     // lengthUs == 0 → live stream mode (bar greyed out, time shows "LIVE").
     void updateTrack(const QString& title, const QString& artist, qint64 lengthUs, bool canSeek);
+    // Same as above + album field; used for {album} token in custom mode.
+    void updateTrack(const QString& title, const QString& artist, const QString& album,
+                     qint64 lengthUs, bool canSeek);
 
     // Update playback position. Ignored when no track is loaded or during drag.
     void updatePosition(qint64 positionUs);
@@ -88,6 +92,15 @@ class OSDWindow : public QWidget
     // Show or hide the media control buttons (prev/play-pause/next).
     // No-op when the progress row is not enabled.
     void setMediaControlsEnabled(bool on);
+
+    // Update the MPRIS player display name used by {player} token / presets.
+    // Empty string clears any previously set name. Triggers label refresh.
+    void setPlayerName(const QString& playerName);
+
+  public slots:
+    // Update the album art from a cached pixmap (called by App after
+    // AlbumArtCache::ready). Passing an empty pixmap clears the image.
+    void setAlbumArt(const QPixmap& pixmap);
 
   signals:
     // Emitted when the user starts a seek drag — caller should suspend polling.
@@ -124,7 +137,10 @@ class OSDWindow : public QWidget
 
     // ── Progress row ─────────────────────────────────────────────────────────
     QWidget* m_progressRow = nullptr; // container — show/hide as a unit
+    QHBoxLayout* m_progressOuterLayout = nullptr;
+    QWidget* m_progressContent = nullptr;
     QVBoxLayout* m_progressLayout = nullptr;
+    QLabel* m_albumArt = nullptr;
     QLabel* m_labelTrack = nullptr;
     QProgressBar* m_progressBar = nullptr;
     QLabel* m_labelTime = nullptr;
@@ -146,7 +162,10 @@ class OSDWindow : public QWidget
     bool m_seeking = false; // true while user is dragging the seek bar
     QString m_trackTitle;
     QString m_trackArtist;
-    QString m_currentAppName; // last app name passed to showVolume()
+    QString m_trackAlbum;
+    QString m_currentAppName;       // last app name passed to showVolume()
+    QString m_playerName;           // MPRIS displayName (for {player} token / presets)
+    bool m_albumArtVisible = false; // controlled by progressLabelMode / custom toggle
 
     // ── Layer-shell ──────────────────────────────────────────────────────────
     bool m_layerShellActive = false;
@@ -178,6 +197,8 @@ class OSDWindow : public QWidget
     // Update m_labelName text based on progressLabelMode + cached track info.
     void refreshNameLabel();
     void finishSeeking();
+    // Refresh m_albumArt visibility based on progressLabelMode / custom toggle.
+    void refreshAlbumArtVisibility();
 
     // Format microseconds → "m:ss".
     static QString formatTime(qint64 us);

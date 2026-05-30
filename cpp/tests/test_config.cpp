@@ -859,7 +859,10 @@ TEST(ConfigOsdProgress, RoundTrip)
     osd.progressEnabled = true;
     osd.progressInteractive = false;
     osd.progressPollMs = 800;
-    osd.progressLabelMode = QStringLiteral("track");
+    osd.progressLabelMode = QStringLiteral("artist_title");
+    osd.customLabelTop = QStringLiteral("{player}");
+    osd.customLabelBottom = QStringLiteral("{title} ({album})");
+    osd.customLabelShowArt = true;
     osd.trackedPlayers = {QStringLiteral("strawberry"), QStringLiteral("spotify")};
     config.setOsd(osd);
 
@@ -868,7 +871,10 @@ TEST(ConfigOsdProgress, RoundTrip)
     EXPECT_TRUE(osd2.progressEnabled);
     EXPECT_FALSE(osd2.progressInteractive);
     EXPECT_EQ(osd2.progressPollMs, 800);
-    EXPECT_EQ(osd2.progressLabelMode.toStdString(), "track");
+    EXPECT_EQ(osd2.progressLabelMode.toStdString(), "artist_title");
+    EXPECT_EQ(osd2.customLabelTop.toStdString(), "{player}");
+    EXPECT_EQ(osd2.customLabelBottom.toStdString(), "{title} ({album})");
+    EXPECT_TRUE(osd2.customLabelShowArt);
     ASSERT_EQ(osd2.trackedPlayers.size(), 2);
     EXPECT_EQ(osd2.trackedPlayers[0].toStdString(), "strawberry");
     EXPECT_EQ(osd2.trackedPlayers[1].toStdString(), "spotify");
@@ -917,14 +923,65 @@ TEST(ConfigOsdProgress, LabelModeValidation)
         f.close();
     };
 
-    writeMode(QStringLiteral("both"));
-    EXPECT_EQ(Config(tmp.path()).osd().progressLabelMode.toStdString(), "both");
-
-    writeMode(QStringLiteral("track"));
-    EXPECT_EQ(Config(tmp.path()).osd().progressLabelMode.toStdString(), "track");
+    for (const QString& valid :
+         {QStringLiteral("app"), QStringLiteral("title_artist"), QStringLiteral("artist_title"),
+          QStringLiteral("app_track"), QStringLiteral("player_track"),
+          QStringLiteral("player_track_art"), QStringLiteral("custom")})
+    {
+        writeMode(valid);
+        EXPECT_EQ(Config(tmp.path()).osd().progressLabelMode.toStdString(), valid.toStdString());
+    }
 
     writeMode(QStringLiteral("invalid_value"));
     EXPECT_EQ(Config(tmp.path()).osd().progressLabelMode.toStdString(), "app");
+}
+
+TEST(ConfigOsdProgress, LegacyLabelModeMigratesAndPersists)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    auto writeMode = [&](const QString& mode)
+    {
+        QFile f(tmp.path() + QStringLiteral("/config.json"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        QJsonObject osdObj{{QStringLiteral("progress_label_mode"), mode}};
+        QJsonObject root{{QStringLiteral("osd"), osdObj}};
+        f.write(QJsonDocument(root).toJson());
+        f.close();
+    };
+
+    // Legacy "track" → "title_artist"
+    writeMode(QStringLiteral("track"));
+    EXPECT_EQ(Config(tmp.path()).osd().progressLabelMode.toStdString(), "title_artist");
+
+    // After load(), the file on disk should hold the migrated value.
+    {
+        QFile f(tmp.path() + QStringLiteral("/config.json"));
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+        const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+        EXPECT_EQ(root.value(QStringLiteral("osd"))
+                      .toObject()
+                      .value(QStringLiteral("progress_label_mode"))
+                      .toString()
+                      .toStdString(),
+                  "title_artist");
+    }
+
+    // Legacy "both" → "app_track"
+    writeMode(QStringLiteral("both"));
+    EXPECT_EQ(Config(tmp.path()).osd().progressLabelMode.toStdString(), "app_track");
+}
+
+TEST(ConfigOsdProgress, CustomLabelDefaults)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    const OsdConfig osd = Config(tmp.path()).osd();
+    EXPECT_EQ(osd.customLabelTop.toStdString(), "{app}");
+    EXPECT_EQ(osd.customLabelBottom.toStdString(), "{title} \xE2\x80\x94 {artist}"); // em-dash
+    EXPECT_FALSE(osd.customLabelShowArt);
 }
 
 TEST(ConfigOsdProgress, MigrateOldConfigGetsDefaults)

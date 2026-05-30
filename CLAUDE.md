@@ -41,6 +41,8 @@ keyboard-volume-app/
 │       ├── appselectordialog.h/cpp # QDialog for changing the default audio app from tray
 │       ├── inputhandler.h/cpp   # evdev QThread — global key capture + uinput re-injection
 │       ├── osdwindow.h/cpp      # Frameless always-on-top Qt6 OSD overlay
+│       ├── osdlabelformat.h/cpp # Free function formatOsdLabelTemplate + LabelTokens
+│       ├── albumartcache.h/cpp  # AlbumArtCache (file/data/http with on-disk cache)
 │       ├── trayapp.h/cpp        # System tray icon and context menu
 │       ├── deviceselector.h/cpp # Dialog for picking an evdev input device
 │       ├── settingsdialog.h/cpp # Settings dialog (OSD, volume step, profiles, colors)
@@ -166,7 +168,21 @@ Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linu
 
 **Media hotkeys (global, MPRIS dispatch).** `media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, `stop`. Each accepts the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Stored as `struct MediaHotkeyConfig { HotkeyBinding playPause, next, previous, stop; }` exposed via `Config::mediaHotkeys()` / `Config::setMediaHotkeys()`. Independent of profiles — `InputHandler` resolves profile bindings first (modifier-aware) and only falls back to `resolveMediaHotkey()` when no profile claims the event. Bound keys dispatch via signals `media_play_pause/next/previous/stop` from the InputHandler thread to `MprisClient` slots in the main thread (queued connection); `MprisClient` selects the active player using `tracked_players` priority and falls back to the first Playing → Paused player. The same controls are exposed on D-Bus as `org.keyboardvolumeapp.VolumeControl.Media{PlayPause,Next,Previous,Stop}` and via `kv-ctl media play-pause|next|previous|stop`. Debounce reuses the 100 ms profile debounce table with sentinel key `__media__`.
 
-**OSD playback progress config.** `progress_enabled` is the master toggle. `progress_interactive` allows OSD seek controls when the active MPRIS player is seekable. `progress_poll_ms` is clamped to `200..2000` because many players do not emit position changes. `progress_label_mode` is one of `app`, `track`, or `both`. `tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling.
+**OSD playback progress config.** `progress_enabled` is the master toggle. `progress_interactive` allows OSD seek controls when the active MPRIS player is seekable. `progress_poll_ms` is clamped to `200..2000` because many players do not emit position changes.
+
+`progress_label_mode` selects the track label preset:
+
+- `app` — audio app name only (default).
+- `title_artist` — `Title — Artist` on a single line.
+- `artist_title` — `Artist — Title` on a single line.
+- `app_track` — `{app}` on top, `Title — Artist` below.
+- `player_track` — MPRIS player display name on top, `Title — Artist` below.
+- `player_track_art` — same as `player_track` plus the album art on the left.
+- `custom` — render `custom_label_top` and `custom_label_bottom` as templates with tokens `{app}`, `{player}`, `{title}`, `{artist}`, `{album}` (see `formatOsdLabelTemplate` in `osdlabelformat.h`). Empty token values are removed along with the immediately-following separator run, so `{title} — {artist}` collapses cleanly when an artist is missing. `custom_label_show_art` (bool, default `false`) toggles the album-art widget for this preset.
+
+Legacy `progress_label_mode` values are migrated on load and persisted: `"track"` → `"title_artist"`, `"both"` → `"app_track"`. Unknown values collapse to `"app"`.
+
+`tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling.
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
 - `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; int volMin; int volMax; }`
@@ -326,6 +342,10 @@ Progress row API:
 
 App and track labels use `MarqueeLabel` (inner class in `osdwindow.cpp`): when the text exceeds the widget width, it pauses 1.5 s, scrolls left at ~33 fps, pauses 1 s at the end, then resets. Short text that fits displays statically. No config option — always active for both labels.
 
+Track label rendering. `refreshNameLabel()` builds `LabelTokens { app, player, title, artist, album }` and feeds `osd.progressLabelMode` through a switch: built-in presets map to fixed templates, `custom` reads `osd.customLabelTop` / `osd.customLabelBottom`. Both lines run through `formatOsdLabelTemplate(template, tokens)` (free function in `osdlabelformat.h/cpp`) which substitutes `{app|player|title|artist|album}`, then sentinel-walks empty tokens to strip the following separator run — so `"Title — "` collapses to `"Title"` without disturbing `"Spotify: Title"`. Unknown `{tokens}` are left literal for debuggability. An empty bottom-line result hides `m_labelTrack` entirely. `m_playerName` is fed by `App` from `MprisClient::activePlayerChanged` (capitalized for display, e.g. `"Spotify"` vs the service suffix `"spotify"`).
+
+Album art. `m_albumArt` is a square `QLabel` (`scaled(36)`) placed to the left of the progress content via a new outer `QHBoxLayout` on `m_progressRow`. `refreshAlbumArtVisibility()` shows it for `player_track_art` always and for `custom` when `customLabelShowArt` is true. `OSDWindow::setAlbumArt(QPixmap)` (slot) installs a fresh image; `App` wires `AlbumArtCache::ready` to it, filtering stale results by comparing against `MprisClient::activePlayer().artUrl`. `AlbumArtCache` (`albumartcache.h/cpp`) backs three schemes: `file://` (synchronous), `data:` (base64 decode), `http(s)://` (`QNetworkAccessManager` async + on-disk SHA1 cache under `QStandardPaths::CacheLocation/keyboard-volume-app/art/`). LRU memory cache caps at 64 entries; no hard disk-size limit in v1.
+
 Media controls row (inside `m_progressRow`, below the progress bar):
 - `setMediaControlsEnabled(bool)` — shows/hides `m_controlsRow` (⏮ prev / ⏵⏸ play-pause / ⏭ next buttons) and calls `applySize()` to resize the window. Called from `reloadStyles()`.
 - `updatePlaybackStatus(status)` — switches the play/pause button glyph: `\u23F5` (▶) when Paused/Stopped, `\u23F8` (⏸) when Playing. Connected from `MprisClient::playbackStatusChanged`.
@@ -343,13 +363,16 @@ Selection is deterministic: filter by `Config::osd().trackedPlayers`, sort by th
 
 Harmonoid-specific guards: Harmonoid can push high-frequency `Position` via `PropertiesChanged` while an async `Get(Position)` poll briefly returns stale `0`; suppress Harmonoid poll replies that jump backwards by more than ~2s from the last accepted position. Harmonoid may also send transient incomplete metadata; keep the existing track identity/local TagLib duration when the same track briefly lacks URL, title/artist, or length. For live diagnosis, run with `KVA_DEBUG_PROGRESS=1` to log MPRIS→OSD progress decisions.
 
-`PlayerInfo` struct: `service` (D-Bus name), `displayName`, `status` (`Playing`/`Paused`/`Stopped`), `canSeek`, `lengthUs`, `trackId`, `title`, `artist`.
+`PlayerInfo` struct: `service` (D-Bus name), `displayName`, `status` (`Playing`/`Paused`/`Stopped`), `canSeek`, `lengthUs`, `trackId`, `title`, `artist`, `album`, `artUrl`.
+
+`album` and `artUrl` are parsed from `xesam:album` and `mpris:artUrl` metadata respectively. `artUrl` may be a `file://`, `http(s)://`, or `data:` URI; consumers route it through `AlbumArtCache` before rendering. Harmonoid transient-empty guards apply to `album` and `artUrl` too — when a fresh `Metadata` push lacks them but the trackid is unchanged, the previous values are preserved.
 
 `PlayerInfo` includes playback capability flags: `canGoNext`, `canGoPrevious`, `canPause`, `canPlay` — read from D-Bus properties `CanGoNext`, `CanGoPrevious`, `CanPause`, `CanPlay` during initial fetch and `PropertiesChanged` updates.
 
 Signals:
 - `activePlayerChanged(PlayerInfo)` — new active player selected or lost
 - `trackChanged(title, artist, lengthUs, canSeek)` — track metadata updated
+- `albumArtChanged(QString artUrl)` — fired whenever the active player's `mpris:artUrl` changes, including when the player vanishes (empty string). Independent from `trackChanged` so callers can keep the album-art pipeline lean.
 - `positionChanged(qint64 positionUs)` — position polled from active player (only when `progressEnabled`)
 - `playbackStatusChanged(QString status)` — Playing/Paused/Stopped state changed
 - `noPlayer()` — no tracked player available on the session bus
@@ -698,15 +721,16 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 38 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / scroll hotkeys / show hotkey / id uniqueification / per-profile vol_min and vol_max)
+- `test_config` — 40 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / scroll hotkeys / show hotkey / id uniqueification / per-profile vol_min and vol_max, legacy label-mode migration, custom-label defaults)
 - `test_i18n` — 7 tests (lookup, fallback)
 - `test_kvctlcommand` — 10 tests (subcommand parser, profile option, get/set fields, per-profile set volume, show command, invalid input)
 - `test_pwutils` — 3 tests (PipeWire client filtering, skipped-name fallback, deduplication)
 - `test_appmatcher` — 11 tests (focused-window → AudioApp lookup, including empty-field regression)
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
-- `test_mprisclient` — 13 tests (MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards)
-- `test_osdwindow` — 1 test (OSDWindow progress-row metadata update and position preservation regressions)
+- `test_mprisclient` — 15 tests (MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards, `mpris:artUrl` / `xesam:album` parsing, `albumArtChanged` empty-on-disconnect)
+- `test_osdwindow` — 6 tests (progress-row regressions, label presets for `app` / `player_track` / `player_track_art` / `custom`, album-art visibility, hidden bottom line on empty custom template)
+- `test_osdlabelformat` — 9 tests (token substitution, leading/trailing/middle separator trimming, unknown tokens preserved, multi-occurrence, internal whitespace preservation, all-empty)
 - `test_dbusinterface` — 6 tests (Volume/Muted property writers route to absolute `setVolume`/`setMuted` instead of relative delta/toggle, clamping, no-op when no active app, `ToggleMute()` method still toggles)
 
 Run locally: `cd cpp/build && ctest -E test_mprisclient --output-on-failure` and `cd cpp/build && dbus-run-session -- ctest -R test_mprisclient --output-on-failure`.

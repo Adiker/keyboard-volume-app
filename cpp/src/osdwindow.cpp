@@ -1,6 +1,7 @@
 #include "osdwindow.h"
 #include "config.h"
 #include "i18n.h"
+#include "osdlabelformat.h"
 #include "waylandstate.h"
 
 #ifdef HAVE_LAYER_SHELL_QT
@@ -202,27 +203,38 @@ void OSDWindow::buildUi()
     m_progressRow = new QWidget(this);
     m_progressRow->setVisible(false);
 
-    m_progressLayout = new QVBoxLayout(m_progressRow);
-    m_progressLayout->setContentsMargins(0, scaled(2), 0, 0);
+    m_progressOuterLayout = new QHBoxLayout(m_progressRow);
+    m_progressOuterLayout->setContentsMargins(0, scaled(2), 0, 0);
+    m_progressOuterLayout->setSpacing(scaled(6));
+
+    m_albumArt = new QLabel(m_progressRow);
+    m_albumArt->setObjectName(QStringLiteral("album_art"));
+    m_albumArt->setFixedSize(scaled(36), scaled(36));
+    m_albumArt->setScaledContents(true);
+    m_albumArt->setVisible(false);
+
+    m_progressContent = new QWidget(m_progressRow);
+    m_progressLayout = new QVBoxLayout(m_progressContent);
+    m_progressLayout->setContentsMargins(0, 0, 0, 0);
     m_progressLayout->setSpacing(scaled(2));
 
-    m_labelTrack = new MarqueeLabel(m_progressRow);
+    m_labelTrack = new MarqueeLabel(m_progressContent);
     m_labelTrack->setAlignment(Qt::AlignCenter);
     m_labelTrack->setObjectName(QStringLiteral("track_label"));
 
-    m_progressBar = new QProgressBar(m_progressRow);
+    m_progressBar = new QProgressBar(m_progressContent);
     m_progressBar->setRange(0, 1000);
     m_progressBar->setValue(0);
     m_progressBar->setTextVisible(false);
     m_progressBar->setFixedHeight(scaled(8));
     m_progressBar->installEventFilter(this); // seek interaction
 
-    m_labelTime = new QLabel(m_progressRow);
+    m_labelTime = new QLabel(m_progressContent);
     m_labelTime->setAlignment(Qt::AlignCenter);
     m_labelTime->setObjectName(QStringLiteral("time_label"));
 
     // ── Media controls row ────────────────────────────────────────────────────
-    m_controlsRow = new QWidget(m_progressRow);
+    m_controlsRow = new QWidget(m_progressContent);
     m_controlsRow->setObjectName(QStringLiteral("controls_row"));
     m_controlsLayout = new QHBoxLayout(m_controlsRow);
     m_controlsLayout->setContentsMargins(0, 0, 0, 0);
@@ -254,6 +266,9 @@ void OSDWindow::buildUi()
     m_progressLayout->addWidget(m_progressBar);
     m_progressLayout->addWidget(m_controlsRow);
     m_progressLayout->addWidget(m_labelTime);
+
+    m_progressOuterLayout->addWidget(m_albumArt, 0, Qt::AlignVCenter);
+    m_progressOuterLayout->addWidget(m_progressContent, 1);
 
     m_mainLayout->addWidget(m_progressRow);
 
@@ -378,11 +393,17 @@ void OSDWindow::rescale()
 
     m_bar->setFixedHeight(scaled(10));
 
+    if (m_progressOuterLayout)
+    {
+        m_progressOuterLayout->setContentsMargins(0, scaled(2), 0, 0);
+        m_progressOuterLayout->setSpacing(scaled(6));
+    }
     if (m_progressLayout)
     {
-        m_progressLayout->setContentsMargins(0, scaled(2), 0, 0);
+        m_progressLayout->setContentsMargins(0, 0, 0, 0);
         m_progressLayout->setSpacing(scaled(2));
     }
+    if (m_albumArt) m_albumArt->setFixedSize(scaled(36), scaled(36));
     if (m_progressBar) m_progressBar->setFixedHeight(scaled(8));
     if (m_controlsLayout) m_controlsLayout->setSpacing(scaled(8));
     for (auto* btn : {m_btnPrev, m_btnPlayPause, m_btnNext})
@@ -535,6 +556,7 @@ void OSDWindow::setProgressEnabled(bool on)
         m_progressVisible = false;
         m_progressRow->setVisible(false);
         if (m_controlsRow) m_controlsRow->setVisible(false);
+        refreshAlbumArtVisibility();
         refreshNameLabel();
         applySize();
     }
@@ -548,6 +570,7 @@ void OSDWindow::setProgressVisible(bool on)
     m_progressVisible = on;
     m_progressRow->setVisible(on);
     if (m_controlsRow) m_controlsRow->setVisible(on && m_mediaControlsEnabled);
+    refreshAlbumArtVisibility();
     refreshNameLabel();
     applySize();
 }
@@ -555,6 +578,13 @@ void OSDWindow::setProgressVisible(bool on)
 void OSDWindow::updateTrack(const QString& title, const QString& artist, qint64 lengthUs,
                             bool canSeek)
 {
+    updateTrack(title, artist, QString{}, lengthUs, canSeek);
+}
+
+void OSDWindow::updateTrack(const QString& title, const QString& artist, const QString& album,
+                            qint64 lengthUs, bool canSeek)
+{
+    m_trackAlbum = album;
     const qint64 oldLengthUs = m_trackLengthUs;
     const qint64 oldPositionUs = m_lastPositionUs;
     const int oldProgressValue = m_progressBar ? m_progressBar->value() : -1;
@@ -724,31 +754,68 @@ void OSDWindow::refreshNameLabel()
     const OsdConfig osd = m_config->osd();
     const QString& mode = osd.progressLabelMode;
 
+    LabelTokens tokens;
+    tokens.app = m_currentAppName;
+    tokens.player = m_playerName;
+    tokens.title = m_trackTitle;
+    tokens.artist = m_trackArtist;
+    tokens.album = m_trackAlbum;
+
+    // Default to the simple "app" template; presets below may override.
+    QString topTpl = QStringLiteral("{app}");
+    QString bottomTpl;
+
     if (!m_progressEnabled || !m_progressVisible || mode == QLatin1String("app"))
     {
-        m_labelName->setText(m_currentAppName);
-        if (m_labelTrack) m_labelTrack->setText(m_trackTitle);
-        return;
+        // already set above
     }
+    else if (mode == QLatin1String("title_artist"))
+    {
+        topTpl = QStringLiteral("{title} \u2014 {artist}");
+    }
+    else if (mode == QLatin1String("artist_title"))
+    {
+        topTpl = QStringLiteral("{artist} \u2014 {title}");
+    }
+    else if (mode == QLatin1String("app_track"))
+    {
+        bottomTpl = QStringLiteral("{title} \u2014 {artist}");
+    }
+    else if (mode == QLatin1String("player_track") || mode == QLatin1String("player_track_art"))
+    {
+        topTpl = QStringLiteral("{player}");
+        bottomTpl = QStringLiteral("{title} \u2014 {artist}");
+    }
+    else if (mode == QLatin1String("custom"))
+    {
+        topTpl = osd.customLabelTop;
+        bottomTpl = osd.customLabelBottom;
+    }
+    // Unknown mode falls through with the default "{app}" template.
 
-    if (mode == QLatin1String("track"))
+    const QString top = formatOsdLabelTemplate(topTpl, tokens);
+    const QString bottom = formatOsdLabelTemplate(bottomTpl, tokens);
+
+    m_labelName->setText(top);
+    if (m_labelTrack)
     {
-        const QString trackText =
-            m_trackArtist.isEmpty()
-                ? m_trackTitle
-                : QStringLiteral("%1 \u2014 %2").arg(m_trackTitle, m_trackArtist);
-        m_labelName->setText(trackText);
-        if (m_labelTrack) m_labelTrack->setText(QString{});
+        m_labelTrack->setText(bottom);
+        // Hide an empty bottom line so spacing collapses cleanly.
+        m_labelTrack->setVisible(m_progressEnabled && m_progressVisible && !bottom.isEmpty());
     }
-    else // "both"
-    {
-        m_labelName->setText(m_currentAppName);
-        const QString trackText =
-            m_trackArtist.isEmpty()
-                ? m_trackTitle
-                : QStringLiteral("%1 \u2014 %2").arg(m_trackTitle, m_trackArtist);
-        if (m_labelTrack) m_labelTrack->setText(trackText);
-    }
+}
+
+void OSDWindow::refreshAlbumArtVisibility()
+{
+    if (!m_albumArt) return;
+    const OsdConfig osd = m_config->osd();
+    const bool wantArt =
+        m_progressEnabled && m_progressVisible &&
+        (osd.progressLabelMode == QLatin1String("player_track_art") ||
+         (osd.progressLabelMode == QLatin1String("custom") && osd.customLabelShowArt));
+    if (m_albumArtVisible == wantArt) return;
+    m_albumArtVisible = wantArt;
+    m_albumArt->setVisible(wantArt);
 }
 
 int OSDWindow::scaled(int base) const
@@ -785,6 +852,28 @@ void OSDWindow::setMediaControlsEnabled(bool on)
     m_mediaControlsEnabled = on;
     if (m_controlsRow) m_controlsRow->setVisible(on && m_progressVisible);
     applySize();
+}
+
+void OSDWindow::setPlayerName(const QString& playerName)
+{
+    if (m_playerName == playerName) return;
+    m_playerName = playerName;
+    refreshNameLabel();
+}
+
+void OSDWindow::setAlbumArt(const QPixmap& pixmap)
+{
+    if (!m_albumArt) return;
+    if (pixmap.isNull())
+    {
+        m_albumArt->clear();
+    }
+    else
+    {
+        // setScaledContents handles fitting to fixed size; storing the original
+        // avoids progressively blurring across rescales.
+        m_albumArt->setPixmap(pixmap);
+    }
 }
 
 // static
@@ -875,6 +964,8 @@ void OSDWindow::reloadStyles()
     m_mediaControlsEnabled = osd.mediaControlsEnabled;
     setMediaControlsEnabled(m_mediaControlsEnabled);
     setProgressEnabled(osd.progressEnabled);
+    refreshAlbumArtVisibility();
+    refreshNameLabel();
     if (!osd.progressInteractive) finishSeeking();
     auto [absX, absY] = absPos();
 #ifdef HAVE_LAYER_SHELL_QT
