@@ -145,19 +145,21 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
       "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
       "auto_switch": true,
-      "vol_min": 0, "vol_max": 100 },
+      "vol_min": 0, "vol_max": 100,
+      "sink": "" },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
       "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
       "auto_switch": true,
-      "vol_min": 10, "vol_max": 80 }
+      "vol_min": 10, "vol_max": 80,
+      "sink": "alsa_output.usb-headset" }
   ],
   "scenes": [
     { "id": "meeting", "name": "Meeting", "hotkey": 88,
       "targets": [
         { "match": "Spotify", "volume": 10, "muted": false },
-        { "match": "Discord", "volume": 80 },
+        { "match": "Discord", "volume": 80, "sink": "alsa_output.usb-headset" },
         { "match": "Steam", "muted": true }
       ] }
   ]
@@ -187,7 +189,7 @@ Legacy `progress_label_mode` values are migrated on load and persisted: `"track"
 `tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling.
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
-- `struct Profile { QString id, name, app; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; int volMin; int volMax; }`
+- `struct Profile { QString id, name; QStringList apps; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; int volMin; int volMax; QString sink; }` — `sink` is the stable PulseAudio sink **name** (empty = system default; cleared in stream-restore when the user switches back to default in Settings)
 - `struct DuckingConfig { bool enabled; int volume; HotkeyBinding hotkey; }` — manual per-profile Focus Audio. `volume` is clamped to `0..100`; unassigned binding means no hotkey.
 - `enum class Modifier { Ctrl, Shift }` — left/right collapsed to canonical (Ctrl/Shift only in v1; Alt/Meta out of scope)
 - API: `profiles()`, `setProfiles(QList<Profile>)` (validates non-empty + uniqueifies ids with numeric suffix on collision; clamps `volMin`/`volMax` to `0..100` and swaps when inverted), `defaultProfile()` (= `profiles().first()`), `setDefaultProfileApp(QString)`, `findProfileByApp(QString)` (case-insensitive contains match among auto_switch-enabled profiles)
@@ -198,12 +200,12 @@ Legacy `progress_label_mode` values are migrated on load and persisted: `"track"
 
 **Audio scenes** (named mixer presets). Each scene:
 - `struct AudioScene { QString id, name; QList<SceneTarget> targets; HotkeyBinding hotkey; }`
-- `struct SceneTarget { QString match; std::optional<int> volume; std::optional<bool> muted; }`
-- `match` uses the same app/binary names accepted by `VolumeController`; `volume` is clamped to `0..100`; omitted `volume`/`muted` leaves that state unchanged.
+- `struct SceneTarget { QString match; std::optional<int> volume; std::optional<bool> muted; std::optional<QString> sink; }`
+- `match` uses the same app/binary names accepted by `VolumeController`; `volume` is clamped to `0..100`; omitted `volume`/`muted`/`sink` leaves that state unchanged. Sink-only targets are valid.
 - `hotkey` is an optional global evdev binding (same key/scroll format as profile hotkeys). Serialized as the JSON `hotkey` field; missing in legacy configs → unassigned. Applying it routes through `scene_apply(id)` → `VolumeController::applyScene`.
 - API: `scenes()`, `setScenes(QList<AudioScene>)` (uniqueifies ids and drops malformed targets; preserves each scene's hotkey).
 - Editing: the Settings dialog has a Scenes table (name / target summary / hotkey) with Add / Edit / Remove / Duplicate / Apply, backed by `SceneEditDialog` (`sceneeditdialog.h/cpp`). Each target row has a `match` (typed or picked from `AppListWidget`), an optional `0..100` volume, and a mute mode of leave-unchanged / mute / unmute. Duplicating a scene clears the copy's hotkey so two scenes never share a binding by accident.
-- Apply is single-sourced through `VolumeController::applyScene(const AudioScene&)` — tray menu, D-Bus `ApplyScene`, the Settings "Apply" button, and scene hotkeys all call it instead of duplicating the per-target loop. Scenes intentionally bypass per-profile volume limits.
+- Apply is single-sourced through `VolumeController::applyScene(const AudioScene&)` — tray menu, D-Bus `ApplyScene`, the Settings "Apply" button, and scene hotkeys all call it instead of duplicating the per-target loop. Sink routing is applied before volume/mute so per-device default volume can't override the scene's requested level. Scenes intentionally bypass per-profile volume limits.
 
 **Migration & legacy mirror.** `Config::load()` synthesizes a single `default` profile from legacy `selected_app` + top-level `hotkeys` when `profiles` is missing/empty, then `saveUnlocked()` writes the new schema. Top-level `selected_app` and `hotkeys` are kept in sync as a deprecated mirror of `profiles[0]` (one release of compat) — `setSelectedApp()`/`setHotkeys()` mirror into the default profile and vice versa, so existing D-Bus/MPRIS clients keep working.
 
@@ -278,6 +280,8 @@ All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved v
 2. **Stream restore DB** (libpulse) — persists across pause/resume
 3. **PipeWire node** (libpipewire) — for paused apps with an idle node
 4. **Pending watcher** — stores desired volume/mute in `PaWorker`; applies when app reconnects
+
+**Output sink routing** (separate from volume): `listSinks()` / `setAppSink(app, sinkName)` / `clearAppSinkOverride(app)` on the PA worker thread. Cascade: move all matching active sink-inputs → stream-restore `device` field → park in `m_pendingSinks` (not cleared by volume/mute `removePending()`; cleared only after stream-restore persistence succeeds in `doApplyPending`). `clearAppSinkOverride` writes `device=nullptr` to stream-restore; requests are parked in `m_pendingSinkClears` while PA is down and flushed on reconnect. `PA_SUBSCRIPTION_MASK_SINK` debounces `sinksReady`. `App::activateProfile()` routes profile sinks once per profile transition (`m_lastActivatedProfileId`, cleared on `settingsChanged` and `sinksReady`). Per-profile D-Bus methods call `applyProfileSink()` before volume/mute. PipeWire `target.object` fallback is intentionally out of scope in v1.
 
 `listApps()` returns cached data immediately and posts a background refresh that emits `appsReady(list)`. The background watcher listens for new sink-input events and applies pending volumes.
 
@@ -413,18 +417,19 @@ Filters `/dev/input/event*` to show only devices exposing `KEY_VOLUMEUP`/`KEY_VO
 
 Exposes `org.keyboardvolumeapp.VolumeControl` on the D-Bus session bus (bus name `org.keyboardvolumeapp`, object path `/org/keyboardvolumeapp`).
 
-Caches volume/mute/app state by listening to `VolumeController::volumeChanged` and `VolumeController::appsReady`; `App::initDbus()` wires `TrayApp::appChanged` to `DbusInterface::onActiveAppChanged()` so the tray drives active-app invalidation without `DbusInterface` having to depend on the GUI stack. D-Bus properties are `Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`, `Profiles`, `Scenes`, `ProgressEnabled`, and `AutoProfileSwitch`; setters delegate to `VolumeController`/`Config` async. The `Volume` and `Muted` property writers route to absolute setters on `VolumeController` (`setVolume(app, target, vol_min, vol_max)` / `setMuted(app, muted)`) rather than relative delta/toggle calls — the cached values can be stale (startup, external pavucontrol changes), so an absolute set is the only way to honor the requested target. The global `Volume` property applies the default profile's `vol_min`/`vol_max` bounds. `ProgressEnabled` reads current `Config::osd()` to avoid stale cache after GUI settings changes.
+Caches volume/mute/app state by listening to `VolumeController::volumeChanged` and `VolumeController::appsReady`; `App::initDbus()` wires `TrayApp::appChanged` to `DbusInterface::onActiveAppChanged()` so the tray drives active-app invalidation without `DbusInterface` having to depend on the GUI stack. D-Bus properties are `Volume`, `Muted`, `ActiveApp`, `Apps`, `VolumeStep`, `Profiles`, `Scenes`, `Sinks`, `ProgressEnabled`, and `AutoProfileSwitch`; setters delegate to `VolumeController`/`Config` async. `Sinks` is a `QVariantList` of `{name, description, is_default}` rebuilt on `sinksReady`. The `Volume` and `Muted` property writers route to absolute setters on `VolumeController` (`setVolume(app, target, vol_min, vol_max)` / `setMuted(app, muted)`) rather than relative delta/toggle calls — the cached values can be stale (startup, external pavucontrol changes), so an absolute set is the only way to honor the requested target. The global `Volume` property applies the default profile's `vol_min`/`vol_max` bounds. `ProgressEnabled` reads current `Config::osd()` to avoid stale cache after GUI settings changes.
 
 D-Bus methods:
 - `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `SetMute(bool)`, `ToggleDucking()`, `RefreshApps()` — bare methods target the default profile / `m_activeApp`, kept for backwards compat and script-friendly default-profile control. `SetMute` and the `Muted` property both drive an absolute mute state via `setMuted`.
 - `VolumeUpProfile(QString id)`, `VolumeDownProfile(QString id)`, `ToggleMuteProfile(QString id)`, `SetMuteProfile(QString id, bool muted)`, `ToggleDuckingProfile(QString id)` — per-profile methods, route directly to the profile's app via `m_volumeCtrl`.
 - `SetVolumeProfile(QString id, double vol)` — per-profile absolute volume setter. `vol` is `0.0..1.0` (clamped); unknown profile ids are silently a no-op. Used by `kv-ctl set volume X --profile id`.
-- `ApplyScene(QString id)` — applies a configured audio scene through `VolumeController::applyScene` (posts absolute volume/mute operations); unknown scene ids are a no-op.
+- `ApplyScene(QString id)` — applies a configured audio scene through `VolumeController::applyScene` (posts `setAppSink` when `sink` set, before absolute volume/mute operations); unknown scene ids are a no-op.
+- `SetAppSink(QString app, QString sink)` — ad-hoc per-app sink routing (empty args are no-ops).
 - `ShowVolume()` — queries the current volume of `m_activeApp` via `VolumeController::queryVolume()` and emits `volumeChanged` → OSD displays without any value change.
 - `ShowVolumeProfile(QString id)` — same as `ShowVolume()` but for the app in the named profile.
 
-`Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute, show}), ducking ({enabled, volume, hotkey})}`. Hotkey values are legacy ints for `EV_KEY` bindings or maps for scroll bindings. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
-`Scenes` property is `QVariantList` of `QVariantMap` entries — `{id, name, hotkey, targets ([{match, volume?, muted?}])}`. `hotkey` is a legacy int for `EV_KEY` bindings (0 = unassigned) or a map for scroll bindings, matching the profile hotkey wire format. Rebuilt and signaled by `reloadProfiles()` alongside `Profiles`.
+`Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, apps, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute, show}), ducking ({enabled, volume, hotkey}), sink?}`. Hotkey values are legacy ints for `EV_KEY` bindings or maps for scroll bindings. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
+`Scenes` property is `QVariantList` of `QVariantMap` entries — `{id, name, hotkey, targets ([{match, volume?, muted?, sink?}])}`. `hotkey` is a legacy int for `EV_KEY` bindings (0 = unassigned) or a map for scroll bindings, matching the profile hotkey wire format. Rebuilt and signaled by `reloadProfiles()` alongside `Profiles`.
 `ProgressEnabled` patches `OsdConfig::progressEnabled` and emits `progressEnabledChanged`; `App::initDbus()` wires that signal to `OSDWindow::reloadStyles()` and `MprisClient::reload()` so `kv-ctl set progress-enabled ...` takes effect without opening Settings or restarting the app. `reloadProgressEnabled()` keeps the D-Bus signal/cache aligned when Settings changes the same field.
 `AutoProfileSwitch` maps to `Config::autoProfileSwitch()` and emits `autoProfileSwitchChanged`; `App::initDbus()` wires that signal to `App::onAutoSwitchMaybeChanged()` so `kv-ctl set auto-profile-switch true|false` starts/stops `WindowTracker` at runtime without a restart. `reloadAutoProfileSwitch()` keeps the D-Bus cache aligned when the Settings checkbox changes.
 
@@ -437,8 +442,9 @@ D-Bus methods:
 - `kv-ctl show [--profile id]` maps to `ShowVolume()` or `ShowVolumeProfile(id)`; displays the OSD with the current volume without changing it.
 - `kv-ctl scene ID` maps to `ApplyScene(ID)`.
 - `kv-ctl refresh` maps to `RefreshApps`.
-- `kv-ctl get volume|muted|active-app|apps|step|profiles|scenes|progress-enabled|auto-profile-switch` reads D-Bus properties through `org.freedesktop.DBus.Properties.Get`.
+- `kv-ctl get volume|muted|active-app|apps|step|profiles|scenes|sinks|progress-enabled|auto-profile-switch` reads D-Bus properties through `org.freedesktop.DBus.Properties.Get`. `kv-ctl get sink` (singular) is rejected with a hint to use `sinks`.
 - `kv-ctl set volume|muted|active-app|step|progress-enabled|auto-profile-switch VALUE` writes properties through `org.freedesktop.DBus.Properties.Set`; volume is given as `0..100` percent and mapped to `0.0..1.0`, while `progress-enabled` and `auto-profile-switch` accept `true|false`. The optional `--profile ID` flag is accepted only for `set volume` and routes through `SetVolumeProfile` instead of the daemon-wide property setter. (Per-profile mute uses `kv-ctl mute on|off --profile id` via `SetMute`/`SetMuteProfile`.)
+- `kv-ctl set sink APP DEVICE` calls `SetAppSink` (4-arg form; `--profile` rejected in v1).
 
 Exit codes: `0` success, `1` usage, `2` daemon unavailable, `3` D-Bus error, `4` invalid value. Parser logic lives in `kvctlcommand` so it can be unit-tested without a session bus.
 

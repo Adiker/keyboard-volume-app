@@ -814,7 +814,7 @@ void SettingsDialog::saveAndAccept()
             for (const Profile& old : previousProfiles)
             {
                 if (old.id != neu.id || old.sink.isEmpty()) continue;
-                for (const QString& app : neu.apps)
+                for (const QString& app : old.apps)
                     if (!app.isEmpty()) m_volumeCtrl->clearAppSinkOverride(app);
                 break;
             }

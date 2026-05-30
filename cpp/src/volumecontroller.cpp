@@ -311,6 +311,7 @@ class PaWorker : public QObject
             startWatcher();
             doListSinks(/*forceRefresh=*/true);
             doApplyPending();
+            doFlushPendingSinkClears();
             doListApps(/*forceRefresh=*/true);
             return;
         }
@@ -975,36 +976,43 @@ class PaWorker : public QObject
         }
         m_appSinks.remove(appName);
 
-        if (!contextReady()) return;
-
-        struct ClearCbData
+        if (!contextReady())
         {
-            PaWorker* self;
-            QString target;
-        };
-
-        auto cb = [](pa_context* ctx, const pa_ext_stream_restore_info* info, int eol, void* ud)
-        {
-            auto* d = static_cast<ClearCbData*>(ud);
-            if (eol || !info || !d) return;
-            if (QString::fromUtf8(info->name) != d->target) return;
-            pa_ext_stream_restore_info out = *info;
-            out.device = nullptr; // drop preferred device → system default
-            pa_operation* op = pa_ext_stream_restore_write(ctx, PA_UPDATE_REPLACE, &out, 1, 1,
-                                                           operationDoneCallback, d->self);
-            if (op) pa_operation_unref(op);
-        };
-
-        for (const QString& candidate : streamRestoreAppCandidates(appName))
-        {
-            ClearCbData d{this, QStringLiteral("sink-input-by-application-name:") + candidate};
-            pa_threaded_mainloop_lock(m_mainloop);
-            waitForOperation(pa_ext_stream_restore_read(m_ctx, cb, &d),
-                             "stream restore clear device");
-            pa_threaded_mainloop_unlock(m_mainloop);
+            QMutexLocker lk(&m_pendingMutex);
+            m_pendingSinkClears.insert(appName);
+            return;
         }
 
+        streamRestoreClearDevice(appName);
+        {
+            QMutexLocker lk(&m_pendingMutex);
+            m_pendingSinkClears.remove(appName);
+        }
         emit sinkChanged(appName, QString{});
+    }
+
+    // Retry stream-restore clears that were parked while PA was reconnecting.
+    void doFlushPendingSinkClears()
+    {
+        if (m_stopping || !contextReady()) return;
+
+        QSet<QString> pending;
+        {
+            QMutexLocker lk(&m_pendingMutex);
+            if (m_pendingSinkClears.isEmpty()) return;
+            pending = m_pendingSinkClears;
+        }
+
+        for (const QString& app : pending)
+        {
+            if (app.isEmpty()) continue;
+            streamRestoreClearDevice(app);
+            {
+                QMutexLocker lk(&m_pendingMutex);
+                m_pendingSinkClears.remove(app);
+            }
+            emit sinkChanged(app, QString{});
+        }
     }
 
     // ── Route an app's sink-input(s) to the named PA sink ────────────────────
@@ -1014,6 +1022,11 @@ class PaWorker : public QObject
     {
         if (m_stopping) return;
         if (sinkName.isEmpty()) return;
+
+        {
+            QMutexLocker lk(&m_pendingMutex);
+            m_pendingSinkClears.remove(appName);
+        }
 
         bool routedAny = false;
 
@@ -1087,6 +1100,7 @@ class PaWorker : public QObject
     QMap<QString, double> m_pendingVolumes;
     QMap<QString, bool> m_pendingMutes;
     QMap<QString, QString> m_pendingSinks;
+    QSet<QString> m_pendingSinkClears; // SR device=nullptr writes deferred while PA is down
     QMap<QString, double> m_appVolumes;
     QMap<QString, bool> m_appMutes;
     QMap<QString, QString> m_appSinks; // last-known sink name per app
@@ -1635,6 +1649,49 @@ class PaWorker : public QObject
             pa_threaded_mainloop_lock(m_mainloop);
             waitForOperation(pa_ext_stream_restore_read(m_ctx, cb, &d),
                              "stream restore set device");
+            pa_threaded_mainloop_unlock(m_mainloop);
+            if (d.wrote) anyWritten = true;
+        }
+        return anyWritten;
+    }
+
+    // Clear preferred device in stream-restore (device=nullptr). Returns true when
+    // at least one matching entry was rewritten.
+    bool streamRestoreClearDevice(const QString& app)
+    {
+        if (!contextReady()) return false;
+
+        struct ClearCbData
+        {
+            PaWorker* self;
+            QString target;
+            bool wrote = false;
+        };
+
+        auto cb = [](pa_context* ctx, const pa_ext_stream_restore_info* info, int eol, void* ud)
+        {
+            auto* d = static_cast<ClearCbData*>(ud);
+            if (eol || !info || !d) return;
+            if (QString::fromUtf8(info->name) != d->target) return;
+            pa_ext_stream_restore_info out = *info;
+            out.device = nullptr;
+            pa_operation* op = pa_ext_stream_restore_write(ctx, PA_UPDATE_REPLACE, &out, 1, 1,
+                                                           operationDoneCallback, d->self);
+            if (op)
+            {
+                d->wrote = true;
+                pa_operation_unref(op);
+            }
+        };
+
+        bool anyWritten = false;
+        for (const QString& candidate : streamRestoreAppCandidates(app))
+        {
+            ClearCbData d{this, QStringLiteral("sink-input-by-application-name:") + candidate,
+                          false};
+            pa_threaded_mainloop_lock(m_mainloop);
+            waitForOperation(pa_ext_stream_restore_read(m_ctx, cb, &d),
+                             "stream restore clear device");
             pa_threaded_mainloop_unlock(m_mainloop);
             if (d.wrote) anyWritten = true;
         }
