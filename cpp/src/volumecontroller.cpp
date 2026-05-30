@@ -1,4 +1,5 @@
 #include "volumecontroller.h"
+#include "appmatcher.h"
 #include "pwutils.h"
 
 #include <QDateTime>
@@ -1457,16 +1458,53 @@ class PaWorker : public QObject
         };
 
         add(app);
+        const QString lowerApp = app.toLower();
         for (const PipeWireClient& client : ::listPipeWireClients())
         {
-            if (client.binary.compare(app, Qt::CaseInsensitive) == 0 ||
-                client.name.compare(app, Qt::CaseInsensitive) == 0)
+            if (appIdMatches(client.binary, lowerApp) || appIdMatches(client.name, lowerApp))
             {
                 add(client.binary);
                 add(client.name);
             }
         }
         return candidates;
+    }
+
+    // streamRestoreAppCandidates() only sees live PipeWire clients. Entries written
+    // under a display-name alias (e.g. Discord) while the app was running must still
+    // be found when the client is idle — scan the stream-restore database.
+    void appendStreamRestoreAliasesFromDatabase(QStringList& candidates, const QString& app)
+    {
+        if (!contextReady() || app.isEmpty()) return;
+
+        struct CollectData
+        {
+            QString appLower;
+            QStringList* candidates;
+        };
+
+        auto collectCb = [](pa_context*, const pa_ext_stream_restore_info* info, int eol, void* ud)
+        {
+            auto* d = static_cast<CollectData*>(ud);
+            if (eol || !info) return;
+            const QString fullName = QString::fromUtf8(info->name);
+            static const QString prefix = QStringLiteral("sink-input-by-application-name:");
+            if (!fullName.startsWith(prefix)) return;
+            const QString entryApp = fullName.mid(prefix.size());
+            if (!appIdMatches(entryApp, d->appLower)) return;
+            if (entryApp.trimmed().isEmpty()) return;
+            for (const QString& existing : std::as_const(*d->candidates))
+            {
+                if (existing.compare(entryApp, Qt::CaseInsensitive) == 0) return;
+            }
+            d->candidates->append(entryApp);
+        };
+
+        CollectData collect{app.toLower(), &candidates};
+        pa_threaded_mainloop_lock(m_mainloop);
+        waitForOperation(pa_ext_stream_restore_read(m_ctx, collectCb, &collect),
+                         "stream restore enumerate aliases");
+        pa_threaded_mainloop_unlock(m_mainloop);
     }
 
     std::optional<double> streamRestoreChangeVolume(const QString& app, double delta,
@@ -1661,6 +1699,9 @@ class PaWorker : public QObject
     {
         if (!contextReady()) return false;
 
+        QStringList candidates = streamRestoreAppCandidates(app);
+        appendStreamRestoreAliasesFromDatabase(candidates, app);
+
         struct ClearCbData
         {
             PaWorker* self;
@@ -1685,7 +1726,7 @@ class PaWorker : public QObject
         };
 
         bool anyWritten = false;
-        for (const QString& candidate : streamRestoreAppCandidates(app))
+        for (const QString& candidate : candidates)
         {
             ClearCbData d{this, QStringLiteral("sink-input-by-application-name:") + candidate,
                           false};
