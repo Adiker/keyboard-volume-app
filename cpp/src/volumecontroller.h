@@ -61,7 +61,7 @@ class VolumeController : public QObject
     // default)" so the previous routing doesn't keep sticking after restart.
     virtual void clearAppSinkOverride(const QString& appName);
 
-    // Apply an audio scene: iterate its targets and set per-target volume/mute.
+    // Apply an audio scene: iterate its targets and set per-target sink/volume/mute.
     // Scenes intentionally bypass per-profile volume limits (explicit presets).
     // Single entry point shared by tray, D-Bus, hotkey, and Settings so the
     // per-target loop is not duplicated. Async → results arrive via volumeChanged().

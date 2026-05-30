@@ -886,6 +886,7 @@ void SettingsDialog::saveAndAccept()
             }
         }
     }
+
     m_config->setScenes(m_scenes);
     accept();
 }

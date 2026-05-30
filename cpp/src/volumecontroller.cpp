@@ -146,12 +146,11 @@ class PaWatcherThread : public QThread
             pa_context_state_t st = pa_context_get_state(m_ctx);
             if (st == PA_CONTEXT_READY)
             {
-                pa_context_subscribe(
-                    m_ctx,
-                    static_cast<pa_subscription_mask_t>(PA_SUBSCRIPTION_MASK_SINK_INPUT |
-                                                        PA_SUBSCRIPTION_MASK_SINK |
-                                                        PA_SUBSCRIPTION_MASK_SERVER),
-                    nullptr, nullptr);
+                pa_context_subscribe(m_ctx,
+                                     static_cast<pa_subscription_mask_t>(
+                                         PA_SUBSCRIPTION_MASK_SINK_INPUT |
+                                         PA_SUBSCRIPTION_MASK_SINK | PA_SUBSCRIPTION_MASK_SERVER),
+                                     nullptr, nullptr);
                 pa_context_set_subscribe_callback(m_ctx, subscribeCallback, this);
                 pa_threaded_mainloop_unlock(m_mainloop);
                 return true;
@@ -214,8 +213,7 @@ class PaWatcherThread : public QThread
             else if (type == PA_SUBSCRIPTION_EVENT_REMOVE)
                 emit self->sinkInputRemoved();
         }
-        else if (facility == PA_SUBSCRIPTION_EVENT_SINK ||
-                 facility == PA_SUBSCRIPTION_EVENT_SERVER)
+        else if (facility == PA_SUBSCRIPTION_EVENT_SINK || facility == PA_SUBSCRIPTION_EVENT_SERVER)
         {
             emit self->sinkChanged();
         }
@@ -1917,10 +1915,13 @@ void VolumeController::applyScene(const AudioScene& scene)
     // Scenes intentionally bypass per-profile volume limits: each target is an
     // explicit mixer preset, so we use the full [0,1] range (default args of
     // setVolume). Targets with neither volume nor mute are already dropped by
-    // Config sanitization, but we re-check defensively.
+    // Config sanitization, but we re-check defensively. Sink routing is applied
+    // before volume/mute so per-device default volume can't override the
+    // scene's requested level (mirrors doApplyPending ordering).
     for (const SceneTarget& target : scene.targets)
     {
         if (target.match.trimmed().isEmpty()) continue;
+        if (target.sink && !target.sink->isEmpty()) setAppSink(target.match, *target.sink);
         if (target.volume) setVolume(target.match, std::clamp(*target.volume, 0, 100) / 100.0);
         if (target.muted) setMuted(target.match, *target.muted);
     }
