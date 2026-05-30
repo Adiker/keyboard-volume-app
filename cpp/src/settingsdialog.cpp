@@ -808,6 +808,17 @@ void SettingsDialog::saveAndAccept()
 
     if (m_volumeCtrl && !previousProfiles.isEmpty())
     {
+        const auto appStillRouted = [this](const QString& app)
+        {
+            if (app.isEmpty()) return false;
+            for (const Profile& p : m_profiles)
+            {
+                if (p.sink.isEmpty()) continue;
+                if (p.apps.contains(app)) return true;
+            }
+            return false;
+        };
+
         for (const Profile& neu : m_profiles)
         {
             const Profile* oldPtr = nullptr;
@@ -838,7 +849,10 @@ void SettingsDialog::saveAndAccept()
             }
 
             for (const QString& app : toClear)
-                if (!app.isEmpty()) m_volumeCtrl->clearAppSinkOverride(app);
+            {
+                if (app.isEmpty() || appStillRouted(app)) continue;
+                m_volumeCtrl->clearAppSinkOverride(app);
+            }
         }
 
         for (const Profile& old : previousProfiles)
@@ -855,7 +869,10 @@ void SettingsDialog::saveAndAccept()
             }
             if (stillPresent) continue;
             for (const QString& app : old.apps)
-                if (!app.isEmpty()) m_volumeCtrl->clearAppSinkOverride(app);
+            {
+                if (app.isEmpty() || appStillRouted(app)) continue;
+                m_volumeCtrl->clearAppSinkOverride(app);
+            }
         }
     }
     m_config->setScenes(m_scenes);
