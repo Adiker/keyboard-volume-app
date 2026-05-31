@@ -70,6 +70,13 @@ enum class MediaAction
 MediaAction resolveMediaHotkey(const HotkeyBinding& binding, const MediaHotkeyConfig& cfg);
 MediaAction resolveMediaHotkey(int code, const MediaHotkeyConfig& cfg);
 
+// ─── Scene hotkey resolution (global, scene dispatch) ────────────────────────
+// Resolved after profile match fails but before media so a profile binding
+// always wins. When two scenes share the same hotkey binding, the first scene
+// in the list wins. Returns the scene id, or "" when no scene matches.
+QString resolveSceneHotkey(const HotkeyBinding& binding, const QList<AudioScene>& scenes);
+QString resolveSceneHotkey(int code, const QList<AudioScene>& scenes);
+
 // Map a set of raw evdev modifier codes (KEY_LEFTCTRL, KEY_RIGHTCTRL,
 // KEY_LEFTSHIFT, KEY_RIGHTSHIFT) to the canonical Modifier set used by
 // profile matching. L/R variants collapse.
@@ -147,6 +154,9 @@ class InputHandler : public QThread
     void setMediaHotkeys(const MediaHotkeyConfig& cfg);
     MediaHotkeyConfig currentMediaHotkeys() const;
 
+    void setScenes(const QList<AudioScene>& scenes);
+    QList<AudioScene> currentScenes() const;
+
     QString devicePath() const
     {
         return m_devicePath;
@@ -175,6 +185,10 @@ class InputHandler : public QThread
     void media_previous();
     void media_stop();
 
+    // Scene apply — global, carries the matched scene id. App connects this to
+    // VolumeController::applyScene via Config lookup.
+    void scene_apply(const QString& sceneId);
+
   protected:
     void run() override;
 
@@ -185,8 +199,10 @@ class InputHandler : public QThread
     mutable QMutex m_profilesMutex;
     QList<Profile> m_profiles;        // guarded by m_profilesMutex
     MediaHotkeyConfig m_mediaHotkeys; // guarded by m_profilesMutex
+    QList<AudioScene> m_scenes;       // guarded by m_profilesMutex
 
     // Per-(binding, profileId) last-trigger timestamp (ms) for 100 ms debounce.
     // Media hotkeys reuse the same map with profileId == "__media__".
+    // Scene hotkeys reuse it with profileId == "__scene__:" + sceneId.
     QMap<QPair<HotkeyBinding, QString>, qint64> m_lastTriggerMs;
 };

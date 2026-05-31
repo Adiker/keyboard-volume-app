@@ -786,6 +786,117 @@ TEST(ConfigScenes, FindSceneByIdReturnsEmptyForUnknownId)
     EXPECT_TRUE(config.findSceneById(QString()).id.isEmpty());
 }
 
+TEST(ConfigScenes, RoundTripSceneHotkey)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AudioScene scene;
+    scene.id = "meeting";
+    scene.name = "Meeting";
+    scene.hotkey = HotkeyBinding::key(88); // KEY_F12-ish numeric code
+    scene.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt}};
+
+    {
+        Config config(tmp.path());
+        config.setScenes({scene});
+    }
+
+    Config config2(tmp.path());
+    const auto scenes = config2.scenes();
+    ASSERT_EQ(scenes.size(), 1);
+    EXPECT_EQ(scenes[0], scene);
+    EXPECT_TRUE(scenes[0].hotkey.isAssigned());
+    EXPECT_EQ(scenes[0].hotkey, HotkeyBinding::key(88));
+}
+
+TEST(ConfigScenes, RoundTripSceneRelativeHotkey)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AudioScene scene;
+    scene.id = "wheel";
+    scene.name = "Wheel";
+    scene.hotkey = HotkeyBinding::relative(REL_WHEEL, -1);
+    scene.targets = {SceneTarget{QStringLiteral("Discord"), 50, std::nullopt}};
+
+    {
+        Config config(tmp.path());
+        config.setScenes({scene});
+    }
+
+    Config config2(tmp.path());
+    const auto scenes = config2.scenes();
+    ASSERT_EQ(scenes.size(), 1);
+    EXPECT_EQ(scenes[0].hotkey, HotkeyBinding::relative(REL_WHEEL, -1));
+}
+
+TEST(ConfigScenes, LegacySceneWithoutHotkeyFieldIsUnassigned)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    // A scene JSON object with no "hotkey" key — like configs written before
+    // scene hotkeys existed. The loaded scene must have an unassigned hotkey.
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject root{
+        {QStringLiteral("scenes"),
+         QJsonArray{
+             QJsonObject{
+                 {QStringLiteral("id"), QStringLiteral("legacy")},
+                 {QStringLiteral("name"), QStringLiteral("Legacy")},
+                 {QStringLiteral("targets"),
+                  QJsonArray{
+                      QJsonObject{
+                          {QStringLiteral("match"), QStringLiteral("Spotify")},
+                          {QStringLiteral("volume"), 20},
+                      },
+                  }},
+             },
+         }},
+    };
+    f.write(QJsonDocument(root).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    const auto scenes = config.scenes();
+    ASSERT_EQ(scenes.size(), 1);
+    EXPECT_EQ(scenes[0].id.toStdString(), "legacy");
+    EXPECT_FALSE(scenes[0].hotkey.isAssigned());
+    ASSERT_EQ(scenes[0].targets.size(), 1);
+    EXPECT_EQ(scenes[0].targets[0].match.toStdString(), "Spotify");
+}
+
+TEST(ConfigScenes, SanitizationPreservesHotkeyAndUniqueIds)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AudioScene a;
+    a.id = "scene";
+    a.name = "A";
+    a.hotkey = HotkeyBinding::key(200);
+    a.targets = {SceneTarget{QStringLiteral("Spotify"), 30, std::nullopt}};
+
+    AudioScene b;
+    b.id = "scene";
+    b.name = "B";
+    b.hotkey = HotkeyBinding::key(201);
+    b.targets = {SceneTarget{QStringLiteral("Discord"), 60, std::nullopt}};
+
+    Config config(tmp.path());
+    config.setScenes({a, b});
+
+    const auto scenes = config.scenes();
+    ASSERT_EQ(scenes.size(), 2);
+    EXPECT_EQ(scenes[0].id.toStdString(), "scene");
+    EXPECT_EQ(scenes[1].id.toStdString(), "scene-2");
+    EXPECT_EQ(scenes[0].hotkey, HotkeyBinding::key(200));
+    EXPECT_EQ(scenes[1].hotkey, HotkeyBinding::key(201));
+}
+
 TEST(ConfigHotkeys, ShowHotkeyDefaultsToZero)
 {
     QTemporaryDir tmp;

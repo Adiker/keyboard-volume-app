@@ -17,6 +17,17 @@ AppListWidget::AppListWidget(QWidget* parent) : QWidget(parent)
     m_list->setAlternatingRowColors(true);
     layout->addWidget(m_list);
 
+    connect(m_list, &QListWidget::itemClicked, this,
+            [this](QListWidgetItem* item)
+            {
+                if (item) emit appActivated(item->data(Qt::UserRole).toString());
+            });
+    connect(m_list, &QListWidget::itemActivated, this,
+            [this](QListWidgetItem* item)
+            {
+                if (item) emit appActivated(item->data(Qt::UserRole).toString());
+            });
+
     m_refreshBtn = new QPushButton(::tr(QStringLiteral("app_selector.refresh")), this);
     connect(m_refreshBtn, &QPushButton::clicked, this, &AppListWidget::onRefresh);
     layout->addWidget(m_refreshBtn);

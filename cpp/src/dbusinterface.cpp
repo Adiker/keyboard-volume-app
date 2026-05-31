@@ -302,6 +302,7 @@ QVariantList DbusInterface::buildScenesProp() const
         QVariantMap m;
         m[QStringLiteral("id")] = scene.id;
         m[QStringLiteral("name")] = scene.name;
+        m[QStringLiteral("hotkey")] = hotkeyBindingVariant(scene.hotkey);
         m[QStringLiteral("targets")] = targets;
         out.append(m);
     }
@@ -389,13 +390,7 @@ void DbusInterface::ApplyScene(const QString& sceneId)
 {
     const AudioScene scene = m_config->findSceneById(sceneId);
     if (scene.id.isEmpty()) return;
-
-    for (const SceneTarget& target : scene.targets)
-    {
-        if (target.match.isEmpty()) continue;
-        if (target.volume) m_volumeCtrl->setVolume(target.match, *target.volume / 100.0);
-        if (target.muted) m_volumeCtrl->setMuted(target.match, *target.muted);
-    }
+    m_volumeCtrl->applyScene(scene);
 }
 
 void DbusInterface::ShowVolume()

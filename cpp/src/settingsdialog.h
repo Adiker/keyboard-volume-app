@@ -122,6 +122,11 @@ class SettingsDialog : public QDialog
     // Emitted when Preview button released: (timeoutMs)
     void previewReleased(int timeoutMs);
 
+    // Emitted when the user clicks "Apply" on a scene in the Scenes table.
+    // Carries the (working-copy) scene so it applies even before Save. TrayApp
+    // routes this to VolumeController::applyScene.
+    void applySceneRequested(const AudioScene& scene);
+
   private slots:
     void onPreviewPressed();
     void onPreviewReleased();
@@ -136,10 +141,19 @@ class SettingsDialog : public QDialog
     void onRemoveProfile();
     void onSetDefaultProfile();
 
+    // Scenes section
+    void onAddScene();
+    void onEditScene();
+    void onRemoveScene();
+    void onDuplicateScene();
+    void onApplyScene();
+
   private:
     void buildUi();
     void refreshProfilesTable();
     int selectedProfileRow() const;
+    void refreshScenesTable();
+    int selectedSceneRow() const;
 
     Config* m_config;
     InputHandler* m_inputHandler;
@@ -186,4 +200,13 @@ class SettingsDialog : public QDialog
     QPushButton* m_btnRemove = nullptr;
     QPushButton* m_btnSetDefault = nullptr;
     QList<Profile> m_profiles; // working copy until saveAndAccept()
+
+    // Scenes section
+    QTableWidget* m_scenesTable = nullptr;
+    QPushButton* m_btnSceneAdd = nullptr;
+    QPushButton* m_btnSceneEdit = nullptr;
+    QPushButton* m_btnSceneRemove = nullptr;
+    QPushButton* m_btnSceneDuplicate = nullptr;
+    QPushButton* m_btnSceneApply = nullptr;
+    QList<AudioScene> m_scenes; // working copy until saveAndAccept()
 };

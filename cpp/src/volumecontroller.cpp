@@ -1472,6 +1472,22 @@ void VolumeController::toggleDucking(const QString& keepApp, double duckVolume)
                               Q_ARG(QString, keepApp), Q_ARG(double, duckVolume));
 }
 
+void VolumeController::applyScene(const AudioScene& scene)
+{
+    if (m_closing || !m_worker) return;
+
+    // Scenes intentionally bypass per-profile volume limits: each target is an
+    // explicit mixer preset, so we use the full [0,1] range (default args of
+    // setVolume). Targets with neither volume nor mute are already dropped by
+    // Config sanitization, but we re-check defensively.
+    for (const SceneTarget& target : scene.targets)
+    {
+        if (target.match.trimmed().isEmpty()) continue;
+        if (target.volume) setVolume(target.match, std::clamp(*target.volume, 0, 100) / 100.0);
+        if (target.muted) setMuted(target.match, *target.muted);
+    }
+}
+
 void VolumeController::queryVolume(const QString& appName)
 {
     if (m_closing || !m_worker) return;

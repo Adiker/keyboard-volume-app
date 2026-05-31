@@ -365,6 +365,7 @@ QJsonObject Config::sceneToJson(const AudioScene& scene)
     return QJsonObject{
         {QStringLiteral("id"), scene.id},
         {QStringLiteral("name"), scene.name},
+        {QStringLiteral("hotkey"), bindingToJson(scene.hotkey)},
         {QStringLiteral("targets"), targets},
     };
 }
@@ -374,6 +375,8 @@ AudioScene Config::sceneFromJson(const QJsonObject& o)
     AudioScene scene;
     scene.id = o[QStringLiteral("id")].toString().trimmed();
     scene.name = o[QStringLiteral("name")].toString();
+    // Missing "hotkey" key in legacy configs → unassigned binding.
+    scene.hotkey = bindingFromJson(o[QStringLiteral("hotkey")], 0);
 
     const QJsonArray targets = o[QStringLiteral("targets")].toArray();
     for (const auto& v : targets)

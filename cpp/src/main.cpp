@@ -139,6 +139,15 @@ class App : public QObject
         connect(m_input, &InputHandler::media_previous, m_mpris, &MprisClient::previous);
         connect(m_input, &InputHandler::media_stop, m_mpris, &MprisClient::stop);
 
+        // Input → scene apply (global). Look up the scene by id and route the
+        // per-target loop through VolumeController::applyScene.
+        connect(m_input, &InputHandler::scene_apply, this,
+                [this](const QString& sceneId)
+                {
+                    const AudioScene scene = m_config->findSceneById(sceneId);
+                    if (!scene.id.isEmpty()) m_volumeCtrl->applyScene(scene);
+                });
+
         // Tray
         connect(m_tray, &TrayApp::deviceChangeRequested, this,
                 [this]() { onDeviceChangeRequested(false); });
@@ -224,6 +233,7 @@ class App : public QObject
     {
         m_input->setProfiles(m_config->profiles());
         m_input->setMediaHotkeys(m_config->mediaHotkeys());
+        m_input->setScenes(m_config->scenes());
         if (!m_config->inputDevice().isEmpty())
         {
             m_input->startDevice(m_config->inputDevice());
@@ -238,12 +248,15 @@ class App : public QObject
     {
         const QList<Profile> newProfiles = m_config->profiles();
         const MediaHotkeyConfig newMedia = m_config->mediaHotkeys();
+        const QList<AudioScene> newScenes = m_config->scenes();
         const bool profilesChanged = newProfiles != m_input->currentProfiles();
         const bool mediaChanged = newMedia != m_input->currentMediaHotkeys();
-        if (!profilesChanged && !mediaChanged) return;
+        const bool scenesChanged = newScenes != m_input->currentScenes();
+        if (!profilesChanged && !mediaChanged && !scenesChanged) return;
         m_input->stop();
         if (profilesChanged) m_input->setProfiles(newProfiles);
         if (mediaChanged) m_input->setMediaHotkeys(newMedia);
+        if (scenesChanged) m_input->setScenes(newScenes);
         if (!m_config->inputDevice().isEmpty()) m_input->startDevice(m_config->inputDevice());
     }
 

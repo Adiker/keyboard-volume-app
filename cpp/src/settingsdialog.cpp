@@ -3,6 +3,7 @@
 #include "i18n.h"
 #include "inputhandler.h"
 #include "profileeditdialog.h"
+#include "sceneeditdialog.h"
 #include "screenutils.h"
 
 #include <QApplication>
@@ -364,6 +365,7 @@ void SettingsDialog::buildUi()
 
     OsdConfig osd = m_config->osd();
     m_profiles = m_config->profiles();
+    m_scenes = m_config->scenes();
 
     // Language
     m_lang = new QComboBox(this);
@@ -631,6 +633,60 @@ void SettingsDialog::buildUi()
 
     refreshProfilesTable();
 
+    // ── Scenes section ───────────────────────────────────────────────────
+    QLabel* scenesHeader = new QLabel(::tr(QStringLiteral("settings.scenes.section")), this);
+    scenesHeader->setStyleSheet(QStringLiteral("font-weight: bold; margin-top: 8px;"));
+    layout->addWidget(scenesHeader);
+
+    m_scenesTable = new QTableWidget(this);
+    m_scenesTable->setColumnCount(3);
+    m_scenesTable->setHorizontalHeaderLabels(QStringList{
+        ::tr(QStringLiteral("settings.scenes.col_name")),
+        ::tr(QStringLiteral("settings.scenes.col_targets")),
+        ::tr(QStringLiteral("settings.scenes.col_hotkey")),
+    });
+    m_scenesTable->verticalHeader()->setVisible(false);
+    m_scenesTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_scenesTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_scenesTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_scenesTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_scenesTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    m_scenesTable->setMinimumHeight(100);
+    layout->addWidget(m_scenesTable);
+
+    auto* sceneBtns = new QHBoxLayout;
+    m_btnSceneAdd = new QPushButton(::tr(QStringLiteral("settings.scenes.add")), this);
+    m_btnSceneEdit = new QPushButton(::tr(QStringLiteral("settings.scenes.edit")), this);
+    m_btnSceneRemove = new QPushButton(::tr(QStringLiteral("settings.scenes.remove")), this);
+    m_btnSceneDuplicate = new QPushButton(::tr(QStringLiteral("settings.scenes.duplicate")), this);
+    m_btnSceneApply = new QPushButton(::tr(QStringLiteral("settings.scenes.apply")), this);
+    sceneBtns->addWidget(m_btnSceneAdd);
+    sceneBtns->addWidget(m_btnSceneEdit);
+    sceneBtns->addWidget(m_btnSceneRemove);
+    sceneBtns->addWidget(m_btnSceneDuplicate);
+    sceneBtns->addWidget(m_btnSceneApply);
+    sceneBtns->addStretch();
+    layout->addLayout(sceneBtns);
+
+    connect(m_btnSceneAdd, &QPushButton::clicked, this, &SettingsDialog::onAddScene);
+    connect(m_btnSceneEdit, &QPushButton::clicked, this, &SettingsDialog::onEditScene);
+    connect(m_btnSceneRemove, &QPushButton::clicked, this, &SettingsDialog::onRemoveScene);
+    connect(m_btnSceneDuplicate, &QPushButton::clicked, this, &SettingsDialog::onDuplicateScene);
+    connect(m_btnSceneApply, &QPushButton::clicked, this, &SettingsDialog::onApplyScene);
+    connect(m_scenesTable, &QTableWidget::doubleClicked, this,
+            [this](const QModelIndex&) { onEditScene(); });
+    connect(m_scenesTable->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this](const QItemSelection&, const QItemSelection&)
+            {
+                const bool hasSel = selectedSceneRow() >= 0;
+                m_btnSceneEdit->setEnabled(hasSel);
+                m_btnSceneRemove->setEnabled(hasSel);
+                m_btnSceneDuplicate->setEnabled(hasSel);
+                m_btnSceneApply->setEnabled(hasSel);
+            });
+
+    refreshScenesTable();
+
     // Preview button
     QPushButton* previewBtn = new QPushButton(::tr(QStringLiteral("settings.preview_btn")), this);
     connect(previewBtn, &QPushButton::pressed, this, &SettingsDialog::onPreviewPressed);
@@ -739,6 +795,7 @@ void SettingsDialog::saveAndAccept()
     m_config->setMediaHotkeys(media);
 
     if (!m_profiles.isEmpty()) m_config->setProfiles(m_profiles);
+    m_config->setScenes(m_scenes);
     accept();
 }
 
@@ -850,4 +907,148 @@ void SettingsDialog::onSetDefaultProfile()
     m_profiles.move(row, 0);
     refreshProfilesTable();
     m_profilesTable->selectRow(0);
+}
+
+// ─── Scenes section ─────────────────────────────────────────────────────────
+namespace
+{
+// Build a stable slug from a scene name, falling back to "scene". Only
+// [a-z0-9-] are kept; runs of other characters collapse to a single '-'.
+// Config::setScenes() guarantees final uniqueness, so we only need a sensible
+// base here.
+QString sceneSlug(const QString& name)
+{
+    QString slug;
+    bool lastDash = false;
+    for (const QChar c : name.toLower())
+    {
+        if (c.isLetterOrNumber())
+        {
+            slug.append(c);
+            lastDash = false;
+        }
+        else if (!lastDash && !slug.isEmpty())
+        {
+            slug.append(QLatin1Char('-'));
+            lastDash = true;
+        }
+    }
+    while (slug.endsWith(QLatin1Char('-'))) slug.chop(1);
+    return slug.isEmpty() ? QStringLiteral("scene") : slug;
+}
+} // namespace
+
+int SettingsDialog::selectedSceneRow() const
+{
+    auto sel = m_scenesTable->selectionModel()->selectedRows();
+    if (sel.isEmpty()) return -1;
+    return sel.first().row();
+}
+
+void SettingsDialog::refreshScenesTable()
+{
+    m_scenesTable->setRowCount(static_cast<int>(m_scenes.size()));
+    for (int row = 0; row < m_scenes.size(); ++row)
+    {
+        const AudioScene& s = m_scenes[row];
+
+        QString targetsDisplay;
+        QStringList names;
+        for (const SceneTarget& t : s.targets)
+            if (!t.match.isEmpty()) names << t.match;
+        if (names.isEmpty())
+            targetsDisplay = ::tr(QStringLiteral("settings.scenes.no_targets"));
+        else if (names.size() <= 2)
+            targetsDisplay = names.join(QStringLiteral(", "));
+        else
+            targetsDisplay =
+                QStringLiteral("%1, %2 +%3").arg(names[0], names[1]).arg(names.size() - 2);
+
+        auto setCell = [&](int col, const QString& text)
+        {
+            auto* item = new QTableWidgetItem(text);
+            item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+            m_scenesTable->setItem(row, col, item);
+        };
+        setCell(0, s.name.isEmpty() ? s.id : s.name);
+        setCell(1, targetsDisplay);
+        setCell(2, HotkeyCapture::keyDisplayName(s.hotkey));
+    }
+
+    const bool hasSel = selectedSceneRow() >= 0;
+    m_btnSceneEdit->setEnabled(hasSel);
+    m_btnSceneRemove->setEnabled(hasSel);
+    m_btnSceneDuplicate->setEnabled(hasSel);
+    m_btnSceneApply->setEnabled(hasSel);
+}
+
+void SettingsDialog::onAddScene()
+{
+    AudioScene blank;
+    blank.name = QStringLiteral("Scene ") + QString::number(m_scenes.size() + 1);
+
+    const QPoint anchor = QCursor::pos();
+    SceneEditDialog dlg(blank, m_config, m_inputHandler, this);
+    centerDialogOnScreenAt(&dlg, anchor);
+    if (dlg.exec() == QDialog::Accepted)
+    {
+        AudioScene scene = dlg.result();
+        scene.id = sceneSlug(scene.name);
+        m_scenes.append(scene);
+        refreshScenesTable();
+        m_scenesTable->selectRow(static_cast<int>(m_scenes.size()) - 1);
+    }
+}
+
+void SettingsDialog::onEditScene()
+{
+    int row = selectedSceneRow();
+    if (row < 0 || row >= m_scenes.size()) return;
+
+    const QPoint anchor = QCursor::pos();
+    SceneEditDialog dlg(m_scenes[row], m_config, m_inputHandler, this);
+    centerDialogOnScreenAt(&dlg, anchor);
+    if (dlg.exec() == QDialog::Accepted)
+    {
+        AudioScene scene = dlg.result();
+        // Preserve the original id on edit (SceneEditDialog already does this,
+        // but a freshly-named scene with an empty id gets a slug).
+        if (scene.id.isEmpty()) scene.id = sceneSlug(scene.name);
+        m_scenes[row] = scene;
+        refreshScenesTable();
+        m_scenesTable->selectRow(row);
+    }
+}
+
+void SettingsDialog::onRemoveScene()
+{
+    int row = selectedSceneRow();
+    if (row < 0 || row >= m_scenes.size()) return;
+    m_scenes.removeAt(row);
+    refreshScenesTable();
+    if (!m_scenes.isEmpty())
+        m_scenesTable->selectRow(qMin(row, static_cast<int>(m_scenes.size()) - 1));
+}
+
+void SettingsDialog::onDuplicateScene()
+{
+    int row = selectedSceneRow();
+    if (row < 0 || row >= m_scenes.size()) return;
+
+    AudioScene copy = m_scenes[row];
+    copy.name = copy.name + ::tr(QStringLiteral("settings.scenes.copy_suffix"));
+    copy.id = sceneSlug(copy.name);
+    // Duplicate must not inherit the original's hotkey — two scenes sharing a
+    // binding would shadow each other (first wins). Leave the copy unbound.
+    copy.hotkey = {};
+    m_scenes.insert(row + 1, copy);
+    refreshScenesTable();
+    m_scenesTable->selectRow(row + 1);
+}
+
+void SettingsDialog::onApplyScene()
+{
+    int row = selectedSceneRow();
+    if (row < 0 || row >= m_scenes.size()) return;
+    emit applySceneRequested(m_scenes[row]);
 }

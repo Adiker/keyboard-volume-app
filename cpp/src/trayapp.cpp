@@ -128,13 +128,7 @@ void TrayApp::onApplyScene(const QString& sceneId)
 {
     const AudioScene scene = m_config->findSceneById(sceneId);
     if (scene.id.isEmpty()) return;
-
-    for (const SceneTarget& target : scene.targets)
-    {
-        if (target.match.isEmpty()) continue;
-        if (target.volume) m_volumeCtrl->setVolume(target.match, *target.volume / 100.0);
-        if (target.muted) m_volumeCtrl->setMuted(target.match, *target.muted);
-    }
+    m_volumeCtrl->applyScene(scene);
 }
 
 void TrayApp::onRefresh()
@@ -161,6 +155,8 @@ void TrayApp::openSettings()
     connect(&dlg, &SettingsDialog::scalePreview, this, &TrayApp::osdScalePreviewRequested);
     connect(&dlg, &SettingsDialog::previewHeldRequested, this, &TrayApp::osdPreviewHeldRequested);
     connect(&dlg, &SettingsDialog::previewReleased, this, &TrayApp::osdPreviewReleased);
+    connect(&dlg, &SettingsDialog::applySceneRequested, this,
+            [this](const AudioScene& scene) { m_volumeCtrl->applyScene(scene); });
     connect(&dlg, &QDialog::finished, this, [this](int) { emit osdPreviewFinished(); });
     centerDialogOnScreenAt(&dlg, anchor);
     dlg.exec();
