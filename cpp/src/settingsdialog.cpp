@@ -1,10 +1,12 @@
 #include "settingsdialog.h"
+#include "appmatcher.h"
 #include "config.h"
 #include "i18n.h"
 #include "inputhandler.h"
 #include "profileeditdialog.h"
 #include "sceneeditdialog.h"
 #include "screenutils.h"
+#include "volumecontroller.h"
 
 #include <QApplication>
 #include <QVBoxLayout>
@@ -347,8 +349,9 @@ void HotkeyCapture::capture()
 }
 
 // ─── SettingsDialog ───────────────────────────────────────────────────────────
-SettingsDialog::SettingsDialog(Config* config, InputHandler* inputHandler, QWidget* parent)
-    : QDialog(parent), m_config(config), m_inputHandler(inputHandler)
+SettingsDialog::SettingsDialog(Config* config, InputHandler* inputHandler,
+                               VolumeController* volumeCtrl, QWidget* parent)
+    : QDialog(parent), m_config(config), m_inputHandler(inputHandler), m_volumeCtrl(volumeCtrl)
 {
     setWindowTitle(::tr(QStringLiteral("settings.title")));
     setMinimumWidth(360);
@@ -592,7 +595,7 @@ void SettingsDialog::buildUi()
     layout->addWidget(profilesHeader);
 
     m_profilesTable = new QTableWidget(this);
-    m_profilesTable->setColumnCount(7);
+    m_profilesTable->setColumnCount(8);
     m_profilesTable->setHorizontalHeaderLabels(QStringList{
         ::tr(QStringLiteral("settings.profiles.col_name")),
         ::tr(QStringLiteral("settings.profiles.col_app")),
@@ -601,6 +604,7 @@ void SettingsDialog::buildUi()
         ::tr(QStringLiteral("settings.profiles.col_volume_down")),
         ::tr(QStringLiteral("settings.profiles.col_mute")),
         ::tr(QStringLiteral("settings.profiles.col_ducking")),
+        ::tr(QStringLiteral("settings.profiles.col_sink")),
     });
     m_profilesTable->verticalHeader()->setVisible(false);
     m_profilesTable->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -794,7 +798,95 @@ void SettingsDialog::saveAndAccept()
     media.stop = m_mediaStop->binding();
     m_config->setMediaHotkeys(media);
 
+    // Capture pre-save sinks so we can clear PA stream-restore for any profile
+    // whose sink was explicitly switched back to "(system default)". Without
+    // this, the previous device pref keeps re-routing the app on next launch
+    // even though the UI shows "system default".
+    QList<Profile> previousProfiles;
+    if (m_volumeCtrl) previousProfiles = m_config->profiles();
+
     if (!m_profiles.isEmpty()) m_config->setProfiles(m_profiles);
+
+    if (m_volumeCtrl && !previousProfiles.isEmpty())
+    {
+        const auto profileListsApp = [](const QStringList& apps, const QString& app)
+        {
+            if (app.isEmpty()) return false;
+            const QString lower = app.toLower();
+            for (const QString& candidate : apps)
+            {
+                if (appIdMatches(candidate, lower)) return true;
+            }
+            return false;
+        };
+
+        const auto appStillRouted = [&](const QString& app)
+        {
+            for (const Profile& p : m_profiles)
+            {
+                if (p.sink.isEmpty()) continue;
+                if (profileListsApp(p.apps, app)) return true;
+            }
+            return false;
+        };
+
+        for (const Profile& neu : m_profiles)
+        {
+            const Profile* oldPtr = nullptr;
+            for (const Profile& old : previousProfiles)
+            {
+                if (old.id == neu.id)
+                {
+                    oldPtr = &old;
+                    break;
+                }
+            }
+            if (!oldPtr) continue;
+            const Profile& old = *oldPtr;
+
+            if (old.sink.isEmpty() && neu.sink.isEmpty()) continue;
+
+            QStringList toClear;
+            if (neu.sink.isEmpty() && !old.sink.isEmpty())
+            {
+                toClear = old.apps;
+            }
+            else
+            {
+                for (const QString& app : old.apps)
+                {
+                    if (!app.isEmpty() && !profileListsApp(neu.apps, app)) toClear.append(app);
+                }
+            }
+
+            for (const QString& app : toClear)
+            {
+                if (app.isEmpty() || appStillRouted(app)) continue;
+                m_volumeCtrl->clearAppSinkOverride(app);
+            }
+        }
+
+        for (const Profile& old : previousProfiles)
+        {
+            if (old.sink.isEmpty()) continue;
+            bool stillPresent = false;
+            for (const Profile& neu : m_profiles)
+            {
+                if (neu.id == old.id)
+                {
+                    stillPresent = true;
+                    break;
+                }
+            }
+            if (stillPresent) continue;
+            for (const QString& app : old.apps)
+            {
+                if (app.isEmpty() || appStillRouted(app)) continue;
+                m_volumeCtrl->clearAppSinkOverride(app);
+            }
+        }
+    }
+
     m_config->setScenes(m_scenes);
     accept();
 }
@@ -840,6 +932,34 @@ void SettingsDialog::refreshProfilesTable()
                                            .arg(p.ducking.volume)
                                            .arg(HotkeyCapture::keyDisplayName(p.ducking.hotkey))
                                      : ::tr(QStringLiteral("settings.profiles.modifier_none")));
+
+        QString sinkDisplay;
+        if (p.sink.isEmpty())
+        {
+            sinkDisplay = ::tr(QStringLiteral("settings.profiles.sink_default"));
+        }
+        else if (m_volumeCtrl)
+        {
+            // Match by stable PA name; fall back to "(missing) raw" when the sink
+            // currently isn't enumerated (USB unplugged, profile carried over).
+            QString matchedDesc;
+            for (const SinkInfo& s : m_volumeCtrl->listSinks())
+            {
+                if (s.name == p.sink)
+                {
+                    matchedDesc = s.description;
+                    break;
+                }
+            }
+            sinkDisplay = matchedDesc.isEmpty()
+                              ? ::tr(QStringLiteral("settings.profiles.sink_missing")).arg(p.sink)
+                              : matchedDesc;
+        }
+        else
+        {
+            sinkDisplay = p.sink;
+        }
+        setCell(7, sinkDisplay);
     }
 
     m_btnRemove->setEnabled(m_profiles.size() > 1);
@@ -862,7 +982,7 @@ void SettingsDialog::onAddProfile()
     blank.hotkeys.mute = HotkeyBinding::key(113);
 
     const QPoint anchor = QCursor::pos();
-    ProfileEditDialog dlg(blank, m_config, m_inputHandler, this);
+    ProfileEditDialog dlg(blank, m_config, m_inputHandler, m_volumeCtrl, this);
     centerDialogOnScreenAt(&dlg, anchor);
     if (dlg.exec() == QDialog::Accepted)
     {
@@ -878,7 +998,7 @@ void SettingsDialog::onEditProfile()
     if (row < 0 || row >= m_profiles.size()) return;
 
     const QPoint anchor = QCursor::pos();
-    ProfileEditDialog dlg(m_profiles[row], m_config, m_inputHandler, this);
+    ProfileEditDialog dlg(m_profiles[row], m_config, m_inputHandler, m_volumeCtrl, this);
     centerDialogOnScreenAt(&dlg, anchor);
     if (dlg.exec() == QDialog::Accepted)
     {

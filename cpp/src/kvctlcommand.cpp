@@ -42,6 +42,8 @@ KvCtlCommand::Field parseField(const QString& name)
     if (name == QStringLiteral("progress-enabled")) return KvCtlCommand::Field::ProgressEnabled;
     if (name == QStringLiteral("auto-profile-switch"))
         return KvCtlCommand::Field::AutoProfileSwitch;
+    if (name == QStringLiteral("sinks")) return KvCtlCommand::Field::Sinks;
+    if (name == QStringLiteral("sink")) return KvCtlCommand::Field::Sink;
     return KvCtlCommand::Field::None;
 }
 
@@ -155,12 +157,32 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
         cmd.field = parseField(positionalArgs[1]);
         if (cmd.field == KvCtlCommand::Field::None)
             return fail(QStringLiteral("unknown get field '%1'").arg(positionalArgs[1]));
+        if (cmd.field == KvCtlCommand::Field::Sink)
+            return fail(QStringLiteral("did you mean 'kv-ctl get sinks'?"));
 
         return {true, cmd, QString()};
     }
 
     if (action == QStringLiteral("set"))
     {
+        // `set sink APP DEVICE` is a 4-arg form (FIELD, APP, DEVICE).
+        if (positionalArgs.size() >= 2 && positionalArgs[1] == QStringLiteral("sink"))
+        {
+            if (profileSet) return fail(QStringLiteral("set sink does not accept --profile (v1)"));
+            if (positionalArgs.size() != 4)
+                return fail(QStringLiteral("usage: kv-ctl set sink APP DEVICE"));
+
+            cmd.action = KvCtlCommand::Action::Set;
+            cmd.field = KvCtlCommand::Field::Sink;
+            cmd.target = positionalArgs[2].trimmed();
+            cmd.value = positionalArgs[3].trimmed();
+            if (cmd.target.isEmpty())
+                return fail(QStringLiteral("set sink: APP must not be empty"));
+            if (cmd.value.isEmpty())
+                return fail(QStringLiteral("set sink: DEVICE must not be empty"));
+            return {true, cmd, QString()};
+        }
+
         if (positionalArgs.size() != 3)
             return fail(QStringLiteral("usage: kv-ctl set volume|muted|active-app|step VALUE"));
 
@@ -204,11 +226,13 @@ QString kvCtlUsageText()
         "  kv-ctl media play-pause|next|previous|stop\n"
         "  kv-ctl refresh\n"
         "  kv-ctl get "
-        "volume|muted|active-app|apps|step|profiles|scenes|progress-enabled|auto-profile-switch\n"
+        "volume|muted|active-app|apps|step|profiles|scenes|sinks|progress-enabled|"
+        "auto-profile-switch\n"
         "  kv-ctl set volume VALUE [--profile ID]\n"
         "  kv-ctl set muted true|false\n"
         "  kv-ctl set active-app NAME\n"
         "  kv-ctl set step VALUE\n"
         "  kv-ctl set progress-enabled true|false\n"
-        "  kv-ctl set auto-profile-switch true|false\n");
+        "  kv-ctl set auto-profile-switch true|false\n"
+        "  kv-ctl set sink APP DEVICE\n");
 }

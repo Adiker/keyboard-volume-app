@@ -34,7 +34,9 @@ struct KvCtlCommand
         Profiles,
         Scenes,
         ProgressEnabled,
-        AutoProfileSwitch
+        AutoProfileSwitch,
+        Sinks,
+        Sink
     };
 
     Action action = Action::Refresh;
@@ -42,6 +44,8 @@ struct KvCtlCommand
     QString profile;
     QString scene;
     QString value;
+    // `set sink APP DEVICE` carries the audio app name in target, the sink in value.
+    QString target;
 };
 
 struct KvCtlParseResult

@@ -320,3 +320,57 @@ TEST(KvCtlCommand, RejectsInvalidMediaSubcommand)
                                    QStringLiteral("spotify"), true)
                      .ok);
 }
+
+// ─── Sink routing ───────────────────────────────────────────────────────────
+TEST(KvCtlCommand, ParsesGetSinks)
+{
+    auto result = parseKvCtlCommand({QStringLiteral("get"), QStringLiteral("sinks")}, {}, false);
+    ASSERT_TRUE(result.ok) << result.error.toStdString();
+    EXPECT_EQ(result.command.action, KvCtlCommand::Action::Get);
+    EXPECT_EQ(result.command.field, KvCtlCommand::Field::Sinks);
+}
+
+TEST(KvCtlCommand, RejectsGetSinkSingular)
+{
+    // 'get sink' is ambiguous — user almost certainly wants 'get sinks'.
+    auto result = parseKvCtlCommand({QStringLiteral("get"), QStringLiteral("sink")}, {}, false);
+    EXPECT_FALSE(result.ok);
+}
+
+TEST(KvCtlCommand, ParsesSetSinkAppDevice)
+{
+    auto result =
+        parseKvCtlCommand({QStringLiteral("set"), QStringLiteral("sink"), QStringLiteral("discord"),
+                           QStringLiteral("alsa_output.usb-headset")},
+                          {}, false);
+    ASSERT_TRUE(result.ok) << result.error.toStdString();
+    EXPECT_EQ(result.command.action, KvCtlCommand::Action::Set);
+    EXPECT_EQ(result.command.field, KvCtlCommand::Field::Sink);
+    EXPECT_EQ(result.command.target.toStdString(), "discord");
+    EXPECT_EQ(result.command.value.toStdString(), "alsa_output.usb-headset");
+}
+
+TEST(KvCtlCommand, RejectsSetSinkWithMissingArgs)
+{
+    // Missing DEVICE.
+    EXPECT_FALSE(
+        parseKvCtlCommand(
+            {QStringLiteral("set"), QStringLiteral("sink"), QStringLiteral("discord")}, {}, false)
+            .ok);
+    // Empty APP.
+    EXPECT_FALSE(parseKvCtlCommand({QStringLiteral("set"), QStringLiteral("sink"),
+                                    QStringLiteral("   "), QStringLiteral("alsa_output.foo")},
+                                   {}, false)
+                     .ok);
+    // Empty DEVICE.
+    EXPECT_FALSE(parseKvCtlCommand({QStringLiteral("set"), QStringLiteral("sink"),
+                                    QStringLiteral("discord"), QStringLiteral("   ")},
+                                   {}, false)
+                     .ok);
+    // --profile not yet supported for set sink in v1.
+    EXPECT_FALSE(
+        parseKvCtlCommand({QStringLiteral("set"), QStringLiteral("sink"), QStringLiteral("discord"),
+                           QStringLiteral("alsa_output.usb-headset")},
+                          QStringLiteral("default"), true)
+            .ok);
+}

@@ -24,7 +24,8 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Show volume hotkey** — each profile can bind an optional `show` hotkey that displays the OSD with the current volume of that profile's app without changing it; also available via `kv-ctl show [--profile id]` and D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
 - **Focus audio / ducking** — each profile can bind a manual ducking hotkey that lowers every other known audio app to a configured percentage, then restores the previous levels on the next press
 - **Auto-switch by window focus** — when enabled, the active (focused) window determines which profile's audio app receives volume keys; switch from Spotify to Firefox and volume keys follow automatically
-- **Audio scenes / mixer presets** — create, edit, duplicate, and apply named presets from Settings that set volume and/or mute for several apps at once; each scene can take an optional global hotkey, and you can still apply them from scripts with `kv-ctl scene ID`
+- **Output sink routing** — per-profile and per-scene PulseAudio output device (sink) selection; route Discord to a headset and Firefox to speakers, apply sink-only scene presets from the tray or `kv-ctl`, and ad-hoc routing with `kv-ctl set sink APP DEVICE`
+- **Audio scenes / mixer presets** — create, edit, duplicate, and apply named presets from Settings that set volume, mute, and/or output sink for several apps at once; each scene can take an optional global hotkey, and you can still apply them from scripts with `kv-ctl scene ID`
 - **Global key capture** — reads directly from evdev input devices (keyboards and mice), works regardless of which window is focused
 - **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising configured hotkey bindings (keys or scroll) from any profile, so the desktop never intercepts them
 - **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio hotkeys (keys or mouse wheel) are reassignable via Settings → Profiles; right-click any hotkey field for an **Unassign** menu option to clear it; defaults are the dedicated media keys
@@ -37,7 +38,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Persistent config** — all settings saved atomically to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
 - **PL / EN interface** — switch language in Settings
 - **First-run wizard** — on first launch, a QWizard guides through language, input device, and default audio app selection; the app is production-ready out of the box after a few clicks
-- **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles**, **scenes**, and runtime `ProgressEnabled`; bare `VolumeUp/Down/ToggleMute/ToggleDucking/RefreshApps` methods, per-profile methods, plus `ApplyScene(id)`
+- **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles**, **scenes**, enumerated **Sinks**, runtime `ProgressEnabled`, and `SetAppSink(app, sink)`; bare `VolumeUp/Down/ToggleMute/ToggleDucking/RefreshApps` methods, per-profile methods, plus `ApplyScene(id)`
 - **`kv-ctl` CLI** — script-friendly command-line client for D-Bus control without calling the external `qdbus` program
 - **MPRIS v2** — optionally registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client; disabled by default to avoid conflicts with apps like Discord Music Presence; enable via Settings → Playback progress → "Expose fake MPRIS player endpoint"
 - **MPRIS playback tracking** — consumes other players' MPRIS metadata, position, seek support and player priority for the optional OSD playback progress features
@@ -167,7 +168,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
    - **Playback progress** — enable the MPRIS progress row, allow/disable interactive seeking, choose poll interval, choose app/track/both label mode, edit the comma-separated tracked-player priority list, and optionally expose a fake MPRIS v2 endpoint for desktop widgets (disabled by default)
-   - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app, and optional Focus audio ducking hotkey; right-click any hotkey field to **Unassign** it; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls); hotkeys are shown as `"Volume Up (115)"` — human-readable name first, evdev code in parentheses
+   - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app(s), optional **output sink** (PulseAudio device name; empty = system default), and optional Focus audio ducking hotkey; right-click any hotkey field to **Unassign** it; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls); hotkeys are shown as `"Volume Up (115)"` — human-readable name first, evdev code in parentheses
    - **Media hotkeys** — global play-pause / next / previous / stop bindings that dispatch to the active MPRIS player chosen by the built-in MPRIS consumer (priority order from *Tracked players*). Independent of profiles — when an active profile claims the same key the profile binding wins, otherwise the media binding fires. Defaults are unassigned so the app does not silently capture your existing media keys.
 
 7. **CLI / D-Bus remote control** — use `kv-ctl` to drive the running tray app from scripts, custom keybinds, or external tools without calling the external `qdbus` program:
@@ -197,6 +198,10 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    # List configured audio scenes and apply one
    kv-ctl get scenes
    kv-ctl scene meeting
+
+   # List PulseAudio sinks and route an app ad-hoc (stable PA sink name, not description)
+   kv-ctl get sinks
+   kv-ctl set sink chromium alsa_output.usb-headset
 
    # Switch to Firefox
    kv-ctl set active-app Firefox

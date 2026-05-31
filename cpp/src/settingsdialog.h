@@ -107,7 +107,9 @@ class SettingsDialog : public QDialog
 {
     Q_OBJECT
   public:
-    explicit SettingsDialog(Config* config, InputHandler* inputHandler, QWidget* parent = nullptr);
+    explicit SettingsDialog(Config* config, InputHandler* inputHandler,
+                            class VolumeController* volumeCtrl = nullptr,
+                            QWidget* parent = nullptr);
 
   signals:
     // Emitted live while user adjusts screen/x/y: (screenIdx, x, y)
@@ -157,6 +159,7 @@ class SettingsDialog : public QDialog
 
     Config* m_config;
     InputHandler* m_inputHandler;
+    class VolumeController* m_volumeCtrl;
 
     QComboBox* m_lang = nullptr;
     QComboBox* m_screen = nullptr;

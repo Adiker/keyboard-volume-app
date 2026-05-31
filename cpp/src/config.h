@@ -123,9 +123,10 @@ struct DuckingConfig
 
 struct SceneTarget
 {
-    QString match;             // Audio app name or binary name
-    std::optional<int> volume; // Percent, 0-100; nullopt = leave unchanged
-    std::optional<bool> muted; // nullopt = leave unchanged
+    QString match;               // Audio app name or binary name
+    std::optional<int> volume;   // Percent, 0-100; nullopt = leave unchanged
+    std::optional<bool> muted;   // nullopt = leave unchanged
+    std::optional<QString> sink; // PulseAudio sink name; nullopt = leave routing unchanged
 };
 
 struct AudioScene
@@ -189,6 +190,9 @@ struct Profile
     // mixer presets). Defaults preserve the full 0–100 range.
     int volMin = 0;
     int volMax = 100;
+    // PulseAudio sink (output device) name to route this profile's apps to on
+    // activation. Empty string means "leave routing unchanged" (system default).
+    QString sink;
 
     QString primaryApp() const
     {
@@ -229,7 +233,7 @@ inline bool operator!=(const DuckingConfig& a, const DuckingConfig& b)
 
 inline bool operator==(const SceneTarget& a, const SceneTarget& b)
 {
-    return a.match == b.match && a.volume == b.volume && a.muted == b.muted;
+    return a.match == b.match && a.volume == b.volume && a.muted == b.muted && a.sink == b.sink;
 }
 inline bool operator!=(const SceneTarget& a, const SceneTarget& b)
 {
@@ -249,7 +253,7 @@ inline bool operator==(const Profile& a, const Profile& b)
 {
     return a.id == b.id && a.name == b.name && a.apps == b.apps && a.hotkeys == b.hotkeys &&
            a.modifiers == b.modifiers && a.ducking == b.ducking && a.autoSwitch == b.autoSwitch &&
-           a.volMin == b.volMin && a.volMax == b.volMax;
+           a.volMin == b.volMin && a.volMax == b.volMax && a.sink == b.sink;
 }
 inline bool operator!=(const Profile& a, const Profile& b)
 {

@@ -7,8 +7,10 @@ class QLineEdit;
 class QCheckBox;
 class QSlider;
 class QSpinBox;
+class QComboBox;
 class HotkeyCapture;
 class InputHandler;
+class VolumeController;
 
 // Sub-dialog for editing a single audio profile.
 // Used by SettingsDialog when adding or editing a profile entry.
@@ -17,7 +19,7 @@ class ProfileEditDialog : public QDialog
     Q_OBJECT
   public:
     ProfileEditDialog(const Profile& initial, Config* config, InputHandler* inputHandler,
-                      QWidget* parent = nullptr);
+                      VolumeController* volumeCtrl = nullptr, QWidget* parent = nullptr);
 
     // Profile assembled from the dialog widgets after acceptance.
     // Preserves the original id (or assigns a new one when initial.id was empty).
@@ -27,9 +29,11 @@ class ProfileEditDialog : public QDialog
     Profile m_initial;
     Config* m_config;
     InputHandler* m_inputHandler;
+    VolumeController* m_volumeCtrl;
 
     QLineEdit* m_name = nullptr;
     QListWidget* m_appsListWidget = nullptr;
+    QComboBox* m_sink = nullptr;
     QCheckBox* m_modCtrl = nullptr;
     QCheckBox* m_modShift = nullptr;
     QCheckBox* m_duckingEnabled = nullptr;

@@ -149,7 +149,7 @@ void TrayApp::onAppSelected(const QString& name)
 void TrayApp::openSettings()
 {
     const QPoint anchor = QCursor::pos();
-    SettingsDialog dlg(m_config, m_inputHandler);
+    SettingsDialog dlg(m_config, m_inputHandler, m_volumeCtrl);
     connect(&dlg, &SettingsDialog::positionPreview, this, &TrayApp::osdPreviewRequested);
     connect(&dlg, &SettingsDialog::stylePreview, this, &TrayApp::osdStylePreviewRequested);
     connect(&dlg, &SettingsDialog::scalePreview, this, &TrayApp::osdScalePreviewRequested);

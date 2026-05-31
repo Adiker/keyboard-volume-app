@@ -64,6 +64,10 @@ QString propertyName(KvCtlCommand::Field field)
         return QStringLiteral("ProgressEnabled");
     case KvCtlCommand::Field::AutoProfileSwitch:
         return QStringLiteral("AutoProfileSwitch");
+    case KvCtlCommand::Field::Sinks:
+        return QStringLiteral("Sinks");
+    case KvCtlCommand::Field::Sink:
+        return QStringLiteral("Sink"); // not a real property — dispatched as method
     case KvCtlCommand::Field::None:
         return QString();
     }
@@ -155,9 +159,22 @@ QString mapToText(const QVariantMap& map)
                               .arg(target.value(QStringLiteral("muted")).toBool()
                                        ? QStringLiteral("true")
                                        : QStringLiteral("false"));
+            if (target.contains(QStringLiteral("sink")))
+                fields << QStringLiteral("sink=%1").arg(
+                    target.value(QStringLiteral("sink")).toString());
             renderedTargets << fields.join(QLatin1Char(','));
         }
         return QStringLiteral("%1\t%2\t%3").arg(id, name, renderedTargets.join(QLatin1Char(';')));
+    }
+
+    // Sink map: {name, description, is_default}
+    if (map.contains(QStringLiteral("description")) && map.contains(QStringLiteral("is_default")))
+    {
+        const QString sinkName = map.value(QStringLiteral("name")).toString();
+        const QString desc = map.value(QStringLiteral("description")).toString();
+        const bool isDefault = map.value(QStringLiteral("is_default")).toBool();
+        return QStringLiteral("%1\t%2%3")
+            .arg(sinkName, desc, isDefault ? QStringLiteral(" (default)") : QString());
     }
 
     if (!id.isEmpty() || !name.isEmpty() || !app.isEmpty())
@@ -176,7 +193,11 @@ QString mapToText(const QVariantMap& map)
                                hotkeyToText(hotkeyMap.value(QStringLiteral("mute"))));
         }
 
-        return QStringLiteral("%1\t%2\t%3\t%4\t%5").arg(id, name, app, modifiers, hotkeys);
+        QString sink = map.value(QStringLiteral("sink")).toString();
+        if (sink.isEmpty()) sink = QStringLiteral("-");
+
+        return QStringLiteral("%1\t%2\t%3\t%4\t%5\t%6")
+            .arg(id, name, app, modifiers, hotkeys, sink);
     }
 
     QStringList parts;
@@ -268,6 +289,8 @@ QVariant setValueForCommand(const KvCtlCommand& cmd, bool* ok)
     case KvCtlCommand::Field::Apps:
     case KvCtlCommand::Field::Profiles:
     case KvCtlCommand::Field::Scenes:
+    case KvCtlCommand::Field::Sinks:
+    case KvCtlCommand::Field::Sink:
         *ok = false;
         return {};
     }
@@ -395,6 +418,33 @@ int getProperty(KvCtlCommand::Field field)
 
 int setProperty(const KvCtlCommand& cmd)
 {
+    // `set sink APP DEVICE` is a method call (SetAppSink), not a property write.
+    if (cmd.field == KvCtlCommand::Field::Sink)
+    {
+        if (cmd.target.isEmpty() || cmd.value.isEmpty())
+        {
+            printError(QStringLiteral("set sink: missing APP or DEVICE"));
+            return ExitInvalidValue;
+        }
+        if (!ensureDaemonAvailable()) return ExitUnavailable;
+
+        QDBusInterface control(Service, ObjectPath, ControlInterface,
+                               QDBusConnection::sessionBus());
+        if (!control.isValid())
+        {
+            printError(control.lastError().message());
+            return ExitDbusError;
+        }
+
+        QDBusMessage reply = control.call(QStringLiteral("SetAppSink"), cmd.target, cmd.value);
+        if (reply.type() == QDBusMessage::ErrorMessage)
+        {
+            printError(reply.errorMessage());
+            return ExitDbusError;
+        }
+        return ExitOk;
+    }
+
     bool ok = false;
     const QVariant value = setValueForCommand(cmd, &ok);
     if (!ok)
