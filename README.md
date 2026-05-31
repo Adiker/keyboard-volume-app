@@ -24,7 +24,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Show volume hotkey** — each profile can bind an optional `show` hotkey that displays the OSD with the current volume of that profile's app without changing it; also available via `kv-ctl show [--profile id]` and D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
 - **Focus audio / ducking** — each profile can bind a manual ducking hotkey that lowers every other known audio app to a configured percentage, then restores the previous levels on the next press
 - **Auto-switch by window focus** — when enabled, the active (focused) window determines which profile's audio app receives volume keys; switch from Spotify to Firefox and volume keys follow automatically
-- **Audio scenes / mixer presets** — define named presets in `config.json` that set volume and/or mute for several apps at once, then apply them from scripts with `kv-ctl scene ID`
+- **Audio scenes / mixer presets** — create, edit, duplicate, and apply named presets from Settings that set volume and/or mute for several apps at once; each scene can take an optional global hotkey, and you can still apply them from scripts with `kv-ctl scene ID`
 - **Global key capture** — reads directly from evdev input devices (keyboards and mice), works regardless of which window is focused
 - **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising configured hotkey bindings (keys or scroll) from any profile, so the desktop never intercepts them
 - **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio hotkeys (keys or mouse wheel) are reassignable via Settings → Profiles; right-click any hotkey field for an **Unassign** menu option to clear it; defaults are the dedicated media keys
@@ -358,7 +358,7 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
       "auto_switch": true }
   ],
   "scenes": [
-    { "id": "meeting", "name": "Meeting",
+    { "id": "meeting", "name": "Meeting", "hotkey": 88,
       "targets": [
         { "match": "Spotify", "volume": 10, "muted": false },
         { "match": "Discord", "volume": 80 },
@@ -368,7 +368,7 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
 }
 ```
 
-Hotkey values are evdev bindings: legacy integers are `EV_KEY` codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), while scroll bindings use objects such as `{ "type": "rel", "code": 8, "direction": 1 }` for `REL_WHEEL` up and `"direction": -1` for down. `show` defaults to `0` (unassigned) and supports the same key/scroll binding formats. The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch. Scene target `match` values use the same app/binary names as `kv-ctl get apps`; `volume` is a `0..100` percent value, and omitted `volume` or `muted` fields leave that part unchanged.
+Hotkey values are evdev bindings: legacy integers are `EV_KEY` codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), while scroll bindings use objects such as `{ "type": "rel", "code": 8, "direction": 1 }` for `REL_WHEEL` up and `"direction": -1` for down. `show` defaults to `0` (unassigned) and supports the same key/scroll binding formats. The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch. Scene target `match` values use the same app/binary names as `kv-ctl get apps`; `volume` is a `0..100` percent value, and omitted `volume` or `muted` fields leave that part unchanged. A scene's optional `hotkey` (same key/scroll format as profile hotkeys; missing in older configs) applies the scene globally — resolution priority is profile > scene > media, and when two scenes share a binding the first one in the list wins.
 
 `media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, and `stop`, each accepting the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Bound keys dispatch to whichever MPRIS player is currently active (resolved by the `tracked_players` priority list, then by playback state). When the same key is also claimed by an active profile binding the profile wins; the media binding only fires when no profile is matched.
 
@@ -469,7 +469,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Wiele profili audio** — definiuj kilka profili, każdy z własnymi skrótami (klawisze lub pokrętło myszy), opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją. `VolUp` steruje Spotify, `Ctrl+VolUp` steruje Firefoxem, `F11` steruje VLC — wszystko z tej samej klawiatury
 - **Hotkey „Pokaż głośność"** — każdy profil może mieć opcjonalny skrót `show`, który wyświetla OSD z aktualną głośnością aplikacji profilu bez jej zmieniania; dostępny też przez `kv-ctl show [--profile id]` i D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
 - **Tryb skupienia audio / ducking** — każdy profil może mieć ręczny skrót, który ścisza wszystkie inne znane aplikacje audio do ustawionego procentu, a kolejne naciśnięcie przywraca poprzednie poziomy
-- **Sceny audio / presety miksera** — definiuj nazwane presety w `config.json`, które ustawiają głośność i/lub wyciszenie kilku aplikacji naraz, a potem odpalaj je ze skryptów przez `kv-ctl scene ID`
+- **Sceny audio / presety miksera** — twórz, edytuj, duplikuj i stosuj nazwane presety z poziomu Ustawień, które ustawiają głośność i/lub wyciszenie kilku aplikacji naraz; każda scena może mieć opcjonalny globalny skrót, a sceny nadal odpalisz ze skryptów przez `kv-ctl scene ID`
 - **Auto-przełączanie profilu wg aktywnego okna** — po włączeniu aktywne okno (np. Firefox, Spotify) automatycznie wybiera odpowiedni profil audio; klawisze głośności zawsze sterują aplikacją na wierzchu
 - **Globalne przechwytywanie** — odczytuje zdarzenia bezpośrednio z urządzeń evdev (klawiatury i myszy), działa niezależnie od tego, które okno jest aktywne
 - **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające skonfigurowane skróty (klawisze lub zdarzenia scroll) w którymkolwiek profilu, aby system nie przechwytywał ich
@@ -803,7 +803,7 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
       "auto_switch": true }
   ],
   "scenes": [
-    { "id": "meeting", "name": "Meeting",
+    { "id": "meeting", "name": "Meeting", "hotkey": 88,
       "targets": [
         { "match": "Spotify", "volume": 10, "muted": false },
         { "match": "Discord", "volume": 80 },
@@ -813,7 +813,7 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
 }
 ```
 
-Wartości skrótów to bindingi evdev: starsze liczby oznaczają kody `EV_KEY` (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), a scroll używa obiektów takich jak `{ "type": "rel", "code": 8, "direction": 1 }` dla `REL_WHEEL` w górę i `"direction": -1` w dół. `show` domyślnie ma `0` (nieprzypisany) i obsługuje te same formaty klawiszy oraz scrolla. Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu. `match` w targetach scen używa tych samych nazw aplikacji/binarek co `kv-ctl get apps`; `volume` to procent `0..100`, a pominięte pola `volume` lub `muted` pozostawiają daną część stanu bez zmian.
+Wartości skrótów to bindingi evdev: starsze liczby oznaczają kody `EV_KEY` (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), a scroll używa obiektów takich jak `{ "type": "rel", "code": 8, "direction": 1 }` dla `REL_WHEEL` w górę i `"direction": -1` w dół. `show` domyślnie ma `0` (nieprzypisany) i obsługuje te same formaty klawiszy oraz scrolla. Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu. `match` w targetach scen używa tych samych nazw aplikacji/binarek co `kv-ctl get apps`; `volume` to procent `0..100`, a pominięte pola `volume` lub `muted` pozostawiają daną część stanu bez zmian. Opcjonalny `hotkey` sceny (ten sam format klawiszy/scrolla co skróty profilu; brak w starszych konfiguracjach) stosuje scenę globalnie — kolejność rozwiązywania to profil > scena > media, a gdy dwie sceny współdzielą binding, wygrywa pierwsza na liście.
 
 `media_hotkeys` to obiekt na najwyższym poziomie z polami `play_pause`, `next`, `previous` i `stop`. Każde pole akceptuje ten sam format co skróty profilu (kod `EV_KEY` jako liczba albo obiekt scrolla). Wszystkie cztery domyślnie są `0` (nieprzypisane). Naciśnięcie powiązanego klawisza wysyła komendę do aktywnego odtwarzacza MPRIS (wybranego wg listy `tracked_players`, a następnie wg stanu odtwarzania). Jeśli ten sam klawisz jest też zajęty przez aktywny profil, wygrywa profil — powiązanie multimedialne uruchamia się tylko wtedy, gdy żaden profil nie pasuje.
 

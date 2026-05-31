@@ -213,6 +213,89 @@ TEST(DbusInterface, MediaMethodsAreScriptable)
     EXPECT_TRUE(isScriptableSlot("MediaStop"));
 }
 
+// ─── Scenes property ──────────────────────────────────────────────────────────
+// The Scenes property must expose each scene's hotkey alongside id/name/targets.
+TEST(DbusInterface, ScenesPropertyIncludesHotkey)
+{
+    QTemporaryDir tmp;
+    Config config(tmp.path());
+
+    AudioScene meeting;
+    meeting.id = QStringLiteral("meeting");
+    meeting.name = QStringLiteral("Meeting");
+    meeting.hotkey = HotkeyBinding::key(88);
+    meeting.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt}};
+
+    AudioScene quiet;
+    quiet.id = QStringLiteral("quiet");
+    quiet.name = QStringLiteral("Quiet");
+    // No hotkey assigned.
+    quiet.targets = {SceneTarget{QStringLiteral("Discord"), std::nullopt, true}};
+
+    config.setScenes({meeting, quiet});
+
+    MockVolumeController vc;
+    DbusInterface dbus(&config, &vc);
+    dbus.reloadProfiles(); // rebuilds the scenes cache from Config
+
+    const QVariantList scenes = dbus.scenesProp();
+    ASSERT_EQ(scenes.size(), 2);
+
+    const QVariantMap m0 = scenes[0].toMap();
+    EXPECT_EQ(m0.value(QStringLiteral("id")).toString(), QStringLiteral("meeting"));
+    ASSERT_TRUE(m0.contains(QStringLiteral("hotkey")));
+    // Assigned EV_KEY binding → exposed as a plain int code.
+    EXPECT_EQ(m0.value(QStringLiteral("hotkey")).toInt(), 88);
+
+    const QVariantMap m1 = scenes[1].toMap();
+    EXPECT_EQ(m1.value(QStringLiteral("id")).toString(), QStringLiteral("quiet"));
+    ASSERT_TRUE(m1.contains(QStringLiteral("hotkey")));
+    // Unassigned binding → 0.
+    EXPECT_EQ(m1.value(QStringLiteral("hotkey")).toInt(), 0);
+}
+
+// ApplyScene must route the scene's targets through VolumeController::applyScene
+// (which uses setVolume/setMuted), not leave them untouched.
+TEST(DbusInterface, ApplySceneRoutesToVolumeController)
+{
+    QTemporaryDir tmp;
+    Config config(tmp.path());
+
+    AudioScene scene;
+    scene.id = QStringLiteral("meeting");
+    scene.name = QStringLiteral("Meeting");
+    scene.targets = {
+        SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt},
+        SceneTarget{QStringLiteral("Discord"), std::nullopt, true},
+    };
+    config.setScenes({scene});
+
+    MockVolumeController vc;
+    DbusInterface dbus(&config, &vc);
+
+    dbus.ApplyScene(QStringLiteral("meeting"));
+
+    ASSERT_EQ(vc.setVolumeCalls.size(), 1);
+    EXPECT_EQ(vc.setVolumeCalls[0].first, QStringLiteral("Spotify"));
+    EXPECT_DOUBLE_EQ(vc.setVolumeCalls[0].second, 0.1);
+    ASSERT_EQ(vc.setMutedCalls.size(), 1);
+    EXPECT_EQ(vc.setMutedCalls[0], (QPair<QString, bool>{QStringLiteral("Discord"), true}));
+}
+
+TEST(DbusInterface, ApplySceneUnknownIdIsNoOp)
+{
+    QTemporaryDir tmp;
+    Config config(tmp.path());
+
+    MockVolumeController vc;
+    DbusInterface dbus(&config, &vc);
+
+    dbus.ApplyScene(QStringLiteral("does-not-exist"));
+
+    EXPECT_TRUE(vc.setVolumeCalls.isEmpty());
+    EXPECT_TRUE(vc.setMutedCalls.isEmpty());
+}
+
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);

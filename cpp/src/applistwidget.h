@@ -11,23 +11,28 @@ struct PipeWireClient;
 class AppListWidget : public QWidget
 {
     Q_OBJECT
-public:
-    explicit AppListWidget(QWidget *parent = nullptr);
+  public:
+    explicit AppListWidget(QWidget* parent = nullptr);
 
     // Repopulate the list from PipeWire and highlight the saved selection.
-    void populate(Config *config);
+    void populate(Config* config);
 
     // Returns the currently selected app name, or "" for "No default".
     QString selectedAppName() const;
 
     // Select the item with the given Qt::UserRole data.
-    void setSelectedApp(const QString &name);
+    void setSelectedApp(const QString& name);
 
-private slots:
+  signals:
+    // Emitted when the user selects/clicks an app in the list. Carries the
+    // app name (Qt::UserRole data), or "" for the "No default" entry.
+    void appActivated(const QString& name);
+
+  private slots:
     void onRefresh();
 
-private:
-    QListWidget *m_list       = nullptr;
-    QPushButton *m_refreshBtn = nullptr;
-    Config      *m_config     = nullptr;  // set by populate()
+  private:
+    QListWidget* m_list = nullptr;
+    QPushButton* m_refreshBtn = nullptr;
+    Config* m_config = nullptr; // set by populate()
 };

@@ -432,6 +432,152 @@ TEST(ResolveMediaHotkey, RelativeWheelMatchesDirection)
     EXPECT_EQ(resolveMediaHotkey(HotkeyBinding::relative(REL_WHEEL, 1), cfg), MediaAction::None);
 }
 
+// ─── Scene hotkey resolution ──────────────────────────────────────────────────
+namespace
+{
+AudioScene mkScene(const QString& id, const HotkeyBinding& hotkey)
+{
+    AudioScene s;
+    s.id = id;
+    s.name = id;
+    s.hotkey = hotkey;
+    s.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt}};
+    return s;
+}
+} // namespace
+
+TEST(ResolveSceneHotkey, EmptyScenesReturnsEmpty)
+{
+    QList<AudioScene> scenes;
+    EXPECT_TRUE(resolveSceneHotkey(88, scenes).isEmpty());
+}
+
+TEST(ResolveSceneHotkey, KeyMatchesScene)
+{
+    QList<AudioScene> scenes{
+        mkScene(QStringLiteral("meeting"), HotkeyBinding::key(88)),
+        mkScene(QStringLiteral("gaming"), HotkeyBinding::key(89)),
+    };
+    EXPECT_EQ(resolveSceneHotkey(88, scenes), QStringLiteral("meeting"));
+    EXPECT_EQ(resolveSceneHotkey(89, scenes), QStringLiteral("gaming"));
+}
+
+TEST(ResolveSceneHotkey, UnboundCodeReturnsEmpty)
+{
+    QList<AudioScene> scenes{
+        mkScene(QStringLiteral("meeting"), HotkeyBinding::key(88)),
+    };
+    EXPECT_TRUE(resolveSceneHotkey(99, scenes).isEmpty());
+}
+
+TEST(ResolveSceneHotkey, UnassignedSceneHotkeyNeverMatches)
+{
+    // A scene with no hotkey must never match, even on code 0.
+    QList<AudioScene> scenes{
+        mkScene(QStringLiteral("nohotkey"), HotkeyBinding{}),
+    };
+    EXPECT_TRUE(resolveSceneHotkey(0, scenes).isEmpty());
+    EXPECT_TRUE(resolveSceneHotkey(HotkeyBinding{}, scenes).isEmpty());
+}
+
+TEST(ResolveSceneHotkey, FirstSceneWinsOnDuplicateBinding)
+{
+    // Two scenes share the same hotkey — the first scene in the list wins.
+    QList<AudioScene> scenes{
+        mkScene(QStringLiteral("first"), HotkeyBinding::key(88)),
+        mkScene(QStringLiteral("second"), HotkeyBinding::key(88)),
+    };
+    EXPECT_EQ(resolveSceneHotkey(88, scenes), QStringLiteral("first"));
+}
+
+TEST(ResolveSceneHotkey, RelativeWheelMatchesDirection)
+{
+    QList<AudioScene> scenes{
+        mkScene(QStringLiteral("up"), HotkeyBinding::relative(REL_WHEEL, 1)),
+        mkScene(QStringLiteral("down"), HotkeyBinding::relative(REL_WHEEL, -1)),
+    };
+    EXPECT_EQ(resolveSceneHotkey(HotkeyBinding::relative(REL_WHEEL, 1), scenes),
+              QStringLiteral("up"));
+    EXPECT_EQ(resolveSceneHotkey(HotkeyBinding::relative(REL_WHEEL, -1), scenes),
+              QStringLiteral("down"));
+}
+
+TEST(ResolveSceneHotkey, ScenesWithEmptyIdSkipped)
+{
+    AudioScene noId;
+    noId.id = QString();
+    noId.hotkey = HotkeyBinding::key(88);
+    QList<AudioScene> scenes{noId};
+    EXPECT_TRUE(resolveSceneHotkey(88, scenes).isEmpty());
+}
+
+// ─── Priority: profile > scene > media ────────────────────────────────────────
+// These verify the resolution helpers honor the documented precedence when the
+// same binding is bound at multiple layers. InputHandler::run() dispatches in
+// the order profile → scene → media, so a non-empty profile match always wins,
+// then a non-empty scene id, then a media action.
+
+TEST(ScenePriority, ProfileWinsOverSceneAndMedia)
+{
+    // Same code 88 bound as a profile volume-up, a scene, and a media action.
+    QList<Profile> profiles{mkProfile("p", 88, 114, 113, {})};
+    QList<AudioScene> scenes{mkScene(QStringLiteral("s"), HotkeyBinding::key(88))};
+    MediaHotkeyConfig media;
+    media.playPause = HotkeyBinding::key(88);
+
+    const HotkeyBinding binding = HotkeyBinding::key(88);
+    // Profile match is non-empty → profile layer consumes the event first.
+    const ProfileHotkeyMatch pmatch = resolveProfileHotkey(binding, {}, profiles);
+    EXPECT_FALSE(pmatch.profileId.isEmpty());
+    EXPECT_EQ(pmatch.action, ProfileHotkeyAction::VolumeUp);
+    // Scene and media would also match, but are only consulted when the profile
+    // layer yields nothing.
+    EXPECT_EQ(resolveSceneHotkey(binding, scenes), QStringLiteral("s"));
+    EXPECT_EQ(resolveMediaHotkey(binding, media), MediaAction::PlayPause);
+}
+
+TEST(ScenePriority, SceneWinsOverMediaWhenNoProfileMatch)
+{
+    // Code 88 bound to a scene and a media action, but to no profile.
+    QList<Profile> profiles{mkProfile("p", 115, 114, 113, {})};
+    QList<AudioScene> scenes{mkScene(QStringLiteral("s"), HotkeyBinding::key(88))};
+    MediaHotkeyConfig media;
+    media.playPause = HotkeyBinding::key(88);
+
+    const HotkeyBinding binding = HotkeyBinding::key(88);
+    EXPECT_TRUE(resolveProfileHotkey(binding, {}, profiles).profileId.isEmpty());
+    EXPECT_EQ(resolveSceneHotkey(binding, scenes), QStringLiteral("s"));
+    // Media still resolves, but scene is consulted first in run().
+    EXPECT_EQ(resolveMediaHotkey(binding, media), MediaAction::PlayPause);
+}
+
+// ─── setScenes / currentScenes round-trip ────────────────────────────────────
+TEST(InputHandler, ScenesRoundTrip)
+{
+    InputHandler handler;
+    EXPECT_TRUE(handler.currentScenes().isEmpty());
+
+    QList<AudioScene> scenes{
+        mkScene(QStringLiteral("meeting"), HotkeyBinding::key(88)),
+        mkScene(QStringLiteral("gaming"), HotkeyBinding::key(89)),
+    };
+    handler.setScenes(scenes);
+
+    const auto got = handler.currentScenes();
+    ASSERT_EQ(got.size(), 2);
+    EXPECT_EQ(got[0].id, QStringLiteral("meeting"));
+    EXPECT_EQ(got[0].hotkey, HotkeyBinding::key(88));
+    EXPECT_EQ(got[1].id, QStringLiteral("gaming"));
+    EXPECT_EQ(got[1].hotkey, HotkeyBinding::key(89));
+}
+
+TEST(InputHandler, SceneApplySignalConnectable)
+{
+    InputHandler handler;
+    QSignalSpy spy(&handler, &InputHandler::scene_apply);
+    EXPECT_TRUE(spy.isValid());
+}
+
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);

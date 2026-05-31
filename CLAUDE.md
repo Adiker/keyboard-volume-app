@@ -154,7 +154,7 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
       "vol_min": 10, "vol_max": 80 }
   ],
   "scenes": [
-    { "id": "meeting", "name": "Meeting",
+    { "id": "meeting", "name": "Meeting", "hotkey": 88,
       "targets": [
         { "match": "Spotify", "volume": 10, "muted": false },
         { "match": "Discord", "volume": 80 },
@@ -166,7 +166,9 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 
 Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113). Scroll bindings use object form such as `{ "type": "rel", "code": 8, "direction": 1 }` for `EV_REL / REL_WHEEL`.
 
-**Media hotkeys (global, MPRIS dispatch).** `media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, `stop`. Each accepts the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Stored as `struct MediaHotkeyConfig { HotkeyBinding playPause, next, previous, stop; }` exposed via `Config::mediaHotkeys()` / `Config::setMediaHotkeys()`. Independent of profiles — `InputHandler` resolves profile bindings first (modifier-aware) and only falls back to `resolveMediaHotkey()` when no profile claims the event. Bound keys dispatch via signals `media_play_pause/next/previous/stop` from the InputHandler thread to `MprisClient` slots in the main thread (queued connection); `MprisClient` selects the active player using `tracked_players` priority and falls back to the first Playing → Paused player. The same controls are exposed on D-Bus as `org.keyboardvolumeapp.VolumeControl.Media{PlayPause,Next,Previous,Stop}` and via `kv-ctl media play-pause|next|previous|stop`. Debounce reuses the 100 ms profile debounce table with sentinel key `__media__`.
+**Media hotkeys (global, MPRIS dispatch).** `media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, `stop`. Each accepts the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Stored as `struct MediaHotkeyConfig { HotkeyBinding playPause, next, previous, stop; }` exposed via `Config::mediaHotkeys()` / `Config::setMediaHotkeys()`. Independent of profiles — `InputHandler` resolves bindings in the order **profile > scene > media**: profile bindings first (modifier-aware via `resolveProfileHotkey()`), then scene apply bindings (`resolveSceneHotkey()`, modifier-agnostic in v1, first scene wins on a duplicate binding), then `resolveMediaHotkey()`. Bound keys dispatch via signals `media_play_pause/next/previous/stop` from the InputHandler thread to `MprisClient` slots in the main thread (queued connection); `MprisClient` selects the active player using `tracked_players` priority and falls back to the first Playing → Paused player. The same controls are exposed on D-Bus as `org.keyboardvolumeapp.VolumeControl.Media{PlayPause,Next,Previous,Stop}` and via `kv-ctl media play-pause|next|previous|stop`. Debounce reuses the 100 ms profile debounce table with sentinel keys `__media__` (media) and `__scene__:<id>` (scenes).
+
+**Scene hotkeys (global, scene dispatch).** Each `AudioScene` carries an optional `hotkey` binding. `InputHandler::setScenes()` / `currentScenes()` snapshot the scene list per run; assigned scene hotkeys join the grabbed-binding union so they are swallowed everywhere. A matched scene fires `scene_apply(QString sceneId)` from the InputHandler thread; `App` looks the id up in `Config` and calls `VolumeController::applyScene`. `App::onHotkeysMaybeChanged()` restarts the InputHandler when profiles, media hotkeys, **or scenes** change after Settings is saved.
 
 **OSD playback progress config.** `progress_enabled` is the master toggle. `progress_interactive` allows OSD seek controls when the active MPRIS player is seekable. `progress_poll_ms` is clamped to `200..2000` because many players do not emit position changes.
 
@@ -195,10 +197,13 @@ Legacy `progress_label_mode` values are migrated on load and persisted: `"track"
 - `Modifier` ↔ string helpers: `modifierToString(Modifier)`, `modifierFromString(QString)`
 
 **Audio scenes** (named mixer presets). Each scene:
-- `struct AudioScene { QString id, name; QList<SceneTarget> targets; }`
+- `struct AudioScene { QString id, name; QList<SceneTarget> targets; HotkeyBinding hotkey; }`
 - `struct SceneTarget { QString match; std::optional<int> volume; std::optional<bool> muted; }`
 - `match` uses the same app/binary names accepted by `VolumeController`; `volume` is clamped to `0..100`; omitted `volume`/`muted` leaves that state unchanged.
-- API: `scenes()`, `setScenes(QList<AudioScene>)` (uniqueifies ids and drops malformed targets).
+- `hotkey` is an optional global evdev binding (same key/scroll format as profile hotkeys). Serialized as the JSON `hotkey` field; missing in legacy configs → unassigned. Applying it routes through `scene_apply(id)` → `VolumeController::applyScene`.
+- API: `scenes()`, `setScenes(QList<AudioScene>)` (uniqueifies ids and drops malformed targets; preserves each scene's hotkey).
+- Editing: the Settings dialog has a Scenes table (name / target summary / hotkey) with Add / Edit / Remove / Duplicate / Apply, backed by `SceneEditDialog` (`sceneeditdialog.h/cpp`). Each target row has a `match` (typed or picked from `AppListWidget`), an optional `0..100` volume, and a mute mode of leave-unchanged / mute / unmute. Duplicating a scene clears the copy's hotkey so two scenes never share a binding by accident.
+- Apply is single-sourced through `VolumeController::applyScene(const AudioScene&)` — tray menu, D-Bus `ApplyScene`, the Settings "Apply" button, and scene hotkeys all call it instead of duplicating the per-target loop. Scenes intentionally bypass per-profile volume limits.
 
 **Migration & legacy mirror.** `Config::load()` synthesizes a single `default` profile from legacy `selected_app` + top-level `hotkeys` when `profiles` is missing/empty, then `saveUnlocked()` writes the new schema. Top-level `selected_app` and `hotkeys` are kept in sync as a deprecated mirror of `profiles[0]` (one release of compat) — `setSelectedApp()`/`setHotkeys()` mirror into the default profile and vice versa, so existing D-Bus/MPRIS clients keep working.
 
@@ -414,12 +419,12 @@ D-Bus methods:
 - `VolumeUp()`, `VolumeDown()`, `ToggleMute()`, `SetMute(bool)`, `ToggleDucking()`, `RefreshApps()` — bare methods target the default profile / `m_activeApp`, kept for backwards compat and script-friendly default-profile control. `SetMute` and the `Muted` property both drive an absolute mute state via `setMuted`.
 - `VolumeUpProfile(QString id)`, `VolumeDownProfile(QString id)`, `ToggleMuteProfile(QString id)`, `SetMuteProfile(QString id, bool muted)`, `ToggleDuckingProfile(QString id)` — per-profile methods, route directly to the profile's app via `m_volumeCtrl`.
 - `SetVolumeProfile(QString id, double vol)` — per-profile absolute volume setter. `vol` is `0.0..1.0` (clamped); unknown profile ids are silently a no-op. Used by `kv-ctl set volume X --profile id`.
-- `ApplyScene(QString id)` — applies a configured audio scene by posting absolute volume/mute operations to `VolumeController`; unknown scene ids are a no-op.
+- `ApplyScene(QString id)` — applies a configured audio scene through `VolumeController::applyScene` (posts absolute volume/mute operations); unknown scene ids are a no-op.
 - `ShowVolume()` — queries the current volume of `m_activeApp` via `VolumeController::queryVolume()` and emits `volumeChanged` → OSD displays without any value change.
 - `ShowVolumeProfile(QString id)` — same as `ShowVolume()` but for the app in the named profile.
 
 `Profiles` property is `QVariantList` of `QVariantMap` entries — `{id, name, app, modifiers (QStringList "ctrl"/"shift"), hotkeys ({volume_up, volume_down, mute, show}), ducking ({enabled, volume, hotkey})}`. Hotkey values are legacy ints for `EV_KEY` bindings or maps for scroll bindings. `reloadProfiles()` rebuilds the cache from `Config` and emits `profilesChanged(QVariantList)` only when the value actually changed; wired from `TrayApp::settingsChanged` in `App`.
-`Scenes` property is `QVariantList` of `QVariantMap` entries — `{id, name, targets ([{match, volume?, muted?}])}`.
+`Scenes` property is `QVariantList` of `QVariantMap` entries — `{id, name, hotkey, targets ([{match, volume?, muted?}])}`. `hotkey` is a legacy int for `EV_KEY` bindings (0 = unassigned) or a map for scroll bindings, matching the profile hotkey wire format. Rebuilt and signaled by `reloadProfiles()` alongside `Profiles`.
 `ProgressEnabled` patches `OsdConfig::progressEnabled` and emits `progressEnabledChanged`; `App::initDbus()` wires that signal to `OSDWindow::reloadStyles()` and `MprisClient::reload()` so `kv-ctl set progress-enabled ...` takes effect without opening Settings or restarting the app. `reloadProgressEnabled()` keeps the D-Bus signal/cache aligned when Settings changes the same field.
 `AutoProfileSwitch` maps to `Config::autoProfileSwitch()` and emits `autoProfileSwitchChanged`; `App::initDbus()` wires that signal to `App::onAutoSwitchMaybeChanged()` so `kv-ctl set auto-profile-switch true|false` starts/stops `WindowTracker` at runtime without a restart. `reloadAutoProfileSwitch()` keeps the D-Bus cache aligned when the Settings checkbox changes.
 

@@ -133,6 +133,7 @@ struct AudioScene
     QString id; // stable slug, unique within scenes list
     QString name;
     QList<SceneTarget> targets;
+    HotkeyBinding hotkey; // optional global hotkey to apply this scene; unassigned by default
 };
 
 // ─── Modifier set for profile matching ───────────────────────────────────────
@@ -237,7 +238,7 @@ inline bool operator!=(const SceneTarget& a, const SceneTarget& b)
 
 inline bool operator==(const AudioScene& a, const AudioScene& b)
 {
-    return a.id == b.id && a.name == b.name && a.targets == b.targets;
+    return a.id == b.id && a.name == b.name && a.targets == b.targets && a.hotkey == b.hotkey;
 }
 inline bool operator!=(const AudioScene& a, const AudioScene& b)
 {

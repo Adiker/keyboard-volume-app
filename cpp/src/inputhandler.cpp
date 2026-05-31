@@ -370,6 +370,22 @@ MediaAction resolveMediaHotkey(int code, const MediaHotkeyConfig& cfg)
     return resolveMediaHotkey(HotkeyBinding::key(code), cfg);
 }
 
+QString resolveSceneHotkey(const HotkeyBinding& binding, const QList<AudioScene>& scenes)
+{
+    if (!binding.isAssigned()) return {};
+    for (const AudioScene& scene : scenes)
+    {
+        if (scene.id.isEmpty()) continue;
+        if (scene.hotkey.isAssigned() && scene.hotkey == binding) return scene.id;
+    }
+    return {};
+}
+
+QString resolveSceneHotkey(int code, const QList<AudioScene>& scenes)
+{
+    return resolveSceneHotkey(HotkeyBinding::key(code), scenes);
+}
+
 bool matchesInputEvent(const HotkeyBinding& binding, const input_event& ev)
 {
     if (!binding.isAssigned()) return false;
@@ -417,6 +433,18 @@ MediaHotkeyConfig InputHandler::currentMediaHotkeys() const
     return m_mediaHotkeys;
 }
 
+void InputHandler::setScenes(const QList<AudioScene>& scenes)
+{
+    QMutexLocker lock(&m_profilesMutex);
+    m_scenes = scenes;
+}
+
+QList<AudioScene> InputHandler::currentScenes() const
+{
+    QMutexLocker lock(&m_profilesMutex);
+    return m_scenes;
+}
+
 void InputHandler::startDevice(const QString& newPath)
 {
     stop();
@@ -446,12 +474,16 @@ void InputHandler::run()
     // snapshot is fresh for each restart.
     const QList<Profile> profiles = currentProfiles();
     const MediaHotkeyConfig mediaCfg = currentMediaHotkeys();
+    const QList<AudioScene> scenes = currentScenes();
 
     // Sentinel profile id used as the second key of m_lastTriggerMs for media
     // bindings, so debounce buckets never collide with real profile ids.
     const QString kMediaProfile = QStringLiteral("__media__");
+    // Sentinel prefix for scene debounce buckets (one bucket per scene id).
+    const QString kSceneProfilePrefix = QStringLiteral("__scene__:");
 
-    // Union of every hotkey binding used by any profile + global media bindings.
+    // Union of every hotkey binding used by any profile + global media bindings
+    // + scene apply bindings.
     QSet<HotkeyBinding> hotkeys;
     for (const Profile& p : profiles)
     {
@@ -465,6 +497,10 @@ void InputHandler::run()
     if (mediaCfg.next.isAssigned()) hotkeys.insert(mediaCfg.next);
     if (mediaCfg.previous.isAssigned()) hotkeys.insert(mediaCfg.previous);
     if (mediaCfg.stop.isAssigned()) hotkeys.insert(mediaCfg.stop);
+    for (const AudioScene& scene : scenes)
+    {
+        if (scene.hotkey.isAssigned()) hotkeys.insert(scene.hotkey);
+    }
 
     if (hotkeys.isEmpty())
     {
@@ -527,6 +563,18 @@ void InputHandler::run()
         case MediaAction::None:
             break;
         }
+    };
+
+    // Helper: dispatch a scene apply (debounced per scene id).
+    auto dispatchScene = [&](const HotkeyBinding& binding, const QString& sceneId)
+    {
+        if (sceneId.isEmpty()) return;
+        const QPair<HotkeyBinding, QString> key{binding, kSceneProfilePrefix + sceneId};
+        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        qint64 last = m_lastTriggerMs.value(key, 0LL);
+        if (now - last < 100) return;
+        m_lastTriggerMs[key] = now;
+        emit scene_apply(sceneId);
     };
 
     const auto candidates = findHotkeyDevices(m_devicePath, hotkeys);
@@ -640,7 +688,16 @@ void InputHandler::run()
                                 // Hotkey consumed — do NOT forward.
                                 continue;
                             }
-                            // No profile matched — fall back to media. Media
+                            // No profile matched — try scenes next (priority:
+                            // profile > scene > media). Scene bindings ignore
+                            // modifiers in v1.
+                            const QString sceneId = resolveSceneHotkey(binding, scenes);
+                            if (!sceneId.isEmpty())
+                            {
+                                dispatchScene(binding, sceneId);
+                                continue;
+                            }
+                            // No scene matched — fall back to media. Media
                             // dispatch ignores modifiers in v1: a profile that
                             // requires modifiers had its chance above.
                             const MediaAction maction = resolveMediaHotkey(binding, mediaCfg);
@@ -654,9 +711,10 @@ void InputHandler::run()
                         }
                         else if (ev.value == 0)
                         {
-                            // Release of a media-only binding must also be
-                            // consumed so the desktop doesn't see a key-up
-                            // without a key-down.
+                            // Release of a scene-only or media-only binding must
+                            // also be consumed so the desktop doesn't see a
+                            // key-up without a key-down.
+                            if (!resolveSceneHotkey(binding, scenes).isEmpty()) continue;
                             if (resolveMediaHotkey(binding, mediaCfg) != MediaAction::None)
                                 continue;
                         }
@@ -688,6 +746,7 @@ void InputHandler::run()
                                 if (!resolveProfileHotkey(
                                          binding, normalizeHeldModifiers(heldModifiers), profiles)
                                          .profileId.isEmpty() ||
+                                    !resolveSceneHotkey(binding, scenes).isEmpty() ||
                                     resolveMediaHotkey(binding, mediaCfg) != MediaAction::None)
                                 {
                                     suppress = true;
@@ -717,6 +776,12 @@ void InputHandler::run()
                             if (!match.profileId.isEmpty())
                             {
                                 dispatchProfile(matchedBinding, match);
+                                continue;
+                            }
+                            const QString sceneId = resolveSceneHotkey(matchedBinding, scenes);
+                            if (!sceneId.isEmpty())
+                            {
+                                dispatchScene(matchedBinding, sceneId);
                                 continue;
                             }
                             const MediaAction maction =

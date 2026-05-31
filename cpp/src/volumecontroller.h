@@ -1,5 +1,6 @@
 #pragma once
 #include "audioapp.h"
+#include "config.h"
 
 #include <QObject>
 #include <QThread>
@@ -33,6 +34,12 @@ class VolumeController : public QObject
     virtual void toggleMute(const QString& appName);
     virtual void setMuted(const QString& appName, bool muted);
     void toggleDucking(const QString& keepApp, double duckVolume);
+
+    // Apply an audio scene: iterate its targets and set per-target volume/mute.
+    // Scenes intentionally bypass per-profile volume limits (explicit presets).
+    // Single entry point shared by tray, D-Bus, hotkey, and Settings so the
+    // per-target loop is not duplicated. Async → results arrive via volumeChanged().
+    void applyScene(const AudioScene& scene);
 
     // Async read of the app's current volume — result arrives via volumeChanged().
     // Does NOT modify any volume. Falls back to cached value when PA is unavailable.

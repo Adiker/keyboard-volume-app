@@ -40,6 +40,7 @@ set(SOURCES
     src/applistwidget.cpp
     src/appselectordialog.cpp
     src/profileeditdialog.cpp
+    src/sceneeditdialog.cpp
     src/windowtracker.cpp
     resources.qrc
 )
