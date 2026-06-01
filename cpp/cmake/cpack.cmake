@@ -28,6 +28,8 @@ set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
 # Dynamically determine library dependencies using dpkg-shlibdeps
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+# Explicitly depend on dynamically loaded Qt QPA platform plugins
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-qpa-plugins, qt6-wayland")
 
 # --- RPM (.rpm) Generator Settings ---
 set(CPACK_RPM_PACKAGE_NAME "keyboard-volume-app")
