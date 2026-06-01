@@ -74,6 +74,17 @@ makepkg -si
 
 This clones `main`, builds Release binaries, and installs everything to `/usr` including `keyboard-volume-app`, `kv-ctl`, the `.desktop` entry, icon, and systemd user service.
 
+#### Debian / RPM packages
+
+Release builds publish `.deb` and `.rpm` packages as GitHub Actions artifacts. Download the package for your distribution, then install it with your system package manager:
+
+```bash
+sudo apt install ./keyboard-volume-app_0.1.0-1_amd64.deb
+sudo dnf install ./keyboard-volume-app-0.1.0-1.x86_64.rpm
+```
+
+The packages install `keyboard-volume-app`, `kv-ctl`, the desktop entry, icon, and systemd user service under `/usr`. The app still needs evdev access, so add your user to the `input` group as described below.
+
 #### Build from source
 
 ```bash
@@ -522,6 +533,17 @@ makepkg -si
 ```
 
 Pobiera branch `main`, buduje binarki Release i instaluje wszystko do `/usr`, w tym `keyboard-volume-app`, `kv-ctl`, wpis `.desktop`, ikonę i usługę systemd user.
+
+#### Pakiety Debian / RPM
+
+Buildy Release publikują pakiety `.deb` i `.rpm` jako artefakty GitHub Actions. Pobierz pakiet dla swojej dystrybucji, a potem zainstaluj go systemowym menedżerem pakietów:
+
+```bash
+sudo apt install ./keyboard-volume-app_0.1.0-1_amd64.deb
+sudo dnf install ./keyboard-volume-app-0.1.0-1.x86_64.rpm
+```
+
+Pakiety instalują `keyboard-volume-app`, `kv-ctl`, wpis desktopowy, ikonę i usługę systemd user w `/usr`. Aplikacja nadal wymaga dostępu evdev, więc dodaj użytkownika do grupy `input` zgodnie z opisem poniżej.
 
 #### Budowanie ze źródeł
 
