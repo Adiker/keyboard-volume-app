@@ -187,7 +187,8 @@ jobs:
             libpipewire-0.3-dev \
             libtag1-dev \
             libwayland-dev \
-            dbus
+            dbus \
+            rpm
 
       - name: Configure
         run: >
@@ -210,3 +211,44 @@ jobs:
           dbus-run-session -- ctest \
             --test-dir cpp/build-${{ matrix.build_type }} --output-on-failure \
             -R test_mprisclient
+
+      - name: Build packages (Release only)
+        if: matrix.build_type == 'Release'
+        run: |
+          cd cpp/build-Release
+          cpack -G "DEB;RPM"
+
+      - name: Verify packages (Release only)
+        if: matrix.build_type == 'Release'
+        run: |
+          cd cpp/build-Release
+          echo "=== Verifying DEB Package ==="
+          dpkg-deb -I keyboard-volume-app_*.deb
+          dpkg-deb -c keyboard-volume-app_*.deb
+          
+          echo "=== Verifying RPM Package ==="
+          rpm -qip keyboard-volume-app-*.rpm
+          rpm -qlp keyboard-volume-app-*.rpm
+          
+          # Check for presence of key files in the DEB package content listing
+          dpkg-deb -c keyboard-volume-app_*.deb | grep -q "usr/bin/keyboard-volume-app"
+          dpkg-deb -c keyboard-volume-app_*.deb | grep -q "usr/bin/kv-ctl"
+          dpkg-deb -c keyboard-volume-app_*.deb | grep -q "usr/share/applications/keyboard-volume-app.desktop"
+          dpkg-deb -c keyboard-volume-app_*.deb | grep -q "usr/share/pixmaps/keyboard-volume-app.png"
+          dpkg-deb -c keyboard-volume-app_*.deb | grep -q "usr/lib/systemd/user/keyboard-volume-app.service"
+          
+          # Check for presence of key files in the RPM package content listing
+          rpm -qlp keyboard-volume-app-*.rpm | grep -q "usr/bin/keyboard-volume-app"
+          rpm -qlp keyboard-volume-app-*.rpm | grep -q "usr/bin/kv-ctl"
+          rpm -qlp keyboard-volume-app-*.rpm | grep -q "usr/share/applications/keyboard-volume-app.desktop"
+          rpm -qlp keyboard-volume-app-*.rpm | grep -q "usr/share/pixmaps/keyboard-volume-app.png"
+          rpm -qlp keyboard-volume-app-*.rpm | grep -q "usr/lib/systemd/user/keyboard-volume-app.service"
+
+      - name: Upload packages as artifacts (Release only)
+        if: matrix.build_type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: keyboard-volume-app-packages
+          path: |
+            cpp/build-Release/*.deb
+            cpp/build-Release/*.rpm

@@ -151,6 +151,9 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../resources/icon.png"
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../deploy/keyboard-volume-app.service"
         DESTINATION lib/systemd/user)
 
+# CPack Packaging
+include(cmake/cpack.cmake)
+
 include(CTest)
 if(BUILD_TESTING)
     enable_testing()
