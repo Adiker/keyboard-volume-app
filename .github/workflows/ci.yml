@@ -224,25 +224,25 @@ jobs:
           cd cpp/build-Release
           echo "=== Verifying DEB Package ==="
           dpkg-deb -I keyboard-volume-app_*.deb
-          dpkg-deb -c keyboard-volume-app_*.deb
-          
+          dpkg-deb -c keyboard-volume-app_*.deb | tee deb-contents.txt
+
           echo "=== Verifying RPM Package ==="
           rpm -qip keyboard-volume-app-*.rpm
-          rpm -qlp keyboard-volume-app-*.rpm
-          
+          rpm -qlp keyboard-volume-app-*.rpm | tee rpm-contents.txt
+
           # Check for presence of key files in the DEB package content listing
-          dpkg-deb -c keyboard-volume-app_*.deb | grep -q "usr/bin/keyboard-volume-app"
-          dpkg-deb -c keyboard-volume-app_*.deb | grep -q "usr/bin/kv-ctl"
-          dpkg-deb -c keyboard-volume-app_*.deb | grep -q "usr/share/applications/keyboard-volume-app.desktop"
-          dpkg-deb -c keyboard-volume-app_*.deb | grep -q "usr/share/pixmaps/keyboard-volume-app.png"
-          dpkg-deb -c keyboard-volume-app_*.deb | grep -q "usr/lib/systemd/user/keyboard-volume-app.service"
-          
+          grep -q "usr/bin/keyboard-volume-app" deb-contents.txt
+          grep -q "usr/bin/kv-ctl" deb-contents.txt
+          grep -q "usr/share/applications/keyboard-volume-app.desktop" deb-contents.txt
+          grep -q "usr/share/pixmaps/keyboard-volume-app.png" deb-contents.txt
+          grep -q "usr/lib/systemd/user/keyboard-volume-app.service" deb-contents.txt
+
           # Check for presence of key files in the RPM package content listing
-          rpm -qlp keyboard-volume-app-*.rpm | grep -q "usr/bin/keyboard-volume-app"
-          rpm -qlp keyboard-volume-app-*.rpm | grep -q "usr/bin/kv-ctl"
-          rpm -qlp keyboard-volume-app-*.rpm | grep -q "usr/share/applications/keyboard-volume-app.desktop"
-          rpm -qlp keyboard-volume-app-*.rpm | grep -q "usr/share/pixmaps/keyboard-volume-app.png"
-          rpm -qlp keyboard-volume-app-*.rpm | grep -q "usr/lib/systemd/user/keyboard-volume-app.service"
+          grep -q "usr/bin/keyboard-volume-app" rpm-contents.txt
+          grep -q "usr/bin/kv-ctl" rpm-contents.txt
+          grep -q "usr/share/applications/keyboard-volume-app.desktop" rpm-contents.txt
+          grep -q "usr/share/pixmaps/keyboard-volume-app.png" rpm-contents.txt
+          grep -q "usr/lib/systemd/user/keyboard-volume-app.service" rpm-contents.txt
 
       - name: Upload packages as artifacts (Release only)
         if: matrix.build_type == 'Release'
