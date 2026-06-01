@@ -26,6 +26,7 @@ set(CPACK_DEBIAN_PACKAGE_NAME "keyboard-volume-app")
 set(CPACK_DEBIAN_PACKAGE_SECTION "sound")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
+set(CPACK_DEBIAN_PACKAGE_RELEASE "${CPACK_PACKAGE_RELEASE}")
 # Dynamically determine library dependencies using dpkg-shlibdeps
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 # Explicitly depend on dynamically loaded Qt QPA platform plugins
@@ -36,6 +37,7 @@ set(CPACK_RPM_PACKAGE_NAME "keyboard-volume-app")
 set(CPACK_RPM_PACKAGE_LICENSE "GPL-2.0-or-later")
 set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
 set(CPACK_RPM_FILE_NAME "RPM-DEFAULT")
+set(CPACK_RPM_PACKAGE_RELEASE "${CPACK_PACKAGE_RELEASE}")
 # Dynamically determine RPM dependencies
 set(CPACK_RPM_PACKAGE_AUTOREQ ON)
 # Explicitly require dynamically loaded Qt Wayland QPA plugin
