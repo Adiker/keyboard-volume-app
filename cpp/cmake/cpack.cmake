@@ -7,7 +7,7 @@ set(CPACK_PACKAGE_RELEASE "1")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Per-app volume control via keyboard with OSD overlay (Qt6)")
 set(CPACK_PACKAGE_VENDOR "Adiker")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Adiker/keyboard-volume-app")
-set(CPACK_PACKAGE_CONTACT "Adiker <https://github.com/Adiker>")
+set(CPACK_PACKAGE_CONTACT "Adiker <dobry1407@gmail.com>")
 set(CPACK_PACKAGE_LICENSE "GPL-2.0-or-later")
 
 # Use /usr as the install prefix inside the package
