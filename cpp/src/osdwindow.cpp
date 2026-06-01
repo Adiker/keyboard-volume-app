@@ -907,6 +907,23 @@ void OSDWindow::showVolume(const QString& appName, double volume, bool muted)
     auto [absX, absY] = absPos();
     positionWindow(absX, absY);
     m_hideTimer->start(osd.timeoutMs);
+    applySize();
+}
+
+void OSDWindow::showMediaAction(const QString& actionLabel)
+{
+    m_previewMode = false;
+    m_previewHeld = false;
+    m_bar->hide();
+    m_labelPct->hide();
+    if (m_progressRow) m_progressRow->hide();
+    m_labelName->setText(actionLabel);
+
+    auto [absX, absY] = absPos();
+    positionWindow(absX, absY);
+    OsdConfig osd = m_config->osd();
+    m_hideTimer->start(osd.timeoutMs);
+    setFixedSize(scaled(OSD_W), scaled(OSD_H_BASE));
 }
 
 void OSDWindow::showMediaAction(const QString& actionLabel)
@@ -944,6 +961,7 @@ void OSDWindow::showPreview(int screenIdx, int x, int y, int timeoutMs)
     QRect geo = screens[screenIdx]->geometry();
     positionWindow(geo.x() + x, geo.y() + y);
     m_hideTimer->start(timeoutMs);
+    applySize();
 }
 
 void OSDWindow::hidePreview()
