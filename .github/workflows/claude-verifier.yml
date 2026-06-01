@@ -1,0 +1,208 @@
+name: Claude Verifier
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+concurrency:
+  group: claude-verifier-${{ github.event.pull_request.number }}-${{ github.event.review.id }}
+  cancel-in-progress: true
+
+jobs:
+  verify-codex-review:
+    name: Verify Codex review with Claude
+    if: |
+      github.event.review.user.login == 'chatgpt-codex-connector[bot]' &&
+      github.event.review.state == 'commented' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    outputs:
+      structured_output: ${{ steps.claude.outputs.structured_output }}
+
+    steps:
+      - name: Checkout pull request merge ref
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare verifier context
+        id: context
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVIEW_ID: ${{ github.event.review.id }}
+          REVIEW_COMMIT: ${{ github.event.review.commit_id }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p .claude-verifier
+
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}" > .claude-verifier/pr.json
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}" > .claude-verifier/codex-review.json
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}/comments" > .claude-verifier/codex-review-comments.json
+          gh api \
+            -H "Accept: application/vnd.github.v3.diff" \
+            "repos/${REPO}/pulls/${PR_NUMBER}" > .claude-verifier/pr.diff
+
+          codex_comment_count="$(jq 'length' .claude-verifier/codex-review-comments.json)"
+
+          {
+            echo "# Claude verifier context"
+            echo
+            echo "- Repository: ${REPO}"
+            echo "- Pull request: #${PR_NUMBER}"
+            echo "- Codex review id: ${REVIEW_ID}"
+            echo "- Codex reviewed commit: ${REVIEW_COMMIT}"
+            echo "- PR base SHA: ${BASE_SHA}"
+            echo "- PR head SHA: ${HEAD_SHA}"
+            echo "- Codex inline comment count: ${codex_comment_count}"
+            echo
+            echo "## Files"
+            echo
+            echo "- PR metadata: .claude-verifier/pr.json"
+            echo "- Codex review body: .claude-verifier/codex-review.json"
+            echo "- Codex inline comments: .claude-verifier/codex-review-comments.json"
+            echo "- PR diff: .claude-verifier/pr.diff"
+          } > .claude-verifier/context.md
+
+          {
+            echo "codex_comment_count=${codex_comment_count}"
+            echo "context_file=.claude-verifier/context.md"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Write Claude structured-output schema
+        run: |
+          set -euo pipefail
+
+          cat > "${RUNNER_TEMP}/claude-verifier-schema.json" <<'JSON'
+          {
+            "type": "object",
+            "properties": {
+              "markdown_comment": {
+                "type": "string",
+                "description": "Complete GitHub issue comment body in Markdown. It must start with '## Claude verification of Codex review' and include the sections '### Verdict on Codex', '### Additional findings', and '### Caveats'."
+              }
+            },
+            "required": ["markdown_comment"],
+            "additionalProperties": false
+          }
+          JSON
+
+      - name: Run Claude verifier
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "chatgpt-codex-connector[bot]"
+          prompt: |
+            You are verifying a Codex Cloud pull request review in this repository.
+
+            Read `.claude-verifier/context.md`, then inspect the files it references:
+            - `.claude-verifier/codex-review.json`
+            - `.claude-verifier/codex-review-comments.json`
+            - `.claude-verifier/pr.json`
+            - `.claude-verifier/pr.diff`
+
+            Task:
+            1. Verify each inline review comment from `chatgpt-codex-connector[bot]`.
+            2. For every Codex finding, label it exactly one of: `Valid`, `Partially valid`, `Invalid`, or `Needs human check`.
+            3. Explain the verdict briefly and point to the relevant file/line or diff hunk when useful.
+            4. Perform an independent review of the PR diff and list only concrete additional issues introduced by the PR.
+            5. Follow the repository guidance in `AGENTS.md` and `CLAUDE.md`, especially for Qt/C++, evdev, libpulse, D-Bus, MPRIS, threading, CMake, and config migration.
+
+            Output requirements:
+            - Return structured output matching the provided JSON schema.
+            - The `markdown_comment` field must be a complete GitHub issue comment body.
+            - Start the comment with `## Claude verification of Codex review`.
+            - Include these sections exactly: `### Verdict on Codex`, `### Additional findings`, `### Caveats`.
+            - If there are no additional findings, write `No additional issues found.` under `### Additional findings`.
+            - Do not post GitHub comments yourself.
+            - Do not edit files, commit, push, or open pull requests.
+          claude_args: |
+            --json-schema ${{ runner.temp }}/claude-verifier-schema.json
+            --max-turns 8
+
+  publish-claude-verifier-comment:
+    name: Publish Claude verifier comment
+    needs: verify-codex-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      issues: write
+      pull-requests: read
+
+    steps:
+      - name: Publish Claude verifier comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REVIEW_ID: ${{ github.event.review.id }}
+          STRUCTURED_OUTPUT: ${{ needs.verify-codex-review.outputs.structured_output }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p .claude-verifier
+
+          marker="<!-- claude-verifier:codex-review-id=${REVIEW_ID} -->"
+          markdown_comment=""
+          if [[ -n "${STRUCTURED_OUTPUT}" ]] && jq -e . >/dev/null 2>&1 <<< "${STRUCTURED_OUTPUT}"; then
+            markdown_comment="$(jq -r '.markdown_comment // empty' <<< "${STRUCTURED_OUTPUT}")"
+          fi
+
+          if [[ -z "${markdown_comment}" ]]; then
+            markdown_comment="$(cat <<'MARKDOWN'
+          ## Claude verification of Codex review
+
+          ### Verdict on Codex
+          Claude did not return structured verifier output for this run.
+
+          ### Additional findings
+          No additional issues found.
+
+          ### Caveats
+          Check the workflow logs for the Claude execution details.
+          MARKDOWN
+          )"
+          fi
+
+          {
+            echo "${marker}"
+            echo
+            echo "${markdown_comment}"
+          } > .claude-verifier/comment.md
+
+          jq -n --rawfile body .claude-verifier/comment.md '{body: $body}' \
+            > .claude-verifier/comment-payload.json
+
+          gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+            > .claude-verifier/existing-comments.json
+
+          existing_comment_id="$(
+            jq -r --arg marker "${marker}" \
+              '.[] | select(.body | contains($marker)) | .id' \
+              .claude-verifier/existing-comments.json \
+              | tail -n 1
+          )"
+
+          if [[ -n "${existing_comment_id}" ]]; then
+            gh api \
+              --method PATCH \
+              "repos/${REPO}/issues/comments/${existing_comment_id}" \
+              --input .claude-verifier/comment-payload.json
+          else
+            gh api \
+              --method POST \
+              "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+              --input .claude-verifier/comment-payload.json
+          fi
