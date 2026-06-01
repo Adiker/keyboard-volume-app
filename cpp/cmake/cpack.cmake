@@ -38,5 +38,7 @@ set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
 set(CPACK_RPM_FILE_NAME "RPM-DEFAULT")
 # Dynamically determine RPM dependencies
 set(CPACK_RPM_PACKAGE_AUTOREQ ON)
+# Explicitly require dynamically loaded Qt Wayland QPA plugin
+set(CPACK_RPM_PACKAGE_REQUIRES "qt6-qtwayland")
 
 include(CPack)
