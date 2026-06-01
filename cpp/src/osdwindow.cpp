@@ -892,6 +892,8 @@ void OSDWindow::showVolume(const QString& appName, double volume, bool muted)
 {
     m_previewMode = false;
     m_previewHeld = false;
+    m_bar->show();
+    m_labelPct->show();
     m_currentAppName = appName;
     OsdConfig osd = m_config->osd();
     int pct = qRound(volume * 100);
@@ -906,12 +908,28 @@ void OSDWindow::showVolume(const QString& appName, double volume, bool muted)
     m_hideTimer->start(osd.timeoutMs);
 }
 
+void OSDWindow::showMediaAction(const QString& actionLabel)
+{
+    m_previewMode = false;
+    m_previewHeld = false;
+    m_bar->hide();
+    m_labelPct->hide();
+    m_labelName->setText(actionLabel);
+
+    auto [absX, absY] = absPos();
+    positionWindow(absX, absY);
+    OsdConfig osd = m_config->osd();
+    m_hideTimer->start(osd.timeoutMs);
+}
+
 void OSDWindow::showPreview(int screenIdx, int x, int y, int timeoutMs)
 {
     m_previewMode = true;
     m_previewHeld = false;
     m_previewTimeoutMs = timeoutMs;
     m_hideTimer->stop();
+    m_bar->show();
+    m_labelPct->show();
 
     m_labelName->setText(::tr(QStringLiteral("osd.preview")));
     m_bar->setValue(60);

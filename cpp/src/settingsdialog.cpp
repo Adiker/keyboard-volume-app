@@ -587,6 +587,11 @@ void SettingsDialog::buildUi()
     m_exposeMpris->setChecked(osd.exposeMpris);
     progressForm->addRow(QString(), m_exposeMpris);
 
+    m_showMediaKeysOsd =
+        new QCheckBox(::tr(QStringLiteral("settings.progress.show_media_keys_osd")), this);
+    m_showMediaKeysOsd->setChecked(osd.showMediaKeysOsd);
+    progressForm->addRow(QString(), m_showMediaKeysOsd);
+
     layout->addLayout(progressForm);
 
     // ── Profiles section ────────────────────────────────────────────────
@@ -781,6 +786,7 @@ void SettingsDialog::saveAndAccept()
     }
     osd.mediaControlsEnabled = m_mediaControlsEnabled->isChecked();
     osd.exposeMpris = m_exposeMpris->isChecked();
+    osd.showMediaKeysOsd = m_showMediaKeysOsd->isChecked();
     osd.osdScale = std::clamp(m_osdScale->value(), 0.5, 3.0);
     m_config->setOsd(osd);
 

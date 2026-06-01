@@ -192,6 +192,7 @@ class SettingsDialog : public QDialog
     QLineEdit* m_trackedPlayers = nullptr;
     QCheckBox* m_mediaControlsEnabled = nullptr;
     QCheckBox* m_exposeMpris = nullptr;
+    QCheckBox* m_showMediaKeysOsd = nullptr;
 
     // OSD scale
     QDoubleSpinBox* m_osdScale = nullptr;

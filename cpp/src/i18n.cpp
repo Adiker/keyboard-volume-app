@@ -166,8 +166,14 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("settings.progress.expose_mpris"),
               QStringLiteral("Expose fake MPRIS player endpoint (may interfere with Discord Music "
                              "Presence and similar apps)")},
+             {QStringLiteral("settings.progress.show_media_keys_osd"),
+              QStringLiteral("Show OSD overlay on media key press (play/pause/next/prev/stop)")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("OSD Preview")},
+             {QStringLiteral("osd.media_play_pause"), QStringLiteral("Play / Pause")},
+             {QStringLiteral("osd.media_next"), QStringLiteral("Next Track")},
+             {QStringLiteral("osd.media_previous"), QStringLiteral("Previous Track")},
+             {QStringLiteral("osd.media_stop"), QStringLiteral("Stop")},
              {QStringLiteral("settings.osd_scale"), QStringLiteral("OSD scale:")},
              // app selector
              {QStringLiteral("app_selector.title"), QStringLiteral("Default application")},
@@ -387,8 +393,16 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("settings.progress.expose_mpris"),
               QStringLiteral("Eksponuj fa\u0142szywy endpoint MPRIS (mo\u017ce kolidowa\u0107 z "
                              "Discord Music Presence i podobnymi aplikacjami)")},
+             {QStringLiteral("settings.progress.show_media_keys_osd"),
+              QStringLiteral("Poka\u017c nak\u0142adk\u0119 OSD przy naci\u015bni\u0119ciu "
+                             "klawiszy multimedi\u00f3w "
+                             "(play/pause/nast\u0119pny/poprzedni/stop)")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("Podgl\u0105d OSD")},
+             {QStringLiteral("osd.media_play_pause"), QStringLiteral("Odtwarzaj / Pauza")},
+             {QStringLiteral("osd.media_next"), QStringLiteral("Nast\u0119pny utw\u00f3r")},
+             {QStringLiteral("osd.media_previous"), QStringLiteral("Poprzedni utw\u00f3r")},
+             {QStringLiteral("osd.media_stop"), QStringLiteral("Stop")},
              {QStringLiteral("settings.osd_scale"), QStringLiteral("Skala OSD:")},
              // app selector
              {QStringLiteral("app_selector.title"), QStringLiteral("Domy\u015blna aplikacja")},
