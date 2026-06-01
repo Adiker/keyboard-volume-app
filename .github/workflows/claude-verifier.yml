@@ -25,10 +25,10 @@ jobs:
       structured_output: ${{ steps.claude.outputs.structured_output }}
 
     steps:
-      - name: Checkout pull request merge ref
+      - name: Checkout reviewed commit
         uses: actions/checkout@v4
         with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          ref: ${{ github.event.review.commit_id }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -52,7 +52,7 @@ jobs:
           gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}/comments" > .claude-verifier/codex-review-comments.json
           gh api \
             -H "Accept: application/vnd.github.v3.diff" \
-            "repos/${REPO}/pulls/${PR_NUMBER}" > .claude-verifier/pr.diff
+            "repos/${REPO}/compare/${BASE_SHA}...${REVIEW_COMMIT}" > .claude-verifier/pr.diff
 
           codex_comment_count="$(jq 'length' .claude-verifier/codex-review-comments.json)"
 
@@ -185,7 +185,9 @@ jobs:
           jq -n --rawfile body .claude-verifier/comment.md '{body: $body}' \
             > .claude-verifier/comment-payload.json
 
-          gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate \
+          gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate --slurp \
+            > .claude-verifier/existing-comments-pages.json
+          jq '[.[][]]' .claude-verifier/existing-comments-pages.json \
             > .claude-verifier/existing-comments.json
 
           existing_comment_id="$(
