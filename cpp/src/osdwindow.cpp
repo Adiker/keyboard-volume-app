@@ -904,10 +904,10 @@ void OSDWindow::showVolume(const QString& appName, double volume, bool muted)
     m_labelPct->setText(muted ? QStringLiteral("%1%  \U0001F507").arg(pct)
                               : QStringLiteral("%1%").arg(pct));
 
+    applySize();
     auto [absX, absY] = absPos();
     positionWindow(absX, absY);
     m_hideTimer->start(osd.timeoutMs);
-    applySize();
 }
 
 void OSDWindow::showMediaAction(const QString& actionLabel)
@@ -919,11 +919,11 @@ void OSDWindow::showMediaAction(const QString& actionLabel)
     if (m_progressRow) m_progressRow->hide();
     m_labelName->setText(actionLabel);
 
+    setFixedSize(scaled(OSD_W), scaled(OSD_H_BASE));
     auto [absX, absY] = absPos();
     positionWindow(absX, absY);
     OsdConfig osd = m_config->osd();
     m_hideTimer->start(osd.timeoutMs);
-    setFixedSize(scaled(OSD_W), scaled(OSD_H_BASE));
 }
 
 void OSDWindow::showPreview(int screenIdx, int x, int y, int timeoutMs)
@@ -940,13 +940,13 @@ void OSDWindow::showPreview(int screenIdx, int x, int y, int timeoutMs)
     m_bar->setValue(60);
     m_labelPct->setText(QStringLiteral("60%"));
 
+    applySize();
     QList<QScreen*> screens = QApplication::screens();
     if (screens.isEmpty()) return;
     if (screenIdx >= screens.size()) screenIdx = 0;
     QRect geo = screens[screenIdx]->geometry();
     positionWindow(geo.x() + x, geo.y() + y);
     m_hideTimer->start(timeoutMs);
-    applySize();
 }
 
 void OSDWindow::hidePreview()

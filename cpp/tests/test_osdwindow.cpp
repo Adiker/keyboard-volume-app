@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QLabel>
 #include <QProgressBar>
+#include <QScreen>
 #include <QTemporaryDir>
 
 #define private public
@@ -87,6 +88,35 @@ TEST(OSDWindowLabel, PlayerTrackPresetPopulatesBothLines)
     EXPECT_EQ(window.m_labelName->text().toStdString(), "Spotify");
     EXPECT_EQ(window.m_labelTrack->text().toStdString(), "Title \xE2\x80\x94 Artist");
     EXPECT_FALSE(window.m_albumArtVisible);
+}
+
+TEST(OSDWindowGeometry, VolumeAfterMediaActionClampsWithRestoredProgressHeight)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OsdConfig osd = config.osd();
+    osd.progressEnabled = true;
+    osd.y = 100000;
+    config.setOsd(osd);
+
+    OSDWindow window(&config);
+    window.setProgressEnabled(true);
+    window.setProgressVisible(true);
+
+    window.showVolume(QStringLiteral("spotify"), 0.5);
+    const int progressHeight = window.height();
+
+    window.showMediaAction(QStringLiteral("Next"));
+    EXPECT_LT(window.height(), progressHeight);
+
+    window.showVolume(QStringLiteral("spotify"), 0.6);
+    EXPECT_EQ(window.height(), progressHeight);
+
+    ASSERT_NE(QApplication::primaryScreen(), nullptr);
+    const QRect avail = QApplication::primaryScreen()->availableGeometry();
+    EXPECT_LE(window.y() + window.height(), avail.bottom() + 1);
 }
 
 TEST(OSDWindowLabel, PlayerTrackArtPresetEnablesArt)
