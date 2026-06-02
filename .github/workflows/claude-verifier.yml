@@ -49,7 +49,10 @@ jobs:
 
           gh api "repos/${REPO}/pulls/${PR_NUMBER}" > .claude-verifier/pr.json
           gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}" > .claude-verifier/codex-review.json
-          gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}/comments" > .claude-verifier/codex-review-comments.json
+          gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${REVIEW_ID}/comments" --paginate --slurp \
+            > .claude-verifier/codex-review-comment-pages.json
+          jq '[.[][]]' .claude-verifier/codex-review-comment-pages.json \
+            > .claude-verifier/codex-review-comments.json
           gh api \
             -H "Accept: application/vnd.github.v3.diff" \
             "repos/${REPO}/compare/${BASE_SHA}...${REVIEW_COMMIT}" > .claude-verifier/pr.diff
@@ -135,6 +138,11 @@ jobs:
   publish-claude-verifier-comment:
     name: Publish Claude verifier comment
     needs: verify-codex-review
+    if: |
+      always() &&
+      github.event.review.user.login == 'chatgpt-codex-connector[bot]' &&
+      github.event.review.state == 'commented' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -165,7 +173,7 @@ jobs:
           ## Claude verification of Codex review
 
           ### Verdict on Codex
-          Claude did not return structured verifier output for this run.
+          Claude failed or did not return structured verifier output for this run.
 
           ### Additional findings
           No additional issues found.
