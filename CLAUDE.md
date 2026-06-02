@@ -18,7 +18,7 @@ These are read at startup in `cpp/src/main.cpp` to decide whether to use native 
 - `XDG_SESSION_TYPE` — `"wayland"` or `"x11"`
 - `QT_QPA_PLATFORM` — if unset and Wayland is detected without usable layer-shell support, the app forces `xcb` (XWayland) so `QWidget::move()` works for OSD positioning
 
-> On native Wayland, Qt cannot position regular top-level windows via `move()` — the compositor ignores it. When built with `wayland-client` and `LayerShellQt >= 6.6`, the app probes `zwlr_layer_shell_v1` before `QApplication`; wlroots/KDE sessions use a per-window LayerShellQt OSD surface, while GNOME/unsupported compositors keep the `QT_QPA_PLATFORM=xcb` fallback unless the user explicitly overrides Qt's platform.
+> On native Wayland, Qt cannot position regular top-level windows via `move()` — the compositor ignores it. When built with `wayland-client` and `LayerShellQt >= 6.6`, the app probes `zwlr_layer_shell_v1` before `QApplication`; wlroots/KDE sessions use a per-window LayerShellQt OSD surface, while GNOME/unsupported compositors keep the `QT_QPA_PLATFORM=xcb` fallback unless the user explicitly overrides Qt's platform. OSD mouse resizing is handled inside `OSDWindow` rather than via compositor/window decorations, so it works on both the layer-shell path and the XWayland fallback.
 
 ---
 
@@ -186,7 +186,7 @@ Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linu
 
 Legacy `progress_label_mode` values are migrated on load and persisted: `"track"` → `"title_artist"`, `"both"` → `"app_track"`. Unknown values collapse to `"app"`.
 
-`tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling.
+`tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling; visible OSD edges/corners can update it at runtime through custom mouse resizing.
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
 - `struct Profile { QString id, name; QStringList apps; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; int volMin; int volMax; QString sink; }` — `sink` is the stable PulseAudio sink **name** (empty = system default; cleared in stream-restore when the user switches back to default in Settings)
@@ -338,8 +338,10 @@ Frameless, always-on-top Qt widget. Three height modes (all dimensions scale via
 
 Width is `OSD_W = 220` px. All constants are logical base values — `scaled(int base)` multiplies by `OsdConfig::osdScale` (0.5–3.0, default 1.0) and rounds.
 
+Mouse resize. Because the OSD is frameless/layer-shell-capable, resizing is custom: `OSDWindow` detects all edges/corners, shows resize cursors, computes a proportional scale for the current height mode, clamps it to `0.5..3.0`, stops the hide timer while dragging, and persists the final `osd_scale` plus the adjusted `screen/x/y` on mouse release. Left/top drags move the OSD so the opposite edge stays anchored. Do not replace this with platform window decorations or compositor resize calls.
+
 `showVolume(app, volume, muted)` — main display call, starts the auto-hide timer.  
-After `show()`, position is also set via `QWindow::setPosition()` for XWayland compatibility.
+After `show()`, position is also set via `QWindow::setPosition()` for XWayland compatibility. On native Wayland, resize still updates the fixed widget size, but position changes go through LayerShellQt margins.
 
 Progress row API:
 - `setProgressEnabled(bool)` caches the master toggle and hides the row when disabled.
@@ -740,7 +742,7 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
 - `test_mprisclient` — 15 tests (MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards, `mpris:artUrl` / `xesam:album` parsing, `albumArtChanged` empty-on-disconnect)
-- `test_osdwindow` — 6 tests (progress-row regressions, label presets for `app` / `player_track` / `player_track_art` / `custom`, album-art visibility, hidden bottom line on empty custom template)
+- `test_osdwindow` — OSD progress-row, label-preset, album-art, and mouse-resize regressions (including scale persistence, edge anchoring, clamp, timer, and progress-bar hit testing)
 - `test_osdlabelformat` — 9 tests (token substitution, leading/trailing/middle separator trimming, unknown tokens preserved, multi-occurrence, internal whitespace preservation, all-empty)
 - `test_dbusinterface` — 6 tests (Volume/Muted property writers route to absolute `setVolume`/`setMuted` instead of relative delta/toggle, clamping, no-op when no active app, `ToggleMute()` method still toggles)
 
