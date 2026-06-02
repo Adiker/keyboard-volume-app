@@ -114,6 +114,9 @@ jobs:
           -DCMAKE_C_COMPILER=clang
           -DCMAKE_CXX_COMPILER=clang++
 
+      - name: Generate automoc files
+        run: cmake --build cpp/build-tidy --target keyboard-volume-app_autogen
+
       - name: Run clang-tidy on changed C++ files
         shell: bash
         run: |

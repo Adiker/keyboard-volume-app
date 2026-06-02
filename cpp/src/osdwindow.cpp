@@ -926,21 +926,6 @@ void OSDWindow::showMediaAction(const QString& actionLabel)
     setFixedSize(scaled(OSD_W), scaled(OSD_H_BASE));
 }
 
-void OSDWindow::showMediaAction(const QString& actionLabel)
-{
-    m_previewMode = false;
-    m_previewHeld = false;
-    m_bar->hide();
-    m_labelPct->hide();
-    if (m_progressRow) m_progressRow->hide();
-    m_labelName->setText(actionLabel);
-
-    auto [absX, absY] = absPos();
-    positionWindow(absX, absY);
-    OsdConfig osd = m_config->osd();
-    m_hideTimer->start(osd.timeoutMs);
-}
-
 void OSDWindow::showPreview(int screenIdx, int x, int y, int timeoutMs)
 {
     m_previewMode = true;

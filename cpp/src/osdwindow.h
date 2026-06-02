@@ -40,11 +40,12 @@ class OSDWindow : public QWidget
     void showVolume(const QString& appName, double volume, bool muted = false);
 
     // Show OSD for a media key action (play/pause/next/prev/stop). Shows only the label,
-    // Display OSD at configured position.  volume is 0.0–1.0.
-    void showVolume(const QString& appName, double volume, bool muted = false);
+    // without volume bar, percentage, or progress row.
+    void showMediaAction(const QString& actionLabel);
 
     // Show a preview OSD at the given screen-relative position.
-    // without volume bar, percentage, or progress row.
+    void showPreview(int screenIdx, int x, int y, int timeoutMs = 1500);
+
     // Hide the OSD if it is in preview mode.
     void hidePreview();
 
