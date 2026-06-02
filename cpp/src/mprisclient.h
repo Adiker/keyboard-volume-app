@@ -18,9 +18,10 @@ class MprisPlayerProxy; // one per tracked player, defined in mprisclient.cpp
 // the Qt event loop). NEVER call from PaWorker or InputHandler threads.
 //
 // Player selection:
-//   1. Filter active services by trackedPlayers substrings (case-insensitive).
-//   2. Sort by index in trackedPlayers (user priority).
-//   3. Pick first Playing → first Paused → emit noPlayer().
+//   1. Filter active services by trackedPlayers (case/format-insensitive allowlist).
+//   2. If setPreferredApp() names a focused audio app, prefer its matching player.
+//   3. Otherwise sort by trackedPlayers priority.
+//   4. Pick first Playing → first Paused → emit noPlayer().
 //
 // Position polling:
 //   QTimer fires every progressPollMs ms, but only when progressEnabled is true,
@@ -69,6 +70,10 @@ class MprisClient : public QObject
     // Re-read trackedPlayers + progressPollMs from Config and re-evaluate
     // active player. Call after settings change.
     void reload();
+
+    // Prefer the MPRIS player that matches the focused audio app. Empty string
+    // clears the preference and returns to trackedPlayers priority.
+    void setPreferredApp(const QString& app);
 
     // Suspend / resume position polling during seek drag.
     void setSeeking(bool seeking);
@@ -133,6 +138,7 @@ class MprisClient : public QObject
     void applyProperties(const QString& service, const QVariantMap& props);
     void reevaluateActive(bool forceTrackChanged = false);
     int priorityOf(const QString& service) const; // lower = higher priority; -1 = not tracked
+    bool matchesPreferredApp(const KnownPlayer& player) const;
     void pollPosition();
     void emitPositionUpdate(qint64 positionUs, const QString& source);
 
@@ -147,6 +153,7 @@ class MprisClient : public QObject
     bool m_hasActive = false;
 
     QStringList m_trackedPlayers; // cached from config
+    QString m_preferredApp;
     int m_pollMs = 500;
     qint64 m_lastPositionUs = -1;
 

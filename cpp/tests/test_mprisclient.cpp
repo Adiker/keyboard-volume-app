@@ -517,6 +517,122 @@ TEST_F(MprisClientTest, PriorityOrderRespected)
     EXPECT_TRUE(client.activePlayer().service.contains(QLatin1String("spotify")));
 }
 
+TEST_F(MprisClientTest, PreferredAppMatchesYoutubeMusicCamelCaseService)
+{
+    SKIP_IF_NO_DBUS();
+
+    OsdConfig osd = m_config->osd();
+    osd.trackedPlayers = {QStringLiteral("strawberry"), QStringLiteral("youtube-music")};
+    m_config->setOsd(osd);
+
+    FakePlayer strawberry(QStringLiteral("strawberry"));
+    strawberry.player->setStatus(QStringLiteral("Playing"));
+    strawberry.player->setMetadata(QStringLiteral("Berry"), QStringLiteral("Artist"), 100000000LL,
+                                   QStringLiteral("/t/strawberry"));
+
+    FakePlayer youtube(QStringLiteral("YoutubeMusic"));
+    youtube.player->setStatus(QStringLiteral("Paused"));
+    youtube.player->setMetadata(QStringLiteral("YT"), QStringLiteral("Artist"), 100000000LL,
+                                QStringLiteral("/t/youtube"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(waitFor(
+        [&] { return client.activePlayer().service.contains(QLatin1String("strawberry")); }));
+
+    client.setPreferredApp(QStringLiteral("youtube-music"));
+
+    EXPECT_TRUE(waitFor(
+        [&] { return client.activePlayer().service.contains(QLatin1String("YoutubeMusic")); }));
+}
+
+TEST_F(MprisClientTest, PreferredPausedPlayerWinsOverOtherPlayingPlayer)
+{
+    SKIP_IF_NO_DBUS();
+
+    OsdConfig osd = m_config->osd();
+    osd.trackedPlayers = {QStringLiteral("spotify"), QStringLiteral("strawberry")};
+    m_config->setOsd(osd);
+
+    FakePlayer spotify(QStringLiteral("spotify"));
+    spotify.player->setStatus(QStringLiteral("Playing"));
+    spotify.player->setMetadata(QStringLiteral("S"), QStringLiteral("A"), 100000000LL,
+                                QStringLiteral("/t/spotify"));
+
+    FakePlayer strawberry(QStringLiteral("strawberry"));
+    strawberry.player->setStatus(QStringLiteral("Paused"));
+    strawberry.player->setMetadata(QStringLiteral("B"), QStringLiteral("A"), 100000000LL,
+                                   QStringLiteral("/t/strawberry"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(
+        waitFor([&] { return client.activePlayer().service.contains(QLatin1String("spotify")); }));
+
+    client.setPreferredApp(QStringLiteral("Strawberry"));
+
+    EXPECT_TRUE(waitFor(
+        [&] { return client.activePlayer().service.contains(QLatin1String("strawberry")); }));
+}
+
+TEST_F(MprisClientTest, MissingPreferredAppFallsBackToPriorityOrder)
+{
+    SKIP_IF_NO_DBUS();
+
+    OsdConfig osd = m_config->osd();
+    osd.trackedPlayers = {QStringLiteral("spotify"), QStringLiteral("strawberry")};
+    m_config->setOsd(osd);
+
+    FakePlayer spotify(QStringLiteral("spotify"));
+    spotify.player->setStatus(QStringLiteral("Playing"));
+    spotify.player->setMetadata(QStringLiteral("S"), QStringLiteral("A"), 100000000LL,
+                                QStringLiteral("/t/spotify"));
+
+    FakePlayer strawberry(QStringLiteral("strawberry"));
+    strawberry.player->setStatus(QStringLiteral("Paused"));
+    strawberry.player->setMetadata(QStringLiteral("B"), QStringLiteral("A"), 100000000LL,
+                                   QStringLiteral("/t/strawberry"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(
+        waitFor([&] { return client.activePlayer().service.contains(QLatin1String("spotify")); }));
+
+    client.setPreferredApp(QStringLiteral("missing-player"));
+
+    EXPECT_TRUE(
+        waitFor([&] { return client.activePlayer().service.contains(QLatin1String("spotify")); }));
+}
+
+TEST_F(MprisClientTest, ClearingPreferredAppRestoresPriorityOrder)
+{
+    SKIP_IF_NO_DBUS();
+
+    OsdConfig osd = m_config->osd();
+    osd.trackedPlayers = {QStringLiteral("spotify"), QStringLiteral("strawberry")};
+    m_config->setOsd(osd);
+
+    FakePlayer spotify(QStringLiteral("spotify"));
+    spotify.player->setStatus(QStringLiteral("Playing"));
+    spotify.player->setMetadata(QStringLiteral("S"), QStringLiteral("A"), 100000000LL,
+                                QStringLiteral("/t/spotify"));
+
+    FakePlayer strawberry(QStringLiteral("strawberry"));
+    strawberry.player->setStatus(QStringLiteral("Paused"));
+    strawberry.player->setMetadata(QStringLiteral("B"), QStringLiteral("A"), 100000000LL,
+                                   QStringLiteral("/t/strawberry"));
+
+    MprisClient client(m_config.get());
+    ASSERT_TRUE(
+        waitFor([&] { return client.activePlayer().service.contains(QLatin1String("spotify")); }));
+
+    client.setPreferredApp(QStringLiteral("strawberry"));
+    ASSERT_TRUE(waitFor(
+        [&] { return client.activePlayer().service.contains(QLatin1String("strawberry")); }));
+
+    client.setPreferredApp(QString{});
+
+    EXPECT_TRUE(
+        waitFor([&] { return client.activePlayer().service.contains(QLatin1String("spotify")); }));
+}
+
 TEST_F(MprisClientTest, MatchesInstanceSuffixedServiceNames)
 {
     SKIP_IF_NO_DBUS();

@@ -168,7 +168,7 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 
 Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113). Scroll bindings use object form such as `{ "type": "rel", "code": 8, "direction": 1 }` for `EV_REL / REL_WHEEL`.
 
-**Media hotkeys (global, MPRIS dispatch).** `media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, `stop`. Each accepts the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Stored as `struct MediaHotkeyConfig { HotkeyBinding playPause, next, previous, stop; }` exposed via `Config::mediaHotkeys()` / `Config::setMediaHotkeys()`. Independent of profiles — `InputHandler` resolves bindings in the order **profile > scene > media**: profile bindings first (modifier-aware via `resolveProfileHotkey()`), then scene apply bindings (`resolveSceneHotkey()`, modifier-agnostic in v1, first scene wins on a duplicate binding), then `resolveMediaHotkey()`. Bound keys dispatch via signals `media_play_pause/next/previous/stop` from the InputHandler thread to `MprisClient` slots in the main thread (queued connection); `MprisClient` selects the active player using `tracked_players` priority and falls back to the first Playing → Paused player. The same controls are exposed on D-Bus as `org.keyboardvolumeapp.VolumeControl.Media{PlayPause,Next,Previous,Stop}` and via `kv-ctl media play-pause|next|previous|stop`. Debounce reuses the 100 ms profile debounce table with sentinel keys `__media__` (media) and `__scene__:<id>` (scenes).
+**Media hotkeys (global, MPRIS dispatch).** `media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, `stop`. Each accepts the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Stored as `struct MediaHotkeyConfig { HotkeyBinding playPause, next, previous, stop; }` exposed via `Config::mediaHotkeys()` / `Config::setMediaHotkeys()`. Independent of profiles — `InputHandler` resolves bindings in the order **profile > scene > media**: profile bindings first (modifier-aware via `resolveProfileHotkey()`), then scene apply bindings (`resolveSceneHotkey()`, modifier-agnostic in v1, first scene wins on a duplicate binding), then `resolveMediaHotkey()`. Bound keys dispatch via signals `media_play_pause/next/previous/stop` from the InputHandler thread to `MprisClient` slots in the main thread (queued connection). When auto-profile switching has a focused audio target, `App::onFocusedBinaryChanged()` passes it to `MprisClient::setPreferredApp()` so media controls and OSD progress prefer that matching tracked player; if no focused player matches, `MprisClient` falls back to `tracked_players` priority and first Playing → Paused. The same controls are exposed on D-Bus as `org.keyboardvolumeapp.VolumeControl.Media{PlayPause,Next,Previous,Stop}` and via `kv-ctl media play-pause|next|previous|stop`. Debounce reuses the 100 ms profile debounce table with sentinel keys `__media__` (media) and `__scene__:<id>` (scenes).
 
 **Scene hotkeys (global, scene dispatch).** Each `AudioScene` carries an optional `hotkey` binding. `InputHandler::setScenes()` / `currentScenes()` snapshot the scene list per run; assigned scene hotkeys join the grabbed-binding union so they are swallowed everywhere. A matched scene fires `scene_apply(QString sceneId)` from the InputHandler thread; `App` looks the id up in `Config` and calls `VolumeController::applyScene`. `App::onHotkeysMaybeChanged()` restarts the InputHandler when profiles, media hotkeys, **or scenes** change after Settings is saved.
 
@@ -186,7 +186,7 @@ Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linu
 
 Legacy `progress_label_mode` values are migrated on load and persisted: `"track"` → `"title_artist"`, `"both"` → `"app_track"`. Unknown values collapse to `"app"`.
 
-`tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling.
+`tracked_players` is a priority allowlist matched case/format-insensitively against MPRIS service names, so names like `YoutubeMusic` can match config entries like `youtube-music`. When focus auto-switch has a matching audio target, that target is preferred within the allowlist before the priority fallback. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling.
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
 - `struct Profile { QString id, name; QStringList apps; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; int volMin; int volMax; QString sink; }` — `sink` is the stable PulseAudio sink **name** (empty = system default; cleared in stream-restore when the user switches back to default in Settings)
@@ -366,7 +366,7 @@ Media controls row (inside `m_progressRow`, below the progress bar):
 
 Consumes external MPRIS2 players from the session bus. It detects services named `org.mpris.MediaPlayer2.*`, fetches `org.mpris.MediaPlayer2.Player` properties asynchronously, and emits active-player, track, position, playback-status and no-player signals for OSD playback progress wiring.
 
-Selection is deterministic: filter by `Config::osd().trackedPlayers`, sort by that priority list, then prefer the first Playing player over the first Paused player. Matching uses the full service suffix after `org.mpris.MediaPlayer2.`, so instance names like `vlc.7389` still match tracked player `vlc`. `reload()` re-reads tracked players and poll interval, re-evaluates the active player, and re-emits the current track so settings toggles can show an already-active player immediately.
+Selection is deterministic: filter by `Config::osd().trackedPlayers`, optionally prefer the player matching `setPreferredApp(app)` from focus auto-switch, then fall back to tracked-player priority. Within either path, Playing wins before Paused. Matching uses normalized app ids against the full service suffix after `org.mpris.MediaPlayer2.`, so instance names like `vlc.7389` still match tracked player `vlc` and format differences like `YoutubeMusic` vs `youtube-music` do not break focus-aware selection. `reload()` re-reads tracked players and poll interval, re-evaluates the active player, and re-emits the current track so settings toggles can show an already-active player immediately.
 
 `MprisClient` lives in the main Qt thread only. All D-Bus reads are async via QtDBus; do not call it from `PaWorker` or `InputHandler`. It may keep active-player and metadata state current while progress is disabled, but it must not poll `Position` unless `Config::osd().progressEnabled` is true.
 
@@ -385,6 +385,8 @@ Signals:
 - `positionChanged(qint64 positionUs)` — position polled from active player (only when `progressEnabled`)
 - `playbackStatusChanged(QString status)` — Playing/Paused/Stopped state changed
 - `noPlayer()` — no tracked player available on the session bus
+
+`setPreferredApp(QString)` is main-thread API called by `App` when auto-switch focus resolves a target app; empty string clears the preference and restores pure tracked-player priority. It must not bypass `tracked_players`: focus only chooses among user-tracked MPRIS services.
 
 Playback control slots (async D-Bus calls to the active player, no-op when no active player):
 - `playPause()` — calls `org.mpris.MediaPlayer2.Player.PlayPause()`
@@ -557,6 +559,7 @@ Window focus change (X11/XWayland)
                     └─► App::onFocusedBinaryChanged(binary)
                             ├─ matchBinaryToApp(binary) → PipeWire app name
                             ├─ Config::findProfileByApp(app) → auto_switch profile
+                            ├─ MprisClient::setPreferredApp(app) → prefer matching tracked MPRIS player
                             └─► effectiveApp() overrides volume target until focus changes
 
 OSD media control button click
@@ -739,7 +742,7 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_appmatcher` — 11 tests (focused-window → AudioApp lookup, including empty-field regression)
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
-- `test_mprisclient` — 15 tests (MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards, `mpris:artUrl` / `xesam:album` parsing, `albumArtChanged` empty-on-disconnect)
+- `test_mprisclient` — covers MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, focus-preferred player selection, polling guards, `mpris:artUrl` / `xesam:album` parsing, `albumArtChanged` empty-on-disconnect
 - `test_osdwindow` — 6 tests (progress-row regressions, label presets for `app` / `player_track` / `player_track_art` / `custom`, album-art visibility, hidden bottom line on empty custom template)
 - `test_osdlabelformat` — 9 tests (token substitution, leading/trailing/middle separator trimming, unknown tokens preserved, multi-occurrence, internal whitespace preservation, all-empty)
 - `test_dbusinterface` — 6 tests (Volume/Muted property writers route to absolute `setVolume`/`setMuted` instead of relative delta/toggle, clamping, no-op when no active app, `ToggleMute()` method still toggles)

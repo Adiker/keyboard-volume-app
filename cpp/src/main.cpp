@@ -275,6 +275,7 @@ class App : public QObject
         {
             m_autoActiveApp =
                 ::validateStickyAutoProfileTarget(m_autoActiveApp, m_config->profiles());
+            if (m_mpris) m_mpris->setPreferredApp(m_autoActiveApp);
             startWindowTracker();
         }
         else
@@ -474,6 +475,7 @@ class App : public QObject
         }
         // Auto-switch is off or shutting down: drop the sticky target.
         m_autoActiveApp.clear();
+        if (m_mpris) m_mpris->setPreferredApp(QString{});
     }
 
     void onFocusedBinaryChanged(const QString& binary)
@@ -481,11 +483,13 @@ class App : public QObject
         if (!m_config->autoProfileSwitch())
         {
             m_autoActiveApp.clear();
+            if (m_mpris) m_mpris->setPreferredApp(QString{});
             return;
         }
 
         m_autoActiveApp = ::resolveStickyAutoProfileTarget(binary, m_appCache, m_config->profiles(),
                                                            m_autoActiveApp);
+        if (m_mpris) m_mpris->setPreferredApp(m_autoActiveApp);
         if (!m_autoActiveApp.isEmpty())
         {
             const Profile matched = m_config->findProfileByApp(m_autoActiveApp);

@@ -1,4 +1,5 @@
 #include "mprisclient.h"
+#include "appmatcher.h"
 #include "config.h"
 
 #include <QDBusConnection>
@@ -174,6 +175,14 @@ void MprisClient::reload()
         m_pollMs = newMs;
         m_pollTimer->setInterval(m_pollMs);
     }
+    reevaluateActive(true);
+}
+
+void MprisClient::setPreferredApp(const QString& app)
+{
+    const QString trimmed = app.trimmed();
+    if (m_preferredApp == trimmed) return;
+    m_preferredApp = trimmed;
     reevaluateActive(true);
 }
 
@@ -492,11 +501,16 @@ int MprisClient::priorityOf(const QString& service) const
     const QString dn = serviceDisplayName(service);
     for (int i = 0; i < m_trackedPlayers.size(); ++i)
     {
-        if (dn.contains(m_trackedPlayers[i], Qt::CaseInsensitive) ||
-            m_trackedPlayers[i].contains(dn, Qt::CaseInsensitive))
-            return i;
+        if (appIdMatches(dn, m_trackedPlayers[i])) return i;
     }
     return -1; // not tracked
+}
+
+bool MprisClient::matchesPreferredApp(const KnownPlayer& player) const
+{
+    if (m_preferredApp.isEmpty()) return false;
+    return appIdMatches(player.displayName, m_preferredApp) ||
+           appIdMatches(player.service, m_preferredApp);
 }
 
 void MprisClient::reevaluateActive(bool forceTrackChanged)
@@ -511,10 +525,36 @@ void MprisClient::reevaluateActive(bool forceTrackChanged)
               [this](const KnownPlayer* a, const KnownPlayer* b)
               { return priorityOf(a->service) < priorityOf(b->service); });
 
-    // Pick first Playing, then first Paused
+    // Focus preference wins within the tracked allowlist. If the focused app
+    // has no matching MPRIS player, fall back to global priority below.
     const KnownPlayer* chosen = nullptr;
+    if (!m_preferredApp.isEmpty())
+    {
+        for (const KnownPlayer* kp : candidates)
+        {
+            if (matchesPreferredApp(*kp) && kp->status == QLatin1String("Playing"))
+            {
+                chosen = kp;
+                break;
+            }
+        }
+        if (!chosen)
+        {
+            for (const KnownPlayer* kp : candidates)
+            {
+                if (matchesPreferredApp(*kp) && kp->status == QLatin1String("Paused"))
+                {
+                    chosen = kp;
+                    break;
+                }
+            }
+        }
+    }
+
+    // Pick first Playing, then first Paused
     for (const KnownPlayer* kp : candidates)
     {
+        if (chosen) break;
         if (kp->status == QLatin1String("Playing"))
         {
             chosen = kp;
