@@ -9,6 +9,7 @@
 #endif
 
 class QHBoxLayout;
+class QHideEvent;
 class QLabel;
 class QMouseEvent;
 class QPushButton;
@@ -121,6 +122,7 @@ class OSDWindow : public QWidget
 
   protected:
     void paintEvent(QPaintEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
     void enterEvent(QEnterEvent* event) override;
     void leaveEvent(QEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
@@ -136,6 +138,7 @@ class OSDWindow : public QWidget
     QColor m_bgColor;
     bool m_previewMode = false;
     bool m_previewHeld = false;
+    bool m_mediaActionMode = false;
     int m_previewTimeoutMs = 1500;
     double m_previewScale = -1.0; // overrides config scale during settings preview; -1 = inactive
 

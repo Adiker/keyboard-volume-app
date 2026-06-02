@@ -119,6 +119,44 @@ TEST(OSDWindowGeometry, VolumeAfterMediaActionClampsWithRestoredProgressHeight)
     EXPECT_LE(window.y() + window.height(), avail.bottom() + 1);
 }
 
+TEST(OSDWindowMediaAction, MprisUpdatesDoNotReplaceActionOverlay)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OsdConfig osd = config.osd();
+    osd.progressEnabled = true;
+    osd.progressLabelMode = QStringLiteral("player_track");
+    config.setOsd(osd);
+
+    OSDWindow window(&config);
+    window.setProgressEnabled(true);
+    window.setProgressVisible(true);
+    window.showVolume(QStringLiteral("spotify"), 0.5);
+    const int progressHeight = window.height();
+
+    window.showMediaAction(QStringLiteral("Next"));
+    const int actionHeight = window.height();
+
+    window.setPlayerName(QStringLiteral("Spotify"));
+    window.updateTrack(QStringLiteral("New Title"), QStringLiteral("Artist"),
+                       QStringLiteral("Album"), 60000000LL, true);
+    window.setProgressVisible(true);
+
+    EXPECT_TRUE(window.m_mediaActionMode);
+    EXPECT_EQ(window.m_labelName->text(), QStringLiteral("Next"));
+    EXPECT_FALSE(window.m_progressRow->isVisible());
+    EXPECT_EQ(window.height(), actionHeight);
+
+    window.showVolume(QStringLiteral("spotify"), 0.6);
+    EXPECT_FALSE(window.m_mediaActionMode);
+    EXPECT_TRUE(window.m_progressRow->isVisible());
+    EXPECT_EQ(window.height(), progressHeight);
+    EXPECT_EQ(window.m_labelName->text(), QStringLiteral("Spotify"));
+    EXPECT_EQ(window.m_labelTrack->text().toStdString(), "New Title \xE2\x80\x94 Artist");
+}
+
 TEST(OSDWindowLabel, PlayerTrackArtPresetEnablesArt)
 {
     QTemporaryDir tmp;

@@ -11,6 +11,7 @@
 #include <QApplication>
 #include <QEnterEvent>
 #include <QLabel>
+#include <QHideEvent>
 #include <QMouseEvent>
 #include <QProgressBar>
 #include <QPushButton>
@@ -275,7 +276,12 @@ void OSDWindow::buildUi()
     // ── Hide timer ────────────────────────────────────────────────────────────
     m_hideTimer = new QTimer(this);
     m_hideTimer->setSingleShot(true);
-    connect(m_hideTimer, &QTimer::timeout, this, &OSDWindow::hide);
+    connect(m_hideTimer, &QTimer::timeout, this,
+            [this]
+            {
+                m_mediaActionMode = false;
+                hide();
+            });
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
@@ -362,6 +368,12 @@ void OSDWindow::paintEvent(QPaintEvent* event)
     painter.setBrush(m_bgColor);
     painter.drawRoundedRect(rect(), scaled(8), scaled(8));
     QWidget::paintEvent(event);
+}
+
+void OSDWindow::hideEvent(QHideEvent* event)
+{
+    m_mediaActionMode = false;
+    QWidget::hideEvent(event);
 }
 
 // ─── Hover — suspend hide timer ───────────────────────────────────────────────
@@ -556,6 +568,12 @@ void OSDWindow::setProgressEnabled(bool on)
         m_progressVisible = false;
         m_progressRow->setVisible(false);
         if (m_controlsRow) m_controlsRow->setVisible(false);
+        if (m_albumArt)
+        {
+            m_albumArtVisible = false;
+            m_albumArt->setVisible(false);
+        }
+        if (m_mediaActionMode) return;
         refreshAlbumArtVisibility();
         refreshNameLabel();
         applySize();
@@ -568,6 +586,12 @@ void OSDWindow::setProgressVisible(bool on)
     if (m_progressVisible == on) return;
     if (!on) finishSeeking();
     m_progressVisible = on;
+    if (!on && m_albumArt)
+    {
+        m_albumArtVisible = false;
+        m_albumArt->setVisible(false);
+    }
+    if (m_mediaActionMode) return;
     m_progressRow->setVisible(on);
     if (m_controlsRow) m_controlsRow->setVisible(on && m_mediaControlsEnabled);
     refreshAlbumArtVisibility();
@@ -751,6 +775,8 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
 
 void OSDWindow::refreshNameLabel()
 {
+    if (m_mediaActionMode) return;
+
     const OsdConfig osd = m_config->osd();
     const QString& mode = osd.progressLabelMode;
 
@@ -808,6 +834,7 @@ void OSDWindow::refreshNameLabel()
 void OSDWindow::refreshAlbumArtVisibility()
 {
     if (!m_albumArt) return;
+    if (m_mediaActionMode) return;
     const OsdConfig osd = m_config->osd();
     const bool wantArt =
         m_progressEnabled && m_progressVisible &&
@@ -850,6 +877,7 @@ void OSDWindow::updatePlaybackStatus(const QString& status)
 void OSDWindow::setMediaControlsEnabled(bool on)
 {
     m_mediaControlsEnabled = on;
+    if (m_mediaActionMode) return;
     if (m_controlsRow) m_controlsRow->setVisible(on && m_progressVisible);
     applySize();
 }
@@ -890,15 +918,18 @@ QString OSDWindow::formatTime(qint64 us)
 
 void OSDWindow::showVolume(const QString& appName, double volume, bool muted)
 {
+    m_mediaActionMode = false;
     m_previewMode = false;
     m_previewHeld = false;
     m_bar->show();
     m_labelPct->show();
     if (m_progressEnabled && m_progressVisible && m_progressRow) m_progressRow->show();
+    if (m_controlsRow) m_controlsRow->setVisible(m_progressVisible && m_mediaControlsEnabled);
     m_currentAppName = appName;
     OsdConfig osd = m_config->osd();
     int pct = qRound(volume * 100);
 
+    refreshAlbumArtVisibility();
     refreshNameLabel();
     m_bar->setValue(pct);
     m_labelPct->setText(muted ? QStringLiteral("%1%  \U0001F507").arg(pct)
@@ -912,6 +943,7 @@ void OSDWindow::showVolume(const QString& appName, double volume, bool muted)
 
 void OSDWindow::showMediaAction(const QString& actionLabel)
 {
+    m_mediaActionMode = true;
     m_previewMode = false;
     m_previewHeld = false;
     m_bar->hide();
@@ -928,6 +960,7 @@ void OSDWindow::showMediaAction(const QString& actionLabel)
 
 void OSDWindow::showPreview(int screenIdx, int x, int y, int timeoutMs)
 {
+    m_mediaActionMode = false;
     m_previewMode = true;
     m_previewHeld = false;
     m_previewTimeoutMs = timeoutMs;
@@ -935,6 +968,8 @@ void OSDWindow::showPreview(int screenIdx, int x, int y, int timeoutMs)
     m_bar->show();
     m_labelPct->show();
     if (m_progressEnabled && m_progressVisible && m_progressRow) m_progressRow->show();
+    if (m_controlsRow) m_controlsRow->setVisible(m_progressVisible && m_mediaControlsEnabled);
+    refreshAlbumArtVisibility();
 
     m_labelName->setText(::tr(QStringLiteral("osd.preview")));
     m_bar->setValue(60);
