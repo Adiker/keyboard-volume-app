@@ -20,7 +20,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-      id-token: write
     outputs:
       structured_output: ${{ steps.claude.outputs.structured_output }}
 
@@ -106,6 +105,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
           allowed_bots: "chatgpt-codex-connector[bot]"
           prompt: |
             You are verifying a Codex Cloud pull request review in this repository.
