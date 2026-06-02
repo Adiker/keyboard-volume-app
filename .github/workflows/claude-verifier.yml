@@ -147,7 +147,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       issues: write
-      pull-requests: read
+      pull-requests: write
 
     steps:
       - name: Publish Claude verifier comment
