@@ -55,6 +55,9 @@ struct OsdConfig
     // ── MPRIS fake endpoint ────────────────────────────────────────────────────
     bool exposeMpris = false; // register org.mpris.MediaPlayer2.keyboardvolumeapp (default OFF)
 
+    // ── Media keys OSD ─────────────────────────────────────────────────────────
+    bool showMediaKeysOsd = false; // show OSD overlay on play/pause/next/prev/stop (default OFF)
+
     // ── OSD scale ─────────────────────────────────────────────────────────────
     double osdScale = 1.0; // overall OSD scale factor, clamped 0.5–3.0
 };

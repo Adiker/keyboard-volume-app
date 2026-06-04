@@ -139,6 +139,32 @@ class App : public QObject
         connect(m_input, &InputHandler::media_previous, m_mpris, &MprisClient::previous);
         connect(m_input, &InputHandler::media_stop, m_mpris, &MprisClient::stop);
 
+        // Input → media keys OSD (optional, gated by OsdConfig::showMediaKeysOsd)
+        connect(m_input, &InputHandler::media_play_pause, this,
+                [this]()
+                {
+                    if (m_config->osd().showMediaKeysOsd)
+                        m_osd->showMediaAction(::tr(QStringLiteral("osd.media_play_pause")));
+                });
+        connect(m_input, &InputHandler::media_next, this,
+                [this]()
+                {
+                    if (m_config->osd().showMediaKeysOsd)
+                        m_osd->showMediaAction(::tr(QStringLiteral("osd.media_next")));
+                });
+        connect(m_input, &InputHandler::media_previous, this,
+                [this]()
+                {
+                    if (m_config->osd().showMediaKeysOsd)
+                        m_osd->showMediaAction(::tr(QStringLiteral("osd.media_previous")));
+                });
+        connect(m_input, &InputHandler::media_stop, this,
+                [this]()
+                {
+                    if (m_config->osd().showMediaKeysOsd)
+                        m_osd->showMediaAction(::tr(QStringLiteral("osd.media_stop")));
+                });
+
         // Input → scene apply (global). Look up the scene by id and route the
         // per-target loop through VolumeController::applyScene.
         connect(m_input, &InputHandler::scene_apply, this,

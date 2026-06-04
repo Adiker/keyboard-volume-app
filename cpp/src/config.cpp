@@ -706,6 +706,7 @@ OsdConfig Config::osd() const
     }
     c.mediaControlsEnabled = o[QStringLiteral("media_controls_enabled")].toBool(true);
     c.exposeMpris = o[QStringLiteral("expose_mpris")].toBool(false);
+    c.showMediaKeysOsd = o[QStringLiteral("show_media_keys_osd")].toBool(false);
     c.osdScale = std::clamp(o[QStringLiteral("osd_scale")].toDouble(1.0), 0.5, 3.0);
     return c;
 }
@@ -734,6 +735,7 @@ void Config::setOsd(const OsdConfig& c)
         {QStringLiteral("tracked_players"), tp},
         {QStringLiteral("media_controls_enabled"), c.mediaControlsEnabled},
         {QStringLiteral("expose_mpris"), c.exposeMpris},
+        {QStringLiteral("show_media_keys_osd"), c.showMediaKeysOsd},
         {QStringLiteral("osd_scale"), std::clamp(c.osdScale, 0.5, 3.0)},
     };
     saveUnlocked();
