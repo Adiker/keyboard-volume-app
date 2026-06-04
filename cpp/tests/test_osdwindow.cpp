@@ -17,6 +17,30 @@
 
 bool g_nativeWayland = false;
 
+namespace
+{
+
+void moveOsdConfig(Config& config, int x = 120, int y = 120)
+{
+    OsdConfig osd = config.osd();
+    osd.x = x;
+    osd.y = y;
+    osd.timeoutMs = 5000;
+    config.setOsd(osd);
+}
+
+QPoint screenRelativeToAbs(const OsdConfig& osd)
+{
+    const auto screens = QApplication::screens();
+    if (screens.isEmpty()) return {osd.x, osd.y};
+    int idx = osd.screen;
+    if (idx < 0 || idx >= screens.size()) idx = 0;
+    const QRect geo = screens[idx]->geometry();
+    return {geo.x() + osd.x, geo.y() + osd.y};
+}
+
+} // namespace
+
 TEST(OSDWindowProgress, SameTrackMetadataUpdatePreservesPosition)
 {
     QTemporaryDir tmp;
@@ -221,6 +245,134 @@ TEST(OSDWindowLabel, CustomEmptyBottomHidesTrackLabel)
 
     EXPECT_EQ(window.m_labelName->text().toStdString(), "Hello");
     EXPECT_FALSE(window.m_labelTrack->isVisible());
+}
+
+TEST(OSDWindowResize, RightEdgePersistsScaleAndRestartsTimer)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+    moveOsdConfig(config);
+
+    OSDWindow window(&config);
+    window.showVolume(QStringLiteral("spotify"), 0.5);
+    QApplication::processEvents();
+
+    const int oldWidth = window.width();
+    const QPoint start = window.pos() + QPoint(window.width() - 2, window.height() / 2);
+    ASSERT_TRUE(window.m_hideTimer->isActive());
+
+    window.startResize(OSDWindow::EdgeRight, start);
+    EXPECT_FALSE(window.m_hideTimer->isActive());
+    window.updateResize(start + QPoint(44, 0));
+    EXPECT_GT(window.width(), oldWidth);
+
+    window.finishResize(true);
+    EXPECT_TRUE(window.m_hideTimer->isActive());
+    EXPECT_DOUBLE_EQ(window.m_previewScale, -1.0);
+    EXPECT_NEAR(config.osd().osdScale, 1.2, 0.02);
+}
+
+TEST(OSDWindowResize, LeftTopResizeKeepsOppositeEdgesAnchored)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+    moveOsdConfig(config, 140, 140);
+
+    OSDWindow window(&config);
+    window.showVolume(QStringLiteral("spotify"), 0.5);
+    QApplication::processEvents();
+
+    const int oldRight = window.pos().x() + window.width();
+    const int oldBottom = window.pos().y() + window.height();
+    const QPoint start = window.pos() + QPoint(2, 2);
+
+    window.startResize(OSDWindow::EdgeLeft | OSDWindow::EdgeTop, start);
+    window.updateResize(start - QPoint(22, 7));
+    window.finishResize(true);
+
+    EXPECT_NEAR(config.osd().osdScale, 1.1, 0.02);
+    EXPECT_EQ(window.pos().x() + window.width(), oldRight);
+    EXPECT_EQ(window.pos().y() + window.height(), oldBottom);
+    EXPECT_EQ(screenRelativeToAbs(config.osd()), window.pos());
+}
+
+TEST(OSDWindowResize, ScaleIsClampedToConfigRange)
+{
+    {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        Config config(tmp.path());
+        moveOsdConfig(config);
+
+        OSDWindow window(&config);
+        window.showVolume(QStringLiteral("spotify"), 0.5);
+        const QPoint start = window.pos() + QPoint(window.width() - 2, window.height() / 2);
+
+        window.startResize(OSDWindow::EdgeRight, start);
+        window.updateResize(start + QPoint(10000, 0));
+        window.finishResize(true);
+        EXPECT_DOUBLE_EQ(config.osd().osdScale, 3.0);
+    }
+
+    {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        Config config(tmp.path());
+        moveOsdConfig(config);
+
+        OSDWindow window(&config);
+        window.showVolume(QStringLiteral("spotify"), 0.5);
+        const QPoint start = window.pos() + QPoint(window.width() - 2, window.height() / 2);
+
+        window.startResize(OSDWindow::EdgeRight, start);
+        window.updateResize(start - QPoint(10000, 0));
+        window.finishResize(true);
+        EXPECT_DOUBLE_EQ(config.osd().osdScale, 0.5);
+    }
+}
+
+TEST(OSDWindowResize, PreviewHeldResizeDoesNotStartHideTimer)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+    moveOsdConfig(config);
+
+    OSDWindow window(&config);
+    window.showPreviewHeld(0, 120, 120);
+    QApplication::processEvents();
+    ASSERT_FALSE(window.m_hideTimer->isActive());
+
+    const QPoint start = window.pos() + QPoint(window.width() - 2, window.height() / 2);
+    window.startResize(OSDWindow::EdgeRight, start);
+    window.updateResize(start + QPoint(44, 0));
+    window.finishResize(true);
+
+    EXPECT_FALSE(window.m_hideTimer->isActive());
+}
+
+TEST(OSDWindowResize, ProgressBarCenterIsNotAResizeGrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+    moveOsdConfig(config);
+    OsdConfig osd = config.osd();
+    osd.progressEnabled = true;
+    config.setOsd(osd);
+
+    OSDWindow window(&config);
+    window.setProgressEnabled(true);
+    window.setProgressVisible(true);
+    window.showVolume(QStringLiteral("spotify"), 0.5);
+    window.updateTrack(QStringLiteral("Title"), QStringLiteral("Artist"), 60000000LL, true);
+    QApplication::processEvents();
+
+    const QPoint center =
+        window.m_progressBar->mapTo(&window, window.m_progressBar->rect().center());
+    EXPECT_EQ(window.resizeEdgesAt(center), OSDWindow::EdgeNone);
 }
 
 int main(int argc, char** argv)

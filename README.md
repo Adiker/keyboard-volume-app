@@ -29,7 +29,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Global key capture** — reads directly from evdev input devices (keyboards and mice), works regardless of which window is focused
 - **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising configured hotkey bindings (keys or scroll) from any profile, so the desktop never intercepts them
 - **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio hotkeys (keys or mouse wheel) are reassignable via Settings → Profiles; right-click any hotkey field for an **Unassign** menu option to clear it; defaults are the dedicated media keys
-- **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; can optionally expand with MPRIS playback progress, track label and elapsed/total time; click or drag the progress bar to seek when the player allows it; live streams show `LIVE`; auto-hides after a configurable timeout
+- **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; can optionally expand with MPRIS playback progress, track label and elapsed/total time; drag any visible OSD edge or corner to resize it persistently; click or drag the progress bar to seek when the player allows it; live streams show `LIVE`; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists non-system PipeWire audio clients, including apps that are connected but not currently playing
 - **Friendly audio app names** — normalizes PipeWire/PulseAudio streams where the visible app and controllable stream differ, so wrappers such as Harmonoid can appear as the real app while still controlling the underlying stream
@@ -104,7 +104,7 @@ Ubuntu / Debian:
 sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libtag1-dev libxcb-dev libwayland-dev cmake g++ libgtest-dev
 ```
 
-Native Wayland OSD positioning is compiled in when `wayland-client` and `LayerShellQt >= 6.6` development files are available. On wlroots/KDE compositors that expose `zwlr_layer_shell_v1`, the OSD uses native Wayland layer-shell positioning. On GNOME or other compositors without that protocol, the app keeps the XWayland (`xcb`) fallback when `QT_QPA_PLATFORM` is unset. Auto-switch by focused window uses `zwlr_foreign_toplevel_management_unstable_v1` on wlroots-compatible Wayland compositors and falls back to X11/XWayland via XCB.
+Native Wayland OSD positioning is compiled in when `wayland-client` and `LayerShellQt >= 6.6` development files are available. On wlroots/KDE compositors that expose `zwlr_layer_shell_v1`, the OSD uses native Wayland layer-shell positioning. On GNOME or other compositors without that protocol, the app keeps the XWayland (`xcb`) fallback when `QT_QPA_PLATFORM` is unset. OSD resizing is handled inside the app by dragging the visible OSD edges or corners, so it works with both the native layer-shell path and the XWayland fallback. Auto-switch by focused window uses `zwlr_foreign_toplevel_management_unstable_v1` on wlroots-compatible Wayland compositors and falls back to X11/XWayland via XCB.
 
 **Build**
 ```bash
@@ -169,6 +169,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
 1. **Select audio app** — click the tray icon → pick an app from the list. Apps currently playing audio are listed first; idle apps (connected to PipeWire but paused) appear below.
 2. **Volume keys / wheel** — press the volume keys or scroll the wheel up/down to change the selected app's volume by the configured step.
 3. **Mute** — press the mute key to toggle mute on the selected app only. The OSD appears with a 🔇 indicator when muted.
+   While the OSD is visible, drag any edge or corner to resize it; the new size is saved automatically.
 4. **Refresh app list** — tray menu → *Refresh app list* to re-scan running audio apps.
 5. **Change input device** — tray menu → *Change input device...* to pick a different keyboard without restarting.
 6. **Settings** — tray menu → *Settings...* to configure:
@@ -490,7 +491,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Globalne przechwytywanie** — odczytuje zdarzenia bezpośrednio z urządzeń evdev (klawiatury i myszy), działa niezależnie od tego, które okno jest aktywne
 - **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające skonfigurowane skróty (klawisze lub zdarzenia scroll) w którymkolwiek profilu, aby system nie przechwytywał ich
 - **Konfigurowalne skróty** — Głośność w górę, Głośność w dół, Wyciszenie i tryb skupienia każdego profilu można przypisać do dowolnego klawisza lub pokrętła myszy przez Ustawienia → Profile; prawy klik na polu hotkeya otwiera menu **Wyczyść**; domyślnie są to dedykowane klawisze multimedialne
-- **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; opcjonalnie rozwija się o postęp MPRIS, etykietę utworu i czas odtwarzania; kliknięcie lub przeciągnięcie paska przewija odtwarzacz, jeśli ten na to pozwala; transmisje live pokazują `LIVE`; znika automatycznie po upływie skonfigurowanego czasu
+- **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; opcjonalnie rozwija się o postęp MPRIS, etykietę utworu i czas odtwarzania; przeciągnięcie dowolnej widocznej krawędzi lub rogu trwale zmienia rozmiar OSD; kliknięcie lub przeciągnięcie paska przewija odtwarzacz, jeśli ten na to pozwala; transmisje live pokazują `LIVE`; znika automatycznie po upływie skonfigurowanego czasu
 - **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego oraz dostęp do ustawień
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera niesystemowe klienty audio PipeWire, także aplikacje podłączone, ale aktualnie nieodtwarzające dźwięku
 - **Odzyskiwanie backendu audio** — ponownie łączy się z PulseAudio/pipewire-pulse po restarcie daemona i zachowuje skonfigurowaną wybraną aplikację
@@ -564,7 +565,7 @@ Ubuntu / Debian:
 sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libtag1-dev libxcb-dev libwayland-dev cmake g++ libgtest-dev
 ```
 
-Natywne pozycjonowanie OSD na Waylandzie jest kompilowane, gdy dostępne są pliki deweloperskie `wayland-client` oraz `LayerShellQt >= 6.6`. Na kompozytorach wlroots/KDE z protokołem `zwlr_layer_shell_v1` OSD używa natywnego pozycjonowania layer-shell. Na GNOME lub innych kompozytorach bez tego protokołu aplikacja zachowuje fallback do XWayland (`xcb`), gdy `QT_QPA_PLATFORM` nie jest ustawione. Auto-przełączanie według aktywnego okna używa `zwlr_foreign_toplevel_management_unstable_v1` na zgodnych kompozytorach Wayland i fallbacku X11/XWayland przez XCB.
+Natywne pozycjonowanie OSD na Waylandzie jest kompilowane, gdy dostępne są pliki deweloperskie `wayland-client` oraz `LayerShellQt >= 6.6`. Na kompozytorach wlroots/KDE z protokołem `zwlr_layer_shell_v1` OSD używa natywnego pozycjonowania layer-shell. Na GNOME lub innych kompozytorach bez tego protokołu aplikacja zachowuje fallback do XWayland (`xcb`), gdy `QT_QPA_PLATFORM` nie jest ustawione. Zmiana rozmiaru OSD jest obsługiwana wewnątrz aplikacji przez przeciąganie widocznych krawędzi lub rogów, więc działa zarówno w ścieżce natywnej layer-shell, jak i w fallbacku XWayland. Auto-przełączanie według aktywnego okna używa `zwlr_foreign_toplevel_management_unstable_v1` na zgodnych kompozytorach Wayland i fallbacku X11/XWayland przez XCB.
 
 **Kompilacja**
 ```bash
@@ -629,6 +630,7 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
 1. **Wybór aplikacji audio** — kliknij ikonę w zasobniku systemowym → wybierz aplikację z listy. Aplikacje aktualnie odtwarzające dźwięk są na górze; nieaktywne (podłączone do PipeWire, ale zapauzowane) pojawiają się poniżej.
 2. **Klawisze / pokrętło myszy** — naciśnij skonfigurowane klawisze głośności lub przewiń pokrętło myszy w górę albo w dół, aby zmienić głośność wybranej aplikacji o skonfigurowany krok.
 3. **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇.
+   Gdy OSD jest widoczne, przeciągnij dowolną krawędź lub róg, aby zmienić rozmiar; nowy rozmiar zapisuje się automatycznie.
 4. **Odświeżenie listy** — menu zasobnika → *Odśwież listę aplikacji*, aby ponownie wczytać aktywne aplikacje audio.
 5. **Zmiana urządzenia wejściowego** — menu zasobnika → *Zmień urządzenie wejściowe...*, aby wybrać inną klawiaturę bez restartu aplikacji.
 6. **Ustawienia** — menu zasobnika → *Ustawienia...*, aby skonfigurować:

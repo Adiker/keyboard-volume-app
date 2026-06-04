@@ -45,6 +45,8 @@ The app reads `WAYLAND_DISPLAY` / `XDG_SESSION_TYPE` at startup. On Wayland, reg
 
 Do not remove this startup decision logic from `main.cpp`, and do not set `QT_WAYLAND_SHELL_INTEGRATION=layer-shell` globally; that would turn dialogs and other windows into layer-shell surfaces too.
 
+OSD resizing is handled manually inside `OSDWindow` by detecting mouse drags on the visible edges/corners. Do not replace it with compositor/window-decoration resize APIs: native Wayland layer-shell has no normal decorated resize path, and unsupported Wayland sessions intentionally use the XWayland fallback.
+
 ## Hotkey bindings are evdev, not Qt
 
 Config `hotkeys` and all internal key handling use evdev bindings. Legacy integer values still mean **EV_KEY Linux evdev key codes** (e.g. `KEY_VOLUMEUP` = 115). New scroll bindings are stored as objects such as `{ "type": "rel", "code": 8, "direction": 1 }` for `EV_REL / REL_WHEEL`. Conversion from X11 keycodes: `evdev = X11_keycode − 8`. The `KeyCaptureDialog` in `settingsdialog.cpp` uses two capture paths in parallel: evdev thread for media keys and scroll, `QKeyEvent::nativeScanCode()` for regular keys.
@@ -75,6 +77,8 @@ If the PulseAudio context fails or terminates, `PaWorker` reconnects with backof
 Qt skips stylesheet background painting for translucent top-level windows (`WA_TranslucentBackground`). The OSD background is drawn manually in `OSDWindow::paintEvent()` via `QPainter::drawRoundedRect()`. Do not try to set OSD background via stylesheet — it won't render.
 
 After `show()`, the X11/XWayland path also sets position via `QWindow::setPosition()` on `windowHandle()`. The native Wayland path updates layer-shell margins instead of calling `move()`.
+
+Mouse resizing of the OSD is custom too: it updates the fixed widget size proportionally, persists `osd_scale` (and adjusted `screen`/`x`/`y` for left/top drags) on mouse release, and restarts the hide timer. Keep resize hit-testing separate from the progress-bar seek path so center clicks on the progress bar are not swallowed as resize gestures.
 
 ## D-Bus / MPRIS
 
