@@ -139,31 +139,15 @@ class App : public QObject
         connect(m_input, &InputHandler::media_previous, m_mpris, &MprisClient::previous);
         connect(m_input, &InputHandler::media_stop, m_mpris, &MprisClient::stop);
 
-        // Input → media keys OSD (optional, gated by OsdConfig::showMediaKeysOsd)
+        // Input → media keys OSD (off/action/full, independent of MPRIS dispatch)
         connect(m_input, &InputHandler::media_play_pause, this,
-                [this]()
-                {
-                    if (m_config->osd().showMediaKeysOsd)
-                        m_osd->showMediaAction(::tr(QStringLiteral("osd.media_play_pause")));
-                });
+                [this]() { showMediaKeyOsd(::tr(QStringLiteral("osd.media_play_pause"))); });
         connect(m_input, &InputHandler::media_next, this,
-                [this]()
-                {
-                    if (m_config->osd().showMediaKeysOsd)
-                        m_osd->showMediaAction(::tr(QStringLiteral("osd.media_next")));
-                });
+                [this]() { showMediaKeyOsd(::tr(QStringLiteral("osd.media_next"))); });
         connect(m_input, &InputHandler::media_previous, this,
-                [this]()
-                {
-                    if (m_config->osd().showMediaKeysOsd)
-                        m_osd->showMediaAction(::tr(QStringLiteral("osd.media_previous")));
-                });
+                [this]() { showMediaKeyOsd(::tr(QStringLiteral("osd.media_previous"))); });
         connect(m_input, &InputHandler::media_stop, this,
-                [this]()
-                {
-                    if (m_config->osd().showMediaKeysOsd)
-                        m_osd->showMediaAction(::tr(QStringLiteral("osd.media_stop")));
-                });
+                [this]() { showMediaKeyOsd(::tr(QStringLiteral("osd.media_stop"))); });
 
         // Input → scene apply (global). Look up the scene by id and route the
         // per-target loop through VolumeController::applyScene.
@@ -375,6 +359,43 @@ class App : public QObject
         if (app.isEmpty()) return;
         activateProfile(effectiveProfile(profileId));
         m_volumeCtrl->queryVolume(app); // async → volumeChanged → OSD
+    }
+
+    void showMediaKeyOsd(const QString& actionLabel)
+    {
+        const MediaKeysOsdMode mode = m_config->osd().mediaKeysOsdMode;
+        if (mode == MediaKeysOsdMode::Off) return;
+        if (mode == MediaKeysOsdMode::Action)
+        {
+            m_osd->showMediaAction(actionLabel);
+            return;
+        }
+
+        Profile profile;
+        QString app;
+        if (m_config->autoProfileSwitch() && !m_autoActiveApp.isEmpty())
+        {
+            app = m_autoActiveApp;
+            profile = m_config->findProfileByApp(app);
+        }
+        else
+        {
+            const QList<Profile> profiles = m_config->profiles();
+            if (!profiles.isEmpty())
+            {
+                profile = profiles.first();
+                app = profile.primaryApp();
+            }
+        }
+
+        if (app.isEmpty())
+        {
+            m_osd->showMediaAction(actionLabel);
+            return;
+        }
+
+        if (!profile.id.isEmpty()) activateProfile(profile);
+        m_volumeCtrl->queryVolume(app); // async → volumeChanged → full OSD
     }
 
     void onDeviceChangeRequested(bool startup)

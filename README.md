@@ -42,7 +42,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **`kv-ctl` CLI** — script-friendly command-line client for D-Bus control without calling the external `qdbus` program
 - **MPRIS v2** — optionally registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client; disabled by default to avoid conflicts with apps like Discord Music Presence; enable via Settings → Playback progress → "Expose fake MPRIS player endpoint"
 - **MPRIS playback tracking** — consumes other players' MPRIS metadata, position, seek support and player priority for the optional OSD playback progress features
-- **Media hotkeys** — global play-pause / next / previous / stop bindings dispatched to the active MPRIS player; configurable in Settings → Media hotkeys, also reachable via `kv-ctl media <action>` and D-Bus `MediaPlayPause/Next/Previous/Stop`
+- **Media hotkeys** — global play-pause / next / previous / stop bindings dispatched to the active MPRIS player; configurable in Settings → Media hotkeys, also reachable via `kv-ctl media <action>` and D-Bus `MediaPlayPause/Next/Previous/Stop`; their OSD can be disabled, show only the pressed action, or show the full volume OSD
 - **Marquee labels** — app and track names that exceed the OSD width scroll automatically; short labels display statically
 - **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
 - **Unit tests** — GTest + Qt Test suite covering Config, i18n, `kv-ctl` parsing, PipeWire utilities, VolumeController, InputHandler, and the MPRIS client
@@ -179,7 +179,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    - OSD opacity (0–100%)
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
-   - **Playback progress** — enable the MPRIS progress row, allow/disable interactive seeking, choose poll interval, choose app/track/both label mode, edit the comma-separated tracked-player priority list, and optionally expose a fake MPRIS v2 endpoint for desktop widgets (disabled by default)
+   - **Playback progress** — enable the MPRIS progress row, allow/disable interactive seeking, choose poll interval, choose app/track/both label mode, edit the comma-separated tracked-player priority list, choose whether media hotkeys show no OSD / only the pressed action / the full volume OSD, and optionally expose a fake MPRIS v2 endpoint for desktop widgets (disabled by default)
    - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app(s), optional **output sink** (PulseAudio device name; empty = system default), and optional Focus audio ducking hotkey; right-click any hotkey field to **Unassign** it; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls); hotkeys are shown as `"Volume Up (115)"` — human-readable name first, evdev code in parentheses
    - **Media hotkeys** — global play-pause / next / previous / stop bindings that dispatch to the active MPRIS player chosen by the built-in MPRIS consumer (priority order from *Tracked players*). Independent of profiles — when an active profile claims the same key the profile binding wins, otherwise the media binding fires. Defaults are unassigned so the app does not silently capture your existing media keys.
 

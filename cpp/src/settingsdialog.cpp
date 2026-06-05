@@ -587,10 +587,22 @@ void SettingsDialog::buildUi()
     m_exposeMpris->setChecked(osd.exposeMpris);
     progressForm->addRow(QString(), m_exposeMpris);
 
-    m_showMediaKeysOsd =
-        new QCheckBox(::tr(QStringLiteral("settings.progress.show_media_keys_osd")), this);
-    m_showMediaKeysOsd->setChecked(osd.showMediaKeysOsd);
-    progressForm->addRow(QString(), m_showMediaKeysOsd);
+    m_mediaKeysOsdMode = new QComboBox(this);
+    m_mediaKeysOsdMode->addItem(::tr(QStringLiteral("settings.progress.media_keys_osd_off")),
+                                QStringLiteral("off"));
+    m_mediaKeysOsdMode->addItem(::tr(QStringLiteral("settings.progress.media_keys_osd_action")),
+                                QStringLiteral("action"));
+    m_mediaKeysOsdMode->addItem(::tr(QStringLiteral("settings.progress.media_keys_osd_full")),
+                                QStringLiteral("full"));
+    const QString mediaOsdMode =
+        osd.mediaKeysOsdMode == MediaKeysOsdMode::Action
+            ? QStringLiteral("action")
+            : (osd.mediaKeysOsdMode == MediaKeysOsdMode::Full ? QStringLiteral("full")
+                                                              : QStringLiteral("off"));
+    const int mediaOsdIdx = m_mediaKeysOsdMode->findData(mediaOsdMode);
+    if (mediaOsdIdx >= 0) m_mediaKeysOsdMode->setCurrentIndex(mediaOsdIdx);
+    progressForm->addRow(::tr(QStringLiteral("settings.progress.media_keys_osd_mode")),
+                         m_mediaKeysOsdMode);
 
     layout->addLayout(progressForm);
 
@@ -786,7 +798,11 @@ void SettingsDialog::saveAndAccept()
     }
     osd.mediaControlsEnabled = m_mediaControlsEnabled->isChecked();
     osd.exposeMpris = m_exposeMpris->isChecked();
-    osd.showMediaKeysOsd = m_showMediaKeysOsd->isChecked();
+    const QString mediaOsdMode = m_mediaKeysOsdMode->currentData().toString();
+    osd.mediaKeysOsdMode = mediaOsdMode == QLatin1String("action")
+                               ? MediaKeysOsdMode::Action
+                               : (mediaOsdMode == QLatin1String("full") ? MediaKeysOsdMode::Full
+                                                                        : MediaKeysOsdMode::Off);
     osd.osdScale = std::clamp(m_osdScale->value(), 0.5, 3.0);
     m_config->setOsd(osd);
 
