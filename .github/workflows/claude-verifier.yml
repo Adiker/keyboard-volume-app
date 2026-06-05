@@ -133,6 +133,33 @@ jobs:
             echo "context_file=.claude-verifier/context.md"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Diagnose Anthropic API connectivity
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          set +e
+          echo "== 1. Reachability (unauthenticated, expect a fast 401 if egress works) =="
+          curl -sS -o /tmp/probe1.txt \
+            -w "http=%{http_code} connect=%{time_connect}s total=%{time_total}s\n" \
+            --max-time 25 \
+            -X POST https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
+            -d '{}'
+          echo "body: $(head -c 300 /tmp/probe1.txt)"
+          echo
+          echo "== 2. Authenticated minimal call with the OAuth token (the smoking gun) =="
+          curl -sS -o /tmp/probe2.txt \
+            -w "http=%{http_code} total=%{time_total}s\n" \
+            --max-time 60 \
+            -X POST https://api.anthropic.com/v1/messages \
+            -H "content-type: application/json" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "anthropic-beta: oauth-2025-04-20" \
+            -H "authorization: Bearer ${OAUTH_TOKEN}" \
+            -d '{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}'
+          echo "body: $(head -c 600 /tmp/probe2.txt)"
+
       - name: Write Claude structured-output schema
         if: steps.context.outputs.same_repo == 'true'
         run: |
