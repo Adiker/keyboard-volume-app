@@ -14,6 +14,14 @@ Comprehensive project docs are in `CLAUDE.md`. This file covers only the sharp e
 - Before opening a PR, run relevant build/tests if the change warrants it.
 - For risky areas (evdev, libpulse, D-Bus, MPRIS, threading, CMake, config migration), add a short risk/rollback note in the PR description.
 
+## Documentation
+
+- For every user-visible or operational change, check whether docs need updating.
+- Update `README.md` for end-user behavior, setup, configuration, CLI/D-Bus examples, and troubleshooting.
+- Update `CLAUDE.md` for architecture, build/test recipes, branch layout, sharp implementation details, and maintainer workflows.
+- Update `AGENTS.md` only for agent-specific guardrails or mistakes future agents are likely to make.
+- If no docs update is needed, mention that explicitly in the PR description.
+
 ## Branch Layout
 
 See **Branch Layout** in `CLAUDE.md` for the full table (`main`, `python-legacy`, `python-last`, `cpp-rewrite`).
