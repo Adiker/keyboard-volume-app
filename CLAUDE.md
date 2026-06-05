@@ -46,7 +46,7 @@ Test:
 
 ```bash
 cmake -S cpp -B cpp/build -DBUILD_TESTING=ON
-cmake --build cpp/build
+cmake --build cpp/build -j$(nproc)
 cd cpp/build && ctest -E test_mprisclient --output-on-failure
 cd cpp/build && dbus-run-session -- ctest -R test_mprisclient --output-on-failure
 ```
