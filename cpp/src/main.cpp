@@ -371,20 +371,17 @@ class App : public QObject
             return;
         }
 
-        Profile profile;
         QString app;
         if (m_config->autoProfileSwitch() && !m_autoActiveApp.isEmpty())
         {
             app = m_autoActiveApp;
-            profile = m_config->findProfileByApp(app);
         }
         else
         {
             const QList<Profile> profiles = m_config->profiles();
             if (!profiles.isEmpty())
             {
-                profile = profiles.first();
-                app = profile.primaryApp();
+                app = profiles.first().primaryApp();
             }
         }
 
@@ -394,7 +391,6 @@ class App : public QObject
             return;
         }
 
-        if (!profile.id.isEmpty()) activateProfile(profile);
         m_volumeCtrl->queryVolume(app); // async → volumeChanged → full OSD
     }
 
