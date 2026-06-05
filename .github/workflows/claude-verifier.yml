@@ -189,6 +189,7 @@ jobs:
           claude_args: |
             --json-schema ${{ runner.temp }}/claude-verifier-schema.json
             --max-turns 8
+            --debug
 
   publish-claude-verifier-comment:
     name: Publish Claude verifier comment
