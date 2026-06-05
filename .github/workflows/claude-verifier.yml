@@ -1,3 +1,13 @@
+# TEMPORARILY DISABLED via `if: false` on both jobs.
+# claude-code-action@v1 (CLI native build 2.1.165) hangs indefinitely with
+# zero output when authenticated via claude_code_oauth_token on GitHub-hosted
+# runners — the job only ends when timeout-minutes kills it. The OAuth token,
+# the account (not rate-limited), and network egress were all verified working
+# (a raw authenticated curl to api.anthropic.com returns 200 in <1s), so the
+# stall is inside the CLI's credential/OAuth bootstrap, not auth/limit/network.
+# Tracked upstream: https://github.com/anthropics/claude-code-action/issues/1386
+# Re-enable by removing the `false &&` guards once the upstream issue is fixed
+# (or switch the auth input to anthropic_api_key).
 name: Claude Verifier
 
 on:
@@ -5,11 +15,6 @@ on:
     types: [submitted]
   issue_comment:
     types: [created]
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: "PR number to verify (uses the latest Codex review on that PR)"
-        required: true
 
 concurrency:
   group: claude-verifier-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event.review.id || github.event.comment.id }}
@@ -19,7 +24,7 @@ jobs:
   verify-codex-review:
     name: Verify Codex review with Claude
     if: |
-      github.event_name == 'workflow_dispatch' ||
+      false &&
       (
         github.event_name == 'pull_request_review' &&
         github.event.review.user.login == 'chatgpt-codex-connector[bot]' &&
@@ -33,7 +38,7 @@ jobs:
         startsWith(github.event.comment.body, 'Codex Review:')
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: read
@@ -54,7 +59,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || github.event.inputs.pr_number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
           CODEX_EVENT_ID: ${{ github.event.review.id || github.event.comment.id }}
           REVIEW_COMMIT: ${{ github.event.review.commit_id || '' }}
         run: |
@@ -75,18 +80,7 @@ jobs:
           head_sha="$(jq -r '.head.sha' .claude-verifier/pr.json)"
           codex_source="issue_comment"
 
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            # Manual run: locate the most recent Codex review on the PR.
-            CODEX_EVENT_ID="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate \
-              --jq '[.[] | select(.user.login == "chatgpt-codex-connector[bot]")] | last | .id')"
-            if [[ -z "${CODEX_EVENT_ID}" || "${CODEX_EVENT_ID}" == "null" ]]; then
-              echo "No Codex review found on PR ${PR_NUMBER}; cannot run verifier manually." >&2
-              exit 1
-            fi
-            REVIEW_COMMIT="$(jq -r '.head.sha' .claude-verifier/pr.json)"
-          fi
-
-          if [[ "${EVENT_NAME}" == "pull_request_review" || "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+          if [[ "${EVENT_NAME}" == "pull_request_review" ]]; then
             codex_source="pull_request_review"
             gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${CODEX_EVENT_ID}" > .claude-verifier/codex-review.json
             gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${CODEX_EVENT_ID}/comments" --paginate --slurp \
@@ -133,33 +127,6 @@ jobs:
             echo "context_file=.claude-verifier/context.md"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Diagnose Anthropic API connectivity
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: |
-          set +e
-          echo "== 1. Reachability (unauthenticated, expect a fast 401 if egress works) =="
-          curl -sS -o /tmp/probe1.txt \
-            -w "http=%{http_code} connect=%{time_connect}s total=%{time_total}s\n" \
-            --max-time 25 \
-            -X POST https://api.anthropic.com/v1/messages \
-            -H "content-type: application/json" \
-            -d '{}'
-          echo "body: $(head -c 300 /tmp/probe1.txt)"
-          echo
-          echo "== 2. Authenticated minimal call with the OAuth token (the smoking gun) =="
-          curl -sS -o /tmp/probe2.txt \
-            -w "http=%{http_code} total=%{time_total}s\n" \
-            --max-time 60 \
-            -X POST https://api.anthropic.com/v1/messages \
-            -H "content-type: application/json" \
-            -H "anthropic-version: 2023-06-01" \
-            -H "anthropic-beta: oauth-2025-04-20" \
-            -H "authorization: Bearer ${OAUTH_TOKEN}" \
-            -d '{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}'
-          echo "body: $(head -c 600 /tmp/probe2.txt)"
-
       - name: Write Claude structured-output schema
         if: steps.context.outputs.same_repo == 'true'
         run: |
@@ -182,16 +149,10 @@ jobs:
       - name: Run Claude verifier
         if: steps.context.outputs.same_repo == 'true'
         id: claude
-        env:
-          DISABLE_AUTOUPDATER: "1"
-          DISABLE_TELEMETRY: "1"
-          DISABLE_ERROR_REPORTING: "1"
-          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}
-          show_full_output: true
           allowed_bots: "chatgpt-codex-connector[bot]"
           prompt: |
             You are verifying a Codex Cloud pull request review in this repository.
@@ -221,12 +182,12 @@ jobs:
           claude_args: |
             --json-schema ${{ runner.temp }}/claude-verifier-schema.json
             --max-turns 8
-            --debug
 
   publish-claude-verifier-comment:
     name: Publish Claude verifier comment
     needs: verify-codex-review
     if: |
+      false &&
       always() &&
       needs.verify-codex-review.outputs.same_repo == 'true' &&
       (
