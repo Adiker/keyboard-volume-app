@@ -1,6 +1,6 @@
 # AGENTS.md — keyboard-volume-app
 
-Comprehensive project docs are in `CLAUDE.md`. This file covers only the sharp edges an agent would otherwise guess wrong.
+Comprehensive project docs are in `ARCHITECTURE.md`. This file covers only the sharp edges an agent would otherwise guess wrong.
 
 ## Git Workflow (mandatory)
 
@@ -18,13 +18,14 @@ Comprehensive project docs are in `CLAUDE.md`. This file covers only the sharp e
 
 - For every user-visible or operational change, check whether docs need updating.
 - Update `README.md` for end-user behavior, setup, configuration, CLI/D-Bus examples, and troubleshooting.
-- Update `CLAUDE.md` for architecture, build/test recipes, branch layout, sharp implementation details, and maintainer workflows.
+- Update `ARCHITECTURE.md` for architecture, build/test recipes, branch layout, sharp implementation details, and maintainer workflows.
+- Update `CLAUDE.md` only for Claude-specific quick-start guidance.
 - Update `AGENTS.md` only for agent-specific guardrails or mistakes future agents are likely to make.
 - If no docs update is needed, mention that explicitly in the PR description.
 
 ## Branch Layout
 
-See **Branch Layout** in `CLAUDE.md` for the full table (`main`, `python-legacy`, `python-last`, `cpp-rewrite`).
+See **Branch Layout** in `ARCHITECTURE.md` for the full table (`main`, `python-legacy`, `python-last`, `cpp-rewrite`).
 
 ## Branch hygiene
 
@@ -105,7 +106,7 @@ The app registers two D-Bus services on the session bus:
 - `Qt6::DBus` is a separate CMake component — requires `find_package(Qt6 REQUIRED COMPONENTS ... DBus)`.
 - The MPRIS `Volume` property maps to `DbusInterface::volume()`. `PlaybackStatus` is always `"Stopped"`. Play/Pause/Next/Previous are no-ops. `Quit` → `qApp->quit()`.
 
-For script-friendly `dbus-send` recipes (debugging without `kv-ctl` or `qdbus`), see **D-Bus / MPRIS → `dbus-send` recipes** in `CLAUDE.md`. End-user `qdbus` examples are in `README.md`.
+For script-friendly `dbus-send` recipes (debugging without `kv-ctl` or `qdbus`), see **D-Bus / MPRIS → `dbus-send` recipes** in `ARCHITECTURE.md`. End-user `qdbus` examples are in `README.md`.
 
 ## Icon / QRC
 
@@ -113,7 +114,7 @@ The tray icon is embedded as a Qt resource: `cpp/resources.qrc` maps `../resourc
 
 ## Tests
 
-Test inventory, `ctest` invocation, and clang-tidy local recipes live in **Tests** in `CLAUDE.md`. Sharp edges only:
+Test inventory, `ctest` invocation, and clang-tidy local recipes live in **Tests** in `ARCHITECTURE.md`. Sharp edges only:
 
 - All C++ changes in `cpp/src` and `cpp/tests` must be `clang-format` compliant. Before opening a PR that touches those paths, run `clang-format --dry-run --Werror` on the changed files; if it fails, run `clang-format -i` only on the changed files rather than reformatting the whole repo.
 - CI is path-filtered: docs-only changes do not run CI; changes under `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake files, or `.github/workflows/ci.yml` do.

@@ -320,7 +320,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
      org.mpris.MediaPlayer2.Quit
    ```
 
-   The MPRIS endpoint is opt-in (Settings → Playback progress → *Expose fake MPRIS endpoint*) and stays unregistered by default to avoid being picked up by tools like `discord-music-presence`. For shell scripts that should not depend on `qdbus` being installed, see `dbus-send` recipes in `CLAUDE.md`.
+   The MPRIS endpoint is opt-in (Settings → Playback progress → *Expose fake MPRIS endpoint*) and stays unregistered by default to avoid being picked up by tools like `discord-music-presence`. For shell scripts that should not depend on `qdbus` being installed, see `dbus-send` recipes in `ARCHITECTURE.md`.
 
 > **Hotkey capture note:** the app grabs its configured hotkey bindings (keys and scroll) at the evdev level, so those exact events won't be visible to Qt while the app is running. To reassign a *currently active* hotkey, right-click the hotkey field in Settings → Profiles, choose **Unassign**, save, reopen the profile, and capture the new binding.
 
@@ -450,6 +450,7 @@ keyboard-volume-app/
 ├── .clang-format                # Code formatting configuration
 ├── LICENSE
 ├── AGENTS.md
+├── ARCHITECTURE.md
 ├── CLAUDE.md
 ├── GEMINI.md
 └── ROADMAP.md
@@ -777,7 +778,7 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
      org.mpris.MediaPlayer2.Quit
    ```
 
-   Endpoint MPRIS jest opt-in (Ustawienia → Postęp odtwarzania → *Eksponuj fałszywy endpoint MPRIS*) i domyślnie pozostaje niezarejestrowany, żeby narzędzia takie jak `discord-music-presence` go nie wykrywały. Dla skryptów powłoki, które nie powinny zależeć od obecności `qdbus`, w `CLAUDE.md` znajdziesz odpowiedniki w `dbus-send`.
+   Endpoint MPRIS jest opt-in (Ustawienia → Postęp odtwarzania → *Eksponuj fałszywy endpoint MPRIS*) i domyślnie pozostaje niezarejestrowany, żeby narzędzia takie jak `discord-music-presence` go nie wykrywały. Dla skryptów powłoki, które nie powinny zależeć od obecności `qdbus`, w `ARCHITECTURE.md` znajdziesz odpowiedniki w `dbus-send`.
 
 > **Uwaga dot. przechwytywania skrótów:** aplikacja blokuje aktualnie skonfigurowane skróty (klawisze i scroll) na poziomie evdev, więc te właśnie zdarzenia nie są widoczne dla Qt podczas działania programu. Aby zmienić *aktywny* skrót, kliknij prawym przyciskiem pole hotkeya w Ustawienia → Profile, wybierz **Wyczyść**, zapisz, otwórz profil ponownie i przechwyć nowe powiązanie.
 
@@ -907,6 +908,7 @@ keyboard-volume-app/
 ├── .clang-format                # Konfiguracja formatowania kodu
 ├── LICENSE
 ├── AGENTS.md
+├── ARCHITECTURE.md
 ├── CLAUDE.md
 ├── GEMINI.md
 └── ROADMAP.md
