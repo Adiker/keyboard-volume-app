@@ -224,13 +224,13 @@ TEST(DbusInterface, ScenesPropertyIncludesHotkey)
     meeting.id = QStringLiteral("meeting");
     meeting.name = QStringLiteral("Meeting");
     meeting.hotkey = HotkeyBinding::key(88);
-    meeting.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt}};
+    meeting.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt, std::nullopt}};
 
     AudioScene quiet;
     quiet.id = QStringLiteral("quiet");
     quiet.name = QStringLiteral("Quiet");
     // No hotkey assigned.
-    quiet.targets = {SceneTarget{QStringLiteral("Discord"), std::nullopt, true}};
+    quiet.targets = {SceneTarget{QStringLiteral("Discord"), std::nullopt, true, std::nullopt}};
 
     config.setScenes({meeting, quiet});
 
@@ -265,8 +265,8 @@ TEST(DbusInterface, ApplySceneRoutesToVolumeController)
     scene.id = QStringLiteral("meeting");
     scene.name = QStringLiteral("Meeting");
     scene.targets = {
-        SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt},
-        SceneTarget{QStringLiteral("Discord"), std::nullopt, true},
+        SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt, std::nullopt},
+        SceneTarget{QStringLiteral("Discord"), std::nullopt, true, std::nullopt},
     };
     config.setScenes({scene});
 

@@ -795,7 +795,7 @@ TEST(ConfigScenes, RoundTripSceneHotkey)
     scene.id = "meeting";
     scene.name = "Meeting";
     scene.hotkey = HotkeyBinding::key(88); // KEY_F12-ish numeric code
-    scene.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt}};
+    scene.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt, std::nullopt}};
 
     {
         Config config(tmp.path());
@@ -819,7 +819,7 @@ TEST(ConfigScenes, RoundTripSceneRelativeHotkey)
     scene.id = "wheel";
     scene.name = "Wheel";
     scene.hotkey = HotkeyBinding::relative(REL_WHEEL, -1);
-    scene.targets = {SceneTarget{QStringLiteral("Discord"), 50, std::nullopt}};
+    scene.targets = {SceneTarget{QStringLiteral("Discord"), 50, std::nullopt, std::nullopt}};
 
     {
         Config config(tmp.path());
@@ -878,13 +878,13 @@ TEST(ConfigScenes, SanitizationPreservesHotkeyAndUniqueIds)
     a.id = "scene";
     a.name = "A";
     a.hotkey = HotkeyBinding::key(200);
-    a.targets = {SceneTarget{QStringLiteral("Spotify"), 30, std::nullopt}};
+    a.targets = {SceneTarget{QStringLiteral("Spotify"), 30, std::nullopt, std::nullopt}};
 
     AudioScene b;
     b.id = "scene";
     b.name = "B";
     b.hotkey = HotkeyBinding::key(201);
-    b.targets = {SceneTarget{QStringLiteral("Discord"), 60, std::nullopt}};
+    b.targets = {SceneTarget{QStringLiteral("Discord"), 60, std::nullopt, std::nullopt}};
 
     Config config(tmp.path());
     config.setScenes({a, b});
