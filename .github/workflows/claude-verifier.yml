@@ -5,6 +5,11 @@ on:
     types: [submitted]
   issue_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to verify (uses the latest Codex review on that PR)"
+        required: true
 
 concurrency:
   group: claude-verifier-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event.review.id || github.event.comment.id }}
@@ -14,6 +19,7 @@ jobs:
   verify-codex-review:
     name: Verify Codex review with Claude
     if: |
+      github.event_name == 'workflow_dispatch' ||
       (
         github.event_name == 'pull_request_review' &&
         github.event.review.user.login == 'chatgpt-codex-connector[bot]' &&
@@ -48,7 +54,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || github.event.inputs.pr_number }}
           CODEX_EVENT_ID: ${{ github.event.review.id || github.event.comment.id }}
           REVIEW_COMMIT: ${{ github.event.review.commit_id || '' }}
         run: |
@@ -69,7 +75,18 @@ jobs:
           head_sha="$(jq -r '.head.sha' .claude-verifier/pr.json)"
           codex_source="issue_comment"
 
-          if [[ "${EVENT_NAME}" == "pull_request_review" ]]; then
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            # Manual run: locate the most recent Codex review on the PR.
+            CODEX_EVENT_ID="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate \
+              --jq '[.[] | select(.user.login == "chatgpt-codex-connector[bot]")] | last | .id')"
+            if [[ -z "${CODEX_EVENT_ID}" || "${CODEX_EVENT_ID}" == "null" ]]; then
+              echo "No Codex review found on PR ${PR_NUMBER}; cannot run verifier manually." >&2
+              exit 1
+            fi
+            REVIEW_COMMIT="$(jq -r '.head.sha' .claude-verifier/pr.json)"
+          fi
+
+          if [[ "${EVENT_NAME}" == "pull_request_review" || "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             codex_source="pull_request_review"
             gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${CODEX_EVENT_ID}" > .claude-verifier/codex-review.json
             gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews/${CODEX_EVENT_ID}/comments" --paginate --slurp \
