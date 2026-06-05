@@ -166,8 +166,12 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("settings.progress.expose_mpris"),
               QStringLiteral("Expose fake MPRIS player endpoint (may interfere with Discord Music "
                              "Presence and similar apps)")},
-             {QStringLiteral("settings.progress.show_media_keys_osd"),
-              QStringLiteral("Show OSD overlay on media key press (play/pause/next/prev/stop)")},
+             {QStringLiteral("settings.progress.media_keys_osd_mode"),
+              QStringLiteral("Media key OSD:")},
+             {QStringLiteral("settings.progress.media_keys_osd_off"), QStringLiteral("Disabled")},
+             {QStringLiteral("settings.progress.media_keys_osd_action"),
+              QStringLiteral("Pressed key only")},
+             {QStringLiteral("settings.progress.media_keys_osd_full"), QStringLiteral("Full OSD")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("OSD Preview")},
              {QStringLiteral("osd.media_play_pause"), QStringLiteral("Play / Pause")},
@@ -393,10 +397,14 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("settings.progress.expose_mpris"),
               QStringLiteral("Eksponuj fa\u0142szywy endpoint MPRIS (mo\u017ce kolidowa\u0107 z "
                              "Discord Music Presence i podobnymi aplikacjami)")},
-             {QStringLiteral("settings.progress.show_media_keys_osd"),
-              QStringLiteral("Poka\u017c nak\u0142adk\u0119 OSD przy naci\u015bni\u0119ciu "
-                             "klawiszy multimedi\u00f3w "
-                             "(play/pause/nast\u0119pny/poprzedni/stop)")},
+             {QStringLiteral("settings.progress.media_keys_osd_mode"),
+              QStringLiteral("OSD klawiszy multimedi\u00f3w:")},
+             {QStringLiteral("settings.progress.media_keys_osd_off"),
+              QStringLiteral("Wy\u0142\u0105czone")},
+             {QStringLiteral("settings.progress.media_keys_osd_action"),
+              QStringLiteral("Tylko naci\u015bni\u0119ty klawisz")},
+             {QStringLiteral("settings.progress.media_keys_osd_full"),
+              QStringLiteral("Pe\u0142ne OSD")},
              // osd
              {QStringLiteral("osd.preview"), QStringLiteral("Podgl\u0105d OSD")},
              {QStringLiteral("osd.media_play_pause"), QStringLiteral("Odtwarzaj / Pauza")},

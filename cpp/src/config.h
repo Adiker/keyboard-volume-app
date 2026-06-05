@@ -9,6 +9,13 @@
 #include <mutex>
 #include <optional>
 
+enum class MediaKeysOsdMode
+{
+    Off,
+    Action,
+    Full,
+};
+
 // ─── OSD configuration sub-struct ─────────────────────────────────────────────
 struct OsdConfig
 {
@@ -56,7 +63,7 @@ struct OsdConfig
     bool exposeMpris = false; // register org.mpris.MediaPlayer2.keyboardvolumeapp (default OFF)
 
     // ── Media keys OSD ─────────────────────────────────────────────────────────
-    bool showMediaKeysOsd = false; // show OSD overlay on play/pause/next/prev/stop (default OFF)
+    MediaKeysOsdMode mediaKeysOsdMode = MediaKeysOsdMode::Off;
 
     // ── OSD scale ─────────────────────────────────────────────────────────────
     double osdScale = 1.0; // overall OSD scale factor, clamped 0.5–3.0

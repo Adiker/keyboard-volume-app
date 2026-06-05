@@ -103,6 +103,27 @@ QString normalizeLabelMode(const QString& raw)
     return validLabelModes().contains(raw) ? raw : QStringLiteral("app");
 }
 
+QString mediaKeysOsdModeToString(MediaKeysOsdMode mode)
+{
+    switch (mode)
+    {
+    case MediaKeysOsdMode::Off:
+        return QStringLiteral("off");
+    case MediaKeysOsdMode::Action:
+        return QStringLiteral("action");
+    case MediaKeysOsdMode::Full:
+        return QStringLiteral("full");
+    }
+    return QStringLiteral("off");
+}
+
+MediaKeysOsdMode mediaKeysOsdModeFromString(const QString& raw)
+{
+    if (raw == QLatin1String("action")) return MediaKeysOsdMode::Action;
+    if (raw == QLatin1String("full")) return MediaKeysOsdMode::Full;
+    return MediaKeysOsdMode::Off;
+}
+
 QJsonArray appsArrayWithPrimary(const QJsonObject& profile, const QString& primaryApp)
 {
     if (primaryApp.isEmpty()) return {};
@@ -193,6 +214,8 @@ QJsonObject Config::defaultJson()
                          QStringLiteral("strawberry"), QStringLiteral("harmonoid")}},
              {QStringLiteral("media_controls_enabled"), true},
              {QStringLiteral("expose_mpris"), false},
+             {QStringLiteral("media_keys_osd_mode"), QStringLiteral("off")},
+             {QStringLiteral("show_media_keys_osd"), false},
              {QStringLiteral("osd_scale"), 1.0},
          }},
         {QStringLiteral("hotkeys"),
@@ -565,6 +588,35 @@ void Config::load()
                 needsSave = true;
             }
 
+            const QJsonObject loadedOsd = loaded[QStringLiteral("osd")].toObject();
+            if (!loadedOsd.contains(QStringLiteral("media_keys_osd_mode")) &&
+                loadedOsd.contains(QStringLiteral("show_media_keys_osd")))
+            {
+                osdObj[QStringLiteral("media_keys_osd_mode")] =
+                    loadedOsd[QStringLiteral("show_media_keys_osd")].toBool(false)
+                        ? QStringLiteral("action")
+                        : QStringLiteral("off");
+                osdObj[QStringLiteral("show_media_keys_osd")] =
+                    loadedOsd[QStringLiteral("show_media_keys_osd")].toBool(false);
+                m_data[QStringLiteral("osd")] = osdObj;
+                needsSave = true;
+            }
+            else
+            {
+                const QString rawMediaOsdMode =
+                    osdObj[QStringLiteral("media_keys_osd_mode")].toString();
+                const QString normMediaOsdMode =
+                    mediaKeysOsdModeToString(mediaKeysOsdModeFromString(rawMediaOsdMode));
+                if (rawMediaOsdMode != normMediaOsdMode)
+                {
+                    osdObj[QStringLiteral("media_keys_osd_mode")] = normMediaOsdMode;
+                    osdObj[QStringLiteral("show_media_keys_osd")] =
+                        normMediaOsdMode != QLatin1String("off");
+                    m_data[QStringLiteral("osd")] = osdObj;
+                    needsSave = true;
+                }
+            }
+
             if (needsSave) saveUnlocked();
             return;
         }
@@ -706,7 +758,11 @@ OsdConfig Config::osd() const
     }
     c.mediaControlsEnabled = o[QStringLiteral("media_controls_enabled")].toBool(true);
     c.exposeMpris = o[QStringLiteral("expose_mpris")].toBool(false);
-    c.showMediaKeysOsd = o[QStringLiteral("show_media_keys_osd")].toBool(false);
+    c.mediaKeysOsdMode =
+        o.contains(QStringLiteral("media_keys_osd_mode"))
+            ? mediaKeysOsdModeFromString(o[QStringLiteral("media_keys_osd_mode")].toString())
+            : (o[QStringLiteral("show_media_keys_osd")].toBool(false) ? MediaKeysOsdMode::Action
+                                                                      : MediaKeysOsdMode::Off);
     c.osdScale = std::clamp(o[QStringLiteral("osd_scale")].toDouble(1.0), 0.5, 3.0);
     return c;
 }
@@ -735,7 +791,8 @@ void Config::setOsd(const OsdConfig& c)
         {QStringLiteral("tracked_players"), tp},
         {QStringLiteral("media_controls_enabled"), c.mediaControlsEnabled},
         {QStringLiteral("expose_mpris"), c.exposeMpris},
-        {QStringLiteral("show_media_keys_osd"), c.showMediaKeysOsd},
+        {QStringLiteral("media_keys_osd_mode"), mediaKeysOsdModeToString(c.mediaKeysOsdMode)},
+        {QStringLiteral("show_media_keys_osd"), c.mediaKeysOsdMode != MediaKeysOsdMode::Off},
         {QStringLiteral("osd_scale"), std::clamp(c.osdScale, 0.5, 3.0)},
     };
     saveUnlocked();
