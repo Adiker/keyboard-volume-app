@@ -1,6 +1,6 @@
 # GEMINI.md — keyboard-volume-app
 
-This is the concise working guide for Gemini / Antigravity agents in this repository. It summarizes the rules that matter during implementation; the full project reference lives in `CLAUDE.md`, and sharp agent-specific constraints live in `AGENTS.md`.
+This is the concise working guide for Gemini / Antigravity agents in this repository. It summarizes the rules that matter during implementation; the full project reference lives in `ARCHITECTURE.md`, Claude-specific quick-start guidance lives in `CLAUDE.md`, and sharp agent-specific constraints live in `AGENTS.md`.
 
 ## Project Overview
 
@@ -137,7 +137,8 @@ Before opening a PR that touches `cpp/src` or `cpp/tests`, run `clang-format --d
 ## References
 
 - `AGENTS.md`: mandatory git workflow, branch hygiene, high-risk implementation constraints, `dbus-send` recipes for scripts.
-- `CLAUDE.md`: full architecture, module behavior, config schema, signal flow, key conventions.
+- `ARCHITECTURE.md`: full architecture, module behavior, config schema, signal flow, key conventions.
+- `CLAUDE.md`: concise Claude-specific working guide.
 - `README.md`: user-facing project overview, usage, `kv-ctl` examples, `qdbus` recipes for end users.
 - `ROADMAP.md`: prioritized backlog and merged review notes.
 

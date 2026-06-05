@@ -395,7 +395,7 @@ Pozycje pochodzące z lokalnej notatki `CODE_REVIEW.md`. Część punktów jest 
 | 5 | #36 Konfigurowalne filtry aplikacji | power user | średni | planowane |
 | 6 | #38 Testy edge case Config + reconnect VolumeController | regresje | średni | planowane |
 
-Punkty zamknięte przed datą notatki (volatile→atomic, Config thread-safety, OSDWindow leak, key repeat, singleton, PA reconnect, PipeWire bez subprocess, auto-refresh listy aplikacji, profile wieloaplikacyjne, PKGBUILD, atomic save) udokumentowane są w odpowiednich pozycjach #14, #5d, #7, #5c, #1 oraz w `CLAUDE.md` (Key Conventions) — nie powielamy ich w tej sekcji.
+Punkty zamknięte przed datą notatki (volatile→atomic, Config thread-safety, OSDWindow leak, key repeat, singleton, PA reconnect, PipeWire bez subprocess, auto-refresh listy aplikacji, profile wieloaplikacyjne, PKGBUILD, atomic save) udokumentowane są w odpowiednich pozycjach #14, #5d, #7, #5c, #1 oraz w `ARCHITECTURE.md` (Key Conventions) — nie powielamy ich w tej sekcji.
 
 ---
 
