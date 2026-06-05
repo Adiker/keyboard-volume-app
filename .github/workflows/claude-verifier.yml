@@ -182,6 +182,11 @@ jobs:
       - name: Run Claude verifier
         if: steps.context.outputs.same_repo == 'true'
         id: claude
+        env:
+          DISABLE_AUTOUPDATER: "1"
+          DISABLE_TELEMETRY: "1"
+          DISABLE_ERROR_REPORTING: "1"
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
