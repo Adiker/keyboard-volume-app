@@ -14,10 +14,10 @@ guardrails, read `AGENTS.md`. For Claude-specific quick-start context, read
 
 **keyboard-volume-app** is a Linux desktop utility that intercepts keyboard volume/mute keys at the evdev level and routes them to a single user-selected audio application, rather than the system master volume. It displays an OSD overlay (Qt6 frameless window) showing the app name, volume bar, and percentage.
 
-**Stack:** C++20, Qt6 (Widgets, DBus)  
+**Stack:** C++20, Qt6 (Widgets, DBus)
 **Audio backend:** PipeWire / PulseAudio (via libpulse IPC + libpipewire)
-**Input:** libevdev + libuinput  
-**Build system:** CMake 3.20+  
+**Input:** libevdev + libuinput
+**Build system:** CMake 3.20+
 **Platform:** Linux only (KDE Plasma primary target; native Wayland OSD on layer-shell compositors, XWayland fallback elsewhere)
 
 ---
@@ -112,7 +112,7 @@ Signal wiring:
 - `DbusInterface` sits alongside, caching volume/mute state and forwarding D-Bus calls to `VolumeController`/`TrayApp`/`Config`
 - `App::cleanup()` stops evdev, closes PA, unregisters D-Bus objects and services
 
-Build: `cmake -S cpp -B cpp/build && cmake --build cpp/build -j$(nproc)`  
+Build: `cmake -S cpp -B cpp/build && cmake --build cpp/build -j$(nproc)`
 Run: `cpp/build/keyboard-volume-app`
 
 ### `cpp/src/config.h/cpp` — `Config`
@@ -180,7 +180,7 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 
 Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113). Scroll bindings use object form such as `{ "type": "rel", "code": 8, "direction": 1 }` for `EV_REL / REL_WHEEL`.
 
-**Media hotkeys (global, MPRIS dispatch).** `media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, `stop`. Each accepts the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Stored as `struct MediaHotkeyConfig { HotkeyBinding playPause, next, previous, stop; }` exposed via `Config::mediaHotkeys()` / `Config::setMediaHotkeys()`. Independent of profiles — `InputHandler` resolves bindings in the order **profile > scene > media**: profile bindings first (modifier-aware via `resolveProfileHotkey()`), then scene apply bindings (`resolveSceneHotkey()`, modifier-agnostic in v1, first scene wins on a duplicate binding), then `resolveMediaHotkey()`. Bound keys dispatch via signals `media_play_pause/next/previous/stop` from the InputHandler thread to `MprisClient` slots in the main thread (queued connection); `MprisClient` selects the active player using `tracked_players` priority and falls back to the first Playing → Paused player. The same controls are exposed on D-Bus as `org.keyboardvolumeapp.VolumeControl.Media{PlayPause,Next,Previous,Stop}` and via `kv-ctl media play-pause|next|previous|stop`. Debounce reuses the 100 ms profile debounce table with sentinel keys `__media__` (media) and `__scene__:<id>` (scenes). `OsdConfig::mediaKeysOsdMode` controls optional OSD feedback for these hotkeys: `off` shows nothing, `action` shows only the pressed media action label, and `full` queries the selected/auto-active app volume through `VolumeController::queryVolume()` so the normal volume OSD appears.
+**Media hotkeys (global, MPRIS dispatch).** `media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, `stop`. Each accepts the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Stored as `struct MediaHotkeyConfig { HotkeyBinding playPause, next, previous, stop; }` exposed via `Config::mediaHotkeys()` / `Config::setMediaHotkeys()`. Independent of profiles — `InputHandler` resolves bindings in the order **profile > scene > media**: profile bindings first (modifier-aware via `resolveProfileHotkey()`), then scene apply bindings (`resolveSceneHotkey()`, modifier-agnostic in v1, first scene wins on a duplicate binding), then `resolveMediaHotkey()`. Bound keys dispatch via signals `media_play_pause/next/previous/stop` from the InputHandler thread to `MprisClient` slots in the main thread (queued connection); when auto-profile switching has a focused audio target, `App::onFocusedBinaryChanged()` passes it to `MprisClient::setPreferredApp()` so media controls prefer the matching tracked player. If no focused player matches, `MprisClient` falls back to `tracked_players` priority and then the first Playing → Paused player. The same controls are exposed on D-Bus as `org.keyboardvolumeapp.VolumeControl.Media{PlayPause,Next,Previous,Stop}` and via `kv-ctl media play-pause|next|previous|stop`. Debounce reuses the 100 ms profile debounce table with sentinel keys `__media__` (media) and `__scene__:<id>` (scenes). `OsdConfig::mediaKeysOsdMode` controls optional OSD feedback for these hotkeys: `off` shows nothing, `action` shows only the pressed media action label, and `full` queries the selected/auto-active app volume through `VolumeController::queryVolume()` so the normal volume OSD appears.
 
 **Scene hotkeys (global, scene dispatch).** Each `AudioScene` carries an optional `hotkey` binding. `InputHandler::setScenes()` / `currentScenes()` snapshot the scene list per run; assigned scene hotkeys join the grabbed-binding union so they are swallowed everywhere. A matched scene fires `scene_apply(QString sceneId)` from the InputHandler thread; `App` looks the id up in `Config` and calls `VolumeController::applyScene`. `App::onHotkeysMaybeChanged()` restarts the InputHandler when profiles, media hotkeys, **or scenes** change after Settings is saved.
 
@@ -198,7 +198,7 @@ Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linu
 
 Legacy `progress_label_mode` values are migrated on load and persisted: `"track"` → `"title_artist"`, `"both"` → `"app_track"`. Unknown values collapse to `"app"`.
 
-`tracked_players` is a priority list matched case-insensitively against MPRIS service names. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `media_keys_osd_mode` is `off` / `action` / `full` (default `off`); legacy `show_media_keys_osd: true` migrates to `action`, `false` migrates to `off`, and saves keep `show_media_keys_osd = mode != off` for older builds. `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling; visible OSD edges/corners can update it at runtime through custom mouse resizing.
+`tracked_players` is a priority allowlist matched case/format-insensitively against MPRIS service names, so names like `YoutubeMusic` can match config entries like `youtube-music`. When focus auto-switch has a matching audio target, that target is preferred within the allowlist before the priority fallback. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `media_keys_osd_mode` is `off` / `action` / `full` (default `off`); legacy `show_media_keys_osd: true` migrates to `action`, `false` migrates to `off`, and saves keep `show_media_keys_osd = mode != off` for older builds. `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling; visible OSD edges/corners can update it at runtime through custom mouse resizing.
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
 - `struct Profile { QString id, name; QStringList apps; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; int volMin; int volMax; QString sink; }` — `sink` is the stable PulseAudio sink **name** (empty = system default; cleared in stream-restore when the user switches back to default in Settings)
@@ -352,7 +352,7 @@ Width is `OSD_W = 220` px. All constants are logical base values — `scaled(int
 
 Mouse resize. Because the OSD is frameless/layer-shell-capable, resizing is custom: `OSDWindow` detects all edges/corners, shows resize cursors, computes a proportional scale for the current height mode, clamps it to `0.5..3.0`, stops the hide timer while dragging, and persists the final `osd_scale` plus the adjusted `screen/x/y` on mouse release. Left/top drags move the OSD so the opposite edge stays anchored. Do not replace this with platform window decorations or compositor resize calls.
 
-`showVolume(app, volume, muted)` — main display call, starts the auto-hide timer.  
+`showVolume(app, volume, muted)` — main display call, starts the auto-hide timer.
 After `show()`, position is also set via `QWindow::setPosition()` for XWayland compatibility. On native Wayland, resize still updates the fixed widget size, but position changes go through LayerShellQt margins.
 
 Progress row API:
@@ -675,8 +675,8 @@ dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-repl
 - CMake Release build with `BUILD_TESTING=OFF` and `DESTDIR` install
 - Installs: binary → `/usr/bin/`, `.desktop` → `/usr/share/applications/`, icon → `/usr/share/pixmaps/`, systemd user service → `/usr/lib/systemd/user/`
 
-To build locally: `cd pkg/arch && makepkg -f --skipchecksums`  
-To validate: `namcap PKGBUILD`  
+To build locally: `cd pkg/arch && makepkg -f --skipchecksums`
+To validate: `namcap PKGBUILD`
 Before AUR submission: `makepkg --printsrcinfo > .SRCINFO`
 
 **Distribution files installed by CMake:**

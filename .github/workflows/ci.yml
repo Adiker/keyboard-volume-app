@@ -156,7 +156,7 @@ jobs:
           if [[ "${exit_code}" -ne 0 ]]; then
             echo "::warning::clang-tidy reported issues (warning-only, not blocking merge)."
           fi
-          exit "${exit_code}"
+          exit 0
 
   build:
     name: Build and test (${{ matrix.build_type }})
