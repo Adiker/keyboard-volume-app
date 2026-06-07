@@ -136,6 +136,8 @@ class SettingsDialog : public QDialog
     void emitStylePreview();
     void saveAndAccept();
     void updateCustomLabelVisibility();
+    void onExportConfig();
+    void onImportConfig();
 
     // Profiles section
     void onAddProfile();

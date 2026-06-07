@@ -26,6 +26,7 @@
 #include <QCursor>
 #include <QMessageBox>
 #include <QObject>
+#include <QProcess>
 #include <QTimer>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -691,7 +692,18 @@ int main(int argc, char* argv[])
     app.init();
 
     int exitCode = qtApp.exec();
+    const bool restartRequested = qtApp.property("keyboardVolumeApp.restartRequested").toBool();
     app.cleanup();
+    if (restartRequested)
+    {
+        QStringList args = qtApp.arguments();
+        if (!args.isEmpty()) args.removeFirst();
+        if (!QProcess::startDetached(qtApp.applicationFilePath(), args))
+        {
+            qWarning() << "Could not restart application after config import.";
+            return 1;
+        }
+    }
     return exitCode;
 }
 

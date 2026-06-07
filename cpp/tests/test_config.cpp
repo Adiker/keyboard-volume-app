@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <QFile>
+#include <QFileInfo>
 
 #include <sys/stat.h>
 #include <unistd.h>
@@ -565,6 +566,124 @@ TEST(ConfigProfiles, RejectEmpty)
 
     auto after = config.profiles();
     EXPECT_EQ(after, before);
+}
+
+TEST(ConfigImportExport, ExportCopiesConfigFile)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Config config(tmp.path());
+    config.setLanguage("pl");
+    config.setVolumeStep(12);
+
+    const QString exportedPath = tmp.path() + "/exported.json";
+    QString error;
+    ASSERT_TRUE(config.exportToFile(exportedPath, &error)) << error.toStdString();
+
+    QFile exported(exportedPath);
+    ASSERT_TRUE(exported.open(QIODevice::ReadOnly));
+    const QJsonObject root = QJsonDocument::fromJson(exported.readAll()).object();
+    EXPECT_EQ(root["language"].toString().toStdString(), "pl");
+    EXPECT_EQ(root["volume_step"].toInt(), 12);
+}
+
+TEST(ConfigImportExport, ImportValidJsonCreatesBackupAndSynchronizesLiveConfig)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Config config(tmp.path());
+    config.setLanguage("en");
+    config.setVolumeStep(5);
+
+    const QString incomingPath = tmp.path() + "/incoming.json";
+    QFile incoming(incomingPath);
+    ASSERT_TRUE(incoming.open(QIODevice::WriteOnly));
+    incoming.write(QJsonDocument(QJsonObject{{"language", "pl"}, {"volume_step", 20}}).toJson());
+    incoming.close();
+
+    QString backupPath;
+    QString error;
+    ASSERT_TRUE(config.importFromFile(incomingPath, &backupPath, &error)) << error.toStdString();
+    EXPECT_FALSE(backupPath.isEmpty());
+    EXPECT_TRUE(QFileInfo::exists(backupPath));
+
+    QFile backup(backupPath);
+    ASSERT_TRUE(backup.open(QIODevice::ReadOnly));
+    const QJsonObject backupRoot = QJsonDocument::fromJson(backup.readAll()).object();
+    EXPECT_EQ(backupRoot["language"].toString().toStdString(), "en");
+    EXPECT_EQ(backupRoot["volume_step"].toInt(), 5);
+
+    QFile current(config.configFilePath());
+    ASSERT_TRUE(current.open(QIODevice::ReadOnly));
+    const QJsonObject currentRoot = QJsonDocument::fromJson(current.readAll()).object();
+    EXPECT_EQ(currentRoot["language"].toString().toStdString(), "pl");
+    EXPECT_EQ(currentRoot["volume_step"].toInt(), 20);
+
+    EXPECT_EQ(config.language().toStdString(), "pl");
+    EXPECT_EQ(config.volumeStep(), 20);
+
+    Config reloaded(tmp.path());
+    EXPECT_EQ(reloaded.language().toStdString(), "pl");
+    EXPECT_EQ(reloaded.volumeStep(), 20);
+}
+
+TEST(ConfigImportExport, SetterAfterImportPreservesImportedConfig)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Config config(tmp.path());
+    config.setLanguage("en");
+    config.setVolumeStep(5);
+
+    const QString incomingPath = tmp.path() + "/incoming.json";
+    QFile incoming(incomingPath);
+    ASSERT_TRUE(incoming.open(QIODevice::WriteOnly));
+    incoming.write(QJsonDocument(QJsonObject{{"language", "pl"}, {"volume_step", 20}}).toJson());
+    incoming.close();
+
+    QString error;
+    ASSERT_TRUE(config.importFromFile(incomingPath, nullptr, &error)) << error.toStdString();
+
+    config.setVolumeStep(30);
+
+    QFile current(config.configFilePath());
+    ASSERT_TRUE(current.open(QIODevice::ReadOnly));
+    const QJsonObject currentRoot = QJsonDocument::fromJson(current.readAll()).object();
+    EXPECT_EQ(currentRoot["language"].toString().toStdString(), "pl");
+    EXPECT_EQ(currentRoot["volume_step"].toInt(), 30);
+}
+
+TEST(ConfigImportExport, ImportInvalidJsonLeavesConfigAndBackupUntouched)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Config config(tmp.path());
+    config.setLanguage("en");
+
+    QFile beforeFile(config.configFilePath());
+    ASSERT_TRUE(beforeFile.open(QIODevice::ReadOnly));
+    const QByteArray before = beforeFile.readAll();
+    beforeFile.close();
+
+    const QString incomingPath = tmp.path() + "/bad.json";
+    QFile incoming(incomingPath);
+    ASSERT_TRUE(incoming.open(QIODevice::WriteOnly));
+    incoming.write("{ bad json");
+    incoming.close();
+
+    QString backupPath;
+    QString error;
+    EXPECT_FALSE(config.importFromFile(incomingPath, &backupPath, &error));
+    EXPECT_FALSE(error.isEmpty());
+    EXPECT_TRUE(backupPath.isEmpty());
+
+    QFile afterFile(config.configFilePath());
+    ASSERT_TRUE(afterFile.open(QIODevice::ReadOnly));
+    EXPECT_EQ(afterFile.readAll(), before);
 }
 
 TEST(ConfigProfiles, SetSelectedAppMirrorsToDefaultProfile)

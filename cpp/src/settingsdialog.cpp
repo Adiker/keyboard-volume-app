@@ -19,6 +19,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QDialogButtonBox>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QColorDialog>
 #include <QColor>
 #include <QScreen>
@@ -26,6 +28,7 @@
 #include <QCloseEvent>
 #include <QCursor>
 #include <QDebug>
+#include <QMessageBox>
 #include <QAction>
 #include <QTableWidget>
 #include <QHeaderView>
@@ -708,6 +711,17 @@ void SettingsDialog::buildUi()
 
     refreshScenesTable();
 
+    // Config import/export
+    auto* configBtns = new QHBoxLayout;
+    QPushButton* exportBtn = new QPushButton(::tr(QStringLiteral("settings.config.export")), this);
+    QPushButton* importBtn = new QPushButton(::tr(QStringLiteral("settings.config.import")), this);
+    configBtns->addWidget(exportBtn);
+    configBtns->addWidget(importBtn);
+    configBtns->addStretch();
+    layout->addLayout(configBtns);
+    connect(exportBtn, &QPushButton::clicked, this, &SettingsDialog::onExportConfig);
+    connect(importBtn, &QPushButton::clicked, this, &SettingsDialog::onImportConfig);
+
     // Preview button
     QPushButton* previewBtn = new QPushButton(::tr(QStringLiteral("settings.preview_btn")), this);
     connect(previewBtn, &QPushButton::pressed, this, &SettingsDialog::onPreviewPressed);
@@ -764,6 +778,63 @@ void SettingsDialog::emitStylePreview()
     emit stylePreview(m_colorBg->color(), m_colorText->color(), m_colorBar->color(),
                       m_opacity->value());
     emitPositionPreview();
+}
+
+void SettingsDialog::onExportConfig()
+{
+    const QString destination = QFileDialog::getSaveFileName(
+        this, ::tr(QStringLiteral("settings.config.export_title")), m_config->configFilePath(),
+        ::tr(QStringLiteral("settings.config.file_filter")));
+    if (destination.isEmpty()) return;
+
+    QString error;
+    if (!m_config->exportToFile(destination, &error))
+    {
+        QMessageBox::warning(this, ::tr(QStringLiteral("settings.config.export_error_title")),
+                             ::tr(QStringLiteral("settings.config.export_error_msg")).arg(error));
+        return;
+    }
+
+    QMessageBox::information(this, ::tr(QStringLiteral("settings.config.export_success_title")),
+                             ::tr(QStringLiteral("settings.config.export_success_msg"))
+                                 .arg(QFileInfo(destination).absoluteFilePath()));
+}
+
+void SettingsDialog::onImportConfig()
+{
+    const QString source =
+        QFileDialog::getOpenFileName(this, ::tr(QStringLiteral("settings.config.import_title")),
+                                     QFileInfo(m_config->configFilePath()).absolutePath(),
+                                     ::tr(QStringLiteral("settings.config.file_filter")));
+    if (source.isEmpty()) return;
+
+    QMessageBox importPrompt(this);
+    importPrompt.setIcon(QMessageBox::Question);
+    importPrompt.setWindowTitle(::tr(QStringLiteral("settings.config.import_confirm_title")));
+    importPrompt.setText(::tr(QStringLiteral("settings.config.import_confirm_msg")));
+    QPushButton* restartButton = importPrompt.addButton(
+        ::tr(QStringLiteral("settings.config.restart_now")), QMessageBox::AcceptRole);
+    importPrompt.addButton(::tr(QStringLiteral("settings.config.exit")),
+                           QMessageBox::DestructiveRole);
+    QPushButton* cancelButton = importPrompt.addButton(
+        ::tr(QStringLiteral("settings.config.cancel")), QMessageBox::RejectRole);
+    importPrompt.setDefaultButton(restartButton);
+    importPrompt.exec();
+    if (importPrompt.clickedButton() == cancelButton) return;
+    const bool restartRequested = importPrompt.clickedButton() == restartButton;
+
+    QString backupPath;
+    QString error;
+    if (!m_config->importFromFile(source, &backupPath, &error))
+    {
+        QMessageBox::warning(this, ::tr(QStringLiteral("settings.config.import_error_title")),
+                             ::tr(QStringLiteral("settings.config.import_error_msg")).arg(error));
+        return;
+    }
+
+    Q_UNUSED(backupPath);
+    if (restartRequested) qApp->setProperty("keyboardVolumeApp.restartRequested", true);
+    qApp->quit();
 }
 
 void SettingsDialog::saveAndAccept()
