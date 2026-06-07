@@ -288,6 +288,10 @@ class Config
     void save() const;
 
     bool isFirstRun() const;
+    QString configFilePath() const;
+    bool exportToFile(const QString& destination, QString* error = nullptr) const;
+    bool importFromFile(const QString& source, QString* backupPath = nullptr,
+                        QString* error = nullptr);
 
     // input device
     QString inputDevice() const;
@@ -361,6 +365,7 @@ class Config
     static QJsonObject defaultJson();
 
     void saveUnlocked() const;
+    bool applyLoadedJsonUnlocked(const QJsonObject& loaded);
 
     // Profile <-> JSON conversion helpers (locks NOT held by these)
     static QJsonObject profileToJson(const Profile& p);

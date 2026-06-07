@@ -4,11 +4,13 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QDebug>
+#include <QDateTime>
 #include <QStringList>
 #include <algorithm>
 
@@ -122,6 +124,11 @@ MediaKeysOsdMode mediaKeysOsdModeFromString(const QString& raw)
     if (raw == QLatin1String("action")) return MediaKeysOsdMode::Action;
     if (raw == QLatin1String("full")) return MediaKeysOsdMode::Full;
     return MediaKeysOsdMode::Off;
+}
+
+void setError(QString* error, const QString& message)
+{
+    if (error) *error = message;
 }
 
 QJsonArray appsArrayWithPrimary(const QJsonObject& profile, const QString& primaryApp)
@@ -538,6 +545,75 @@ Config::Config(const QString& configDir) : m_configDir(configDir)
     load();
 }
 
+bool Config::applyLoadedJsonUnlocked(const QJsonObject& loaded)
+{
+    m_data = deepMerge(defaultJson(), loaded);
+    // If the loaded file had no "profiles" key, deepMerge gave us the
+    // default profile from defaultJson(). But if it had legacy selected_app +
+    // hotkeys with non-default values, those wouldn't be reflected. Also
+    // recover when the new-schema profiles key is present but empty or contains
+    // no valid profile entries.
+    const bool needsProfileMigration =
+        !loaded.contains(QStringLiteral("profiles")) ||
+        profilesFromJson(m_data[QStringLiteral("profiles")].toArray()).isEmpty();
+    bool needsSave = false;
+    if (needsProfileMigration)
+    {
+        // Replace synthetic/invalid profiles with one built from legacy fields.
+        m_data[QStringLiteral("profiles")] = QJsonArray{};
+        migrateLegacyToProfilesUnlocked();
+        mirrorDefaultProfileToLegacyUnlocked();
+        needsSave = true;
+    }
+    else
+    {
+        // New schema present; still mirror profile[0] to legacy fields so
+        // anything reading them sees current values.
+        mirrorDefaultProfileToLegacyUnlocked();
+    }
+
+    // Persist legacy OSD label-mode rename: "track" → "title_artist", "both"
+    // → "app_track". Anything unknown collapses to "app".
+    QJsonObject osdObj = m_data[QStringLiteral("osd")].toObject();
+    const QString rawMode = osdObj[QStringLiteral("progress_label_mode")].toString();
+    const QString normMode = normalizeLabelMode(rawMode);
+    if (rawMode != normMode)
+    {
+        osdObj[QStringLiteral("progress_label_mode")] = normMode;
+        m_data[QStringLiteral("osd")] = osdObj;
+        needsSave = true;
+    }
+
+    const QJsonObject loadedOsd = loaded[QStringLiteral("osd")].toObject();
+    if (!loadedOsd.contains(QStringLiteral("media_keys_osd_mode")) &&
+        loadedOsd.contains(QStringLiteral("show_media_keys_osd")))
+    {
+        osdObj[QStringLiteral("media_keys_osd_mode")] =
+            loadedOsd[QStringLiteral("show_media_keys_osd")].toBool(false)
+                ? QStringLiteral("action")
+                : QStringLiteral("off");
+        osdObj[QStringLiteral("show_media_keys_osd")] =
+            loadedOsd[QStringLiteral("show_media_keys_osd")].toBool(false);
+        m_data[QStringLiteral("osd")] = osdObj;
+        needsSave = true;
+    }
+    else
+    {
+        const QString rawMediaOsdMode = osdObj[QStringLiteral("media_keys_osd_mode")].toString();
+        const QString normMediaOsdMode =
+            mediaKeysOsdModeToString(mediaKeysOsdModeFromString(rawMediaOsdMode));
+        if (rawMediaOsdMode != normMediaOsdMode)
+        {
+            osdObj[QStringLiteral("media_keys_osd_mode")] = normMediaOsdMode;
+            osdObj[QStringLiteral("show_media_keys_osd")] =
+                normMediaOsdMode != QLatin1String("off");
+            m_data[QStringLiteral("osd")] = osdObj;
+            needsSave = true;
+        }
+    }
+    return needsSave;
+}
+
 void Config::load()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -550,74 +626,7 @@ void Config::load()
         f.close();
         if (err.error == QJsonParseError::NoError && doc.isObject())
         {
-            const QJsonObject loaded = doc.object();
-            m_data = deepMerge(defaultJson(), loaded);
-            // If the loaded file had no "profiles" key, deepMerge gave us the
-            // default profile from defaultJson(). But if it had legacy
-            // selected_app + hotkeys with non-default values, those wouldn't
-            // be reflected. Also recover when the new-schema profiles key is
-            // present but empty or contains no valid profile entries.
-            const bool needsProfileMigration =
-                !loaded.contains(QStringLiteral("profiles")) ||
-                profilesFromJson(m_data[QStringLiteral("profiles")].toArray()).isEmpty();
-            bool needsSave = false;
-            if (needsProfileMigration)
-            {
-                // Replace synthetic/invalid profiles with one built from legacy fields.
-                m_data[QStringLiteral("profiles")] = QJsonArray{};
-                migrateLegacyToProfilesUnlocked();
-                mirrorDefaultProfileToLegacyUnlocked();
-                needsSave = true;
-            }
-            else
-            {
-                // New schema present; still mirror profile[0] to legacy fields
-                // so anything reading them sees current values.
-                mirrorDefaultProfileToLegacyUnlocked();
-            }
-
-            // Persist legacy OSD label-mode rename: "track" → "title_artist",
-            // "both" → "app_track". Anything unknown collapses to "app".
-            QJsonObject osdObj = m_data[QStringLiteral("osd")].toObject();
-            const QString rawMode = osdObj[QStringLiteral("progress_label_mode")].toString();
-            const QString normMode = normalizeLabelMode(rawMode);
-            if (rawMode != normMode)
-            {
-                osdObj[QStringLiteral("progress_label_mode")] = normMode;
-                m_data[QStringLiteral("osd")] = osdObj;
-                needsSave = true;
-            }
-
-            const QJsonObject loadedOsd = loaded[QStringLiteral("osd")].toObject();
-            if (!loadedOsd.contains(QStringLiteral("media_keys_osd_mode")) &&
-                loadedOsd.contains(QStringLiteral("show_media_keys_osd")))
-            {
-                osdObj[QStringLiteral("media_keys_osd_mode")] =
-                    loadedOsd[QStringLiteral("show_media_keys_osd")].toBool(false)
-                        ? QStringLiteral("action")
-                        : QStringLiteral("off");
-                osdObj[QStringLiteral("show_media_keys_osd")] =
-                    loadedOsd[QStringLiteral("show_media_keys_osd")].toBool(false);
-                m_data[QStringLiteral("osd")] = osdObj;
-                needsSave = true;
-            }
-            else
-            {
-                const QString rawMediaOsdMode =
-                    osdObj[QStringLiteral("media_keys_osd_mode")].toString();
-                const QString normMediaOsdMode =
-                    mediaKeysOsdModeToString(mediaKeysOsdModeFromString(rawMediaOsdMode));
-                if (rawMediaOsdMode != normMediaOsdMode)
-                {
-                    osdObj[QStringLiteral("media_keys_osd_mode")] = normMediaOsdMode;
-                    osdObj[QStringLiteral("show_media_keys_osd")] =
-                        normMediaOsdMode != QLatin1String("off");
-                    m_data[QStringLiteral("osd")] = osdObj;
-                    needsSave = true;
-                }
-            }
-
-            if (needsSave) saveUnlocked();
+            if (applyLoadedJsonUnlocked(doc.object())) saveUnlocked();
             return;
         }
         qWarning() << "[Config] Parse error:" << err.errorString();
@@ -631,6 +640,12 @@ bool Config::isFirstRun() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_firstRun;
+}
+
+QString Config::configFilePath() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return configFile();
 }
 
 void Config::save() const
@@ -658,6 +673,143 @@ void Config::saveUnlocked() const
     }
 
     if (!f.commit()) qWarning() << "[Config] Cannot commit" << configFile() << f.errorString();
+}
+
+bool Config::exportToFile(const QString& destination, QString* error) const
+{
+    const QString target = destination.trimmed();
+    if (target.isEmpty())
+    {
+        setError(error, QStringLiteral("No destination file selected."));
+        return false;
+    }
+
+    const QString source = configFilePath();
+    const QFileInfo sourceInfo(source);
+    const QFileInfo targetInfo(target);
+    if (sourceInfo.exists() && targetInfo.exists() &&
+        sourceInfo.canonicalFilePath() == targetInfo.canonicalFilePath())
+    {
+        setError(error, QStringLiteral("Destination is the current config file."));
+        return false;
+    }
+
+    QFile in(source);
+    if (!in.open(QIODevice::ReadOnly))
+    {
+        setError(error, QStringLiteral("Cannot read current config: %1").arg(in.errorString()));
+        return false;
+    }
+    const QByteArray data = in.readAll();
+    if (in.error() != QFile::NoError)
+    {
+        setError(error, QStringLiteral("Cannot read current config: %1").arg(in.errorString()));
+        return false;
+    }
+
+    QDir().mkpath(targetInfo.absolutePath());
+    QSaveFile out(target);
+    out.setDirectWriteFallback(false);
+    if (!out.open(QIODevice::WriteOnly))
+    {
+        setError(error, QStringLiteral("Cannot open destination: %1").arg(out.errorString()));
+        return false;
+    }
+    if (out.write(data) != data.size())
+    {
+        setError(error, QStringLiteral("Cannot write destination: %1").arg(out.errorString()));
+        return false;
+    }
+    if (!out.commit())
+    {
+        setError(error, QStringLiteral("Cannot save destination: %1").arg(out.errorString()));
+        return false;
+    }
+    return true;
+}
+
+bool Config::importFromFile(const QString& source, QString* backupPath, QString* error)
+{
+    if (backupPath) backupPath->clear();
+
+    const QString importPath = source.trimmed();
+    if (importPath.isEmpty())
+    {
+        setError(error, QStringLiteral("No source file selected."));
+        return false;
+    }
+
+    QFile in(importPath);
+    if (!in.open(QIODevice::ReadOnly))
+    {
+        setError(error, QStringLiteral("Cannot read selected file: %1").arg(in.errorString()));
+        return false;
+    }
+    const QByteArray data = in.readAll();
+    if (in.error() != QFile::NoError)
+    {
+        setError(error, QStringLiteral("Cannot read selected file: %1").arg(in.errorString()));
+        return false;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !doc.isObject())
+    {
+        setError(error, QStringLiteral("Selected file is not a valid JSON config."));
+        return false;
+    }
+
+    const QString destination = configFilePath();
+    const QFileInfo sourceInfo(importPath);
+    const QFileInfo destinationInfo(destination);
+    if (sourceInfo.exists() && destinationInfo.exists() &&
+        sourceInfo.canonicalFilePath() == destinationInfo.canonicalFilePath())
+    {
+        setError(error, QStringLiteral("Selected file is already the current config file."));
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
+        QDir().mkpath(destinationInfo.absolutePath());
+        if (destinationInfo.exists())
+        {
+            const QString backup =
+                destination + QStringLiteral(".backup-") +
+                QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"));
+            if (!QFile::copy(destination, backup))
+            {
+                setError(error, QStringLiteral("Cannot create backup file."));
+                return false;
+            }
+            if (backupPath) *backupPath = backup;
+        }
+
+        QSaveFile out(destination);
+        out.setDirectWriteFallback(false);
+        if (!out.open(QIODevice::WriteOnly))
+        {
+            setError(error,
+                     QStringLiteral("Cannot open config for import: %1").arg(out.errorString()));
+            return false;
+        }
+        if (out.write(data) != data.size())
+        {
+            setError(error,
+                     QStringLiteral("Cannot write imported config: %1").arg(out.errorString()));
+            return false;
+        }
+        if (!out.commit())
+        {
+            setError(error,
+                     QStringLiteral("Cannot save imported config: %1").arg(out.errorString()));
+            return false;
+        }
+        if (applyLoadedJsonUnlocked(doc.object())) saveUnlocked();
+    }
+    return true;
 }
 
 // ─── Getters / setters ────────────────────────────────────────────────────────

@@ -326,7 +326,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
 
 ### Configuration
 
-Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`). Writes are atomic, so a failed save keeps the previous file intact.
+Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`). Writes are atomic, so a failed save keeps the previous file intact. Settings can export this file or import another valid JSON config; before import, Settings asks whether to restart immediately or exit after success. Import creates a `config.json.backup-*` backup and closes the app so the imported config cannot be overwritten by stale in-memory settings.
 
 ```json
 {
@@ -784,7 +784,7 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
 
 ### Konfiguracja
 
-Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`). Zapisy są atomowe, więc nieudany zapis zostawia poprzedni plik bez zmian.
+Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`). Zapisy są atomowe, więc nieudany zapis zostawia poprzedni plik bez zmian. Ustawienia pozwalają wyeksportować ten plik albo zaimportować inny poprawny config JSON; przed importem pytają, czy po sukcesie uruchomić aplikację ponownie od razu, czy ją zamknąć. Import tworzy backup `config.json.backup-*` i zamyka aplikację, żeby zaimportowana konfiguracja nie została nadpisana starymi ustawieniami z pamięci.
 
 ```json
 {
