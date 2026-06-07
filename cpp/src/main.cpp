@@ -139,6 +139,16 @@ class App : public QObject
         connect(m_input, &InputHandler::media_previous, m_mpris, &MprisClient::previous);
         connect(m_input, &InputHandler::media_stop, m_mpris, &MprisClient::stop);
 
+        // Input → media keys OSD (off/action/full, independent of MPRIS dispatch)
+        connect(m_input, &InputHandler::media_play_pause, this,
+                [this]() { showMediaKeyOsd(::tr(QStringLiteral("osd.media_play_pause"))); });
+        connect(m_input, &InputHandler::media_next, this,
+                [this]() { showMediaKeyOsd(::tr(QStringLiteral("osd.media_next"))); });
+        connect(m_input, &InputHandler::media_previous, this,
+                [this]() { showMediaKeyOsd(::tr(QStringLiteral("osd.media_previous"))); });
+        connect(m_input, &InputHandler::media_stop, this,
+                [this]() { showMediaKeyOsd(::tr(QStringLiteral("osd.media_stop"))); });
+
         // Input → scene apply (global). Look up the scene by id and route the
         // per-target loop through VolumeController::applyScene.
         connect(m_input, &InputHandler::scene_apply, this,
@@ -350,6 +360,39 @@ class App : public QObject
         if (app.isEmpty()) return;
         activateProfile(effectiveProfile(profileId));
         m_volumeCtrl->queryVolume(app); // async → volumeChanged → OSD
+    }
+
+    void showMediaKeyOsd(const QString& actionLabel)
+    {
+        const MediaKeysOsdMode mode = m_config->osd().mediaKeysOsdMode;
+        if (mode == MediaKeysOsdMode::Off) return;
+        if (mode == MediaKeysOsdMode::Action)
+        {
+            m_osd->showMediaAction(actionLabel);
+            return;
+        }
+
+        QString app;
+        if (m_config->autoProfileSwitch() && !m_autoActiveApp.isEmpty())
+        {
+            app = m_autoActiveApp;
+        }
+        else
+        {
+            const QList<Profile> profiles = m_config->profiles();
+            if (!profiles.isEmpty())
+            {
+                app = profiles.first().primaryApp();
+            }
+        }
+
+        if (app.isEmpty())
+        {
+            m_osd->showMediaAction(actionLabel);
+            return;
+        }
+
+        m_volumeCtrl->queryVolume(app); // async → volumeChanged → full OSD
     }
 
     void onDeviceChangeRequested(bool startup)

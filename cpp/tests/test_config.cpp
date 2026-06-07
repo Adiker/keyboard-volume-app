@@ -795,7 +795,7 @@ TEST(ConfigScenes, RoundTripSceneHotkey)
     scene.id = "meeting";
     scene.name = "Meeting";
     scene.hotkey = HotkeyBinding::key(88); // KEY_F12-ish numeric code
-    scene.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt}};
+    scene.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt, std::nullopt}};
 
     {
         Config config(tmp.path());
@@ -819,7 +819,7 @@ TEST(ConfigScenes, RoundTripSceneRelativeHotkey)
     scene.id = "wheel";
     scene.name = "Wheel";
     scene.hotkey = HotkeyBinding::relative(REL_WHEEL, -1);
-    scene.targets = {SceneTarget{QStringLiteral("Discord"), 50, std::nullopt}};
+    scene.targets = {SceneTarget{QStringLiteral("Discord"), 50, std::nullopt, std::nullopt}};
 
     {
         Config config(tmp.path());
@@ -878,13 +878,13 @@ TEST(ConfigScenes, SanitizationPreservesHotkeyAndUniqueIds)
     a.id = "scene";
     a.name = "A";
     a.hotkey = HotkeyBinding::key(200);
-    a.targets = {SceneTarget{QStringLiteral("Spotify"), 30, std::nullopt}};
+    a.targets = {SceneTarget{QStringLiteral("Spotify"), 30, std::nullopt, std::nullopt}};
 
     AudioScene b;
     b.id = "scene";
     b.name = "B";
     b.hotkey = HotkeyBinding::key(201);
-    b.targets = {SceneTarget{QStringLiteral("Discord"), 60, std::nullopt}};
+    b.targets = {SceneTarget{QStringLiteral("Discord"), 60, std::nullopt, std::nullopt}};
 
     Config config(tmp.path());
     config.setScenes({a, b});
@@ -953,6 +953,7 @@ TEST(ConfigOsdProgress, DefaultsAreOff)
     EXPECT_TRUE(osd.progressInteractive);
     EXPECT_EQ(osd.progressPollMs, 500);
     EXPECT_EQ(osd.progressLabelMode.toStdString(), "app");
+    EXPECT_EQ(osd.mediaKeysOsdMode, MediaKeysOsdMode::Off);
     EXPECT_EQ(osd.trackedPlayers.size(), 4);
     EXPECT_EQ(osd.trackedPlayers[0].toStdString(), "spotify");
     EXPECT_EQ(osd.trackedPlayers[1].toStdString(), "youtube");
@@ -1154,6 +1155,92 @@ TEST(ConfigOsdProgress, MediaControlsRoundTrip)
 
     Config config2(tmp.path());
     EXPECT_FALSE(config2.osd().mediaControlsEnabled);
+}
+
+TEST(ConfigOsdProgress, LegacyShowMediaKeysOsdTrueMigratesToAction)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject osdObj{{QStringLiteral("show_media_keys_osd"), true}};
+    QJsonObject root{{QStringLiteral("osd"), osdObj}};
+    f.write(QJsonDocument(root).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    EXPECT_EQ(config.osd().mediaKeysOsdMode, MediaKeysOsdMode::Action);
+}
+
+TEST(ConfigOsdProgress, LegacyShowMediaKeysOsdFalseMigratesToOff)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject osdObj{{QStringLiteral("show_media_keys_osd"), false}};
+    QJsonObject root{{QStringLiteral("osd"), osdObj}};
+    f.write(QJsonDocument(root).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    EXPECT_EQ(config.osd().mediaKeysOsdMode, MediaKeysOsdMode::Off);
+}
+
+TEST(ConfigOsdProgress, MediaKeysOsdModeRoundTripFullWithLegacyBool)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OsdConfig osd = config.osd();
+    osd.mediaKeysOsdMode = MediaKeysOsdMode::Full;
+    config.setOsd(osd);
+
+    Config config2(tmp.path());
+    EXPECT_EQ(config2.osd().mediaKeysOsdMode, MediaKeysOsdMode::Full);
+
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    const QJsonObject osdObj = root[QStringLiteral("osd")].toObject();
+    EXPECT_EQ(osdObj[QStringLiteral("media_keys_osd_mode")].toString().toStdString(), "full");
+    EXPECT_TRUE(osdObj[QStringLiteral("show_media_keys_osd")].toBool(false));
+}
+
+TEST(ConfigOsdProgress, MediaKeysOsdModeTakesPrecedenceOverLegacyBool)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject osdObj{{QStringLiteral("media_keys_osd_mode"), QStringLiteral("full")},
+                       {QStringLiteral("show_media_keys_osd"), false}};
+    QJsonObject root{{QStringLiteral("osd"), osdObj}};
+    f.write(QJsonDocument(root).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    EXPECT_EQ(config.osd().mediaKeysOsdMode, MediaKeysOsdMode::Full);
+}
+
+TEST(ConfigOsdProgress, UnknownMediaKeysOsdModeNormalizesToOff)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    QFile f(tmp.path() + QStringLiteral("/config.json"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonObject osdObj{{QStringLiteral("media_keys_osd_mode"), QStringLiteral("sideways")}};
+    QJsonObject root{{QStringLiteral("osd"), osdObj}};
+    f.write(QJsonDocument(root).toJson());
+    f.close();
+
+    Config config(tmp.path());
+    EXPECT_EQ(config.osd().mediaKeysOsdMode, MediaKeysOsdMode::Off);
 }
 
 TEST(ConfigOsdProgress, OsdScaleDefaultOne)

@@ -1,3 +1,13 @@
+# TEMPORARILY DISABLED via `if: false` on both jobs.
+# claude-code-action@v1 (CLI native build 2.1.165) hangs indefinitely with
+# zero output when authenticated via claude_code_oauth_token on GitHub-hosted
+# runners — the job only ends when timeout-minutes kills it. The OAuth token,
+# the account (not rate-limited), and network egress were all verified working
+# (a raw authenticated curl to api.anthropic.com returns 200 in <1s), so the
+# stall is inside the CLI's credential/OAuth bootstrap, not auth/limit/network.
+# Tracked upstream: https://github.com/anthropics/claude-code-action/issues/1386
+# Re-enable by removing the `false &&` guards once the upstream issue is fixed
+# (or switch the auth input to anthropic_api_key).
 name: Claude Verifier
 
 on:
@@ -14,6 +24,7 @@ jobs:
   verify-codex-review:
     name: Verify Codex review with Claude
     if: |
+      false &&
       (
         github.event_name == 'pull_request_review' &&
         github.event.review.user.login == 'chatgpt-codex-connector[bot]' &&
@@ -176,6 +187,7 @@ jobs:
     name: Publish Claude verifier comment
     needs: verify-codex-review
     if: |
+      false &&
       always() &&
       needs.verify-codex-review.outputs.same_repo == 'true' &&
       (

@@ -441,7 +441,7 @@ AudioScene mkScene(const QString& id, const HotkeyBinding& hotkey)
     s.id = id;
     s.name = id;
     s.hotkey = hotkey;
-    s.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt}};
+    s.targets = {SceneTarget{QStringLiteral("Spotify"), 10, std::nullopt, std::nullopt}};
     return s;
 }
 } // namespace

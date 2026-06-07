@@ -29,7 +29,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Global key capture** — reads directly from evdev input devices (keyboards and mice), works regardless of which window is focused
 - **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising configured hotkey bindings (keys or scroll) from any profile, so the desktop never intercepts them
 - **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio hotkeys (keys or mouse wheel) are reassignable via Settings → Profiles; right-click any hotkey field for an **Unassign** menu option to clear it; defaults are the dedicated media keys
-- **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; can optionally expand with MPRIS playback progress, track label and elapsed/total time; click or drag the progress bar to seek when the player allows it; live streams show `LIVE`; auto-hides after a configurable timeout
+- **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; can optionally expand with MPRIS playback progress, track label and elapsed/total time; drag any visible OSD edge or corner to resize it persistently; click or drag the progress bar to seek when the player allows it; live streams show `LIVE`; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists non-system PipeWire audio clients, including apps that are connected but not currently playing
 - **Friendly audio app names** — normalizes PipeWire/PulseAudio streams where the visible app and controllable stream differ, so wrappers such as Harmonoid can appear as the real app while still controlling the underlying stream
@@ -42,7 +42,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **`kv-ctl` CLI** — script-friendly command-line client for D-Bus control without calling the external `qdbus` program
 - **MPRIS v2** — optionally registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client; disabled by default to avoid conflicts with apps like Discord Music Presence; enable via Settings → Playback progress → "Expose fake MPRIS player endpoint"
 - **MPRIS playback tracking** — consumes other players' MPRIS metadata, position, seek support and player priority for the optional OSD playback progress features; when auto-switch by focus is enabled, the focused audio app is preferred for progress metadata
-- **Media hotkeys** — global play-pause / next / previous / stop bindings dispatched to the active MPRIS player; with auto-switch by focus enabled, they prefer the focused audio app's player before falling back to tracked-player priority; configurable in Settings → Media hotkeys, also reachable via `kv-ctl media <action>` and D-Bus `MediaPlayPause/Next/Previous/Stop`
+- **Media hotkeys** — global play-pause / next / previous / stop bindings dispatched to the active MPRIS player; with auto-switch by focus enabled, they prefer the focused audio app's player before falling back to tracked-player priority; configurable in Settings → Media hotkeys, also reachable via `kv-ctl media <action>` and D-Bus `MediaPlayPause/Next/Previous/Stop`; their OSD can be disabled, show only the pressed action, or show the full volume OSD
 - **Marquee labels** — app and track names that exceed the OSD width scroll automatically; short labels display statically
 - **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
 - **Unit tests** — GTest + Qt Test suite covering Config, i18n, `kv-ctl` parsing, PipeWire utilities, VolumeController, InputHandler, and the MPRIS client
@@ -104,7 +104,7 @@ Ubuntu / Debian:
 sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libtag1-dev libxcb-dev libwayland-dev cmake g++ libgtest-dev
 ```
 
-Native Wayland OSD positioning is compiled in when `wayland-client` and `LayerShellQt >= 6.6` development files are available. On wlroots/KDE compositors that expose `zwlr_layer_shell_v1`, the OSD uses native Wayland layer-shell positioning. On GNOME or other compositors without that protocol, the app keeps the XWayland (`xcb`) fallback when `QT_QPA_PLATFORM` is unset. Auto-switch by focused window uses `zwlr_foreign_toplevel_management_unstable_v1` on wlroots-compatible Wayland compositors and falls back to X11/XWayland via XCB.
+Native Wayland OSD positioning is compiled in when `wayland-client` and `LayerShellQt >= 6.6` development files are available. On wlroots/KDE compositors that expose `zwlr_layer_shell_v1`, the OSD uses native Wayland layer-shell positioning. On GNOME or other compositors without that protocol, the app keeps the XWayland (`xcb`) fallback when `QT_QPA_PLATFORM` is unset. OSD resizing is handled inside the app by dragging the visible OSD edges or corners, so it works with both the native layer-shell path and the XWayland fallback. Auto-switch by focused window uses `zwlr_foreign_toplevel_management_unstable_v1` on wlroots-compatible Wayland compositors and falls back to X11/XWayland via XCB.
 
 **Build**
 ```bash
@@ -169,6 +169,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
 1. **Select audio app** — click the tray icon → pick an app from the list. Apps currently playing audio are listed first; idle apps (connected to PipeWire but paused) appear below.
 2. **Volume keys / wheel** — press the volume keys or scroll the wheel up/down to change the selected app's volume by the configured step.
 3. **Mute** — press the mute key to toggle mute on the selected app only. The OSD appears with a 🔇 indicator when muted.
+   While the OSD is visible, drag any edge or corner to resize it; the new size is saved automatically.
 4. **Refresh app list** — tray menu → *Refresh app list* to re-scan running audio apps.
 5. **Change input device** — tray menu → *Change input device...* to pick a different keyboard without restarting.
 6. **Settings** — tray menu → *Settings...* to configure:
@@ -178,7 +179,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    - OSD opacity (0–100%)
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
-   - **Playback progress** — enable the MPRIS progress row, allow/disable interactive seeking, choose poll interval, choose app/track/both label mode, edit the comma-separated tracked-player priority list, and optionally expose a fake MPRIS v2 endpoint for desktop widgets (disabled by default)
+   - **Playback progress** — enable the MPRIS progress row, allow/disable interactive seeking, choose poll interval, choose app/track/both label mode, edit the comma-separated tracked-player priority list, choose whether media hotkeys show no OSD / only the pressed action / the full volume OSD, and optionally expose a fake MPRIS v2 endpoint for desktop widgets (disabled by default)
    - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app(s), optional **output sink** (PulseAudio device name; empty = system default), and optional Focus audio ducking hotkey; right-click any hotkey field to **Unassign** it; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls); hotkeys are shown as `"Volume Up (115)"` — human-readable name first, evdev code in parentheses
    - **Media hotkeys** — global play-pause / next / previous / stop bindings that dispatch to the active MPRIS player chosen by the built-in MPRIS consumer. With auto-switch by window focus enabled, the focused audio app's MPRIS player is preferred; otherwise selection falls back to priority order from *Tracked players*. Independent of profiles — when an active profile claims the same key the profile binding wins, otherwise the media binding fires. Defaults are unassigned so the app does not silently capture your existing media keys.
 
@@ -319,7 +320,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
      org.mpris.MediaPlayer2.Quit
    ```
 
-   The MPRIS endpoint is opt-in (Settings → Playback progress → *Expose fake MPRIS endpoint*) and stays unregistered by default to avoid being picked up by tools like `discord-music-presence`. For shell scripts that should not depend on `qdbus` being installed, see `dbus-send` recipes in `CLAUDE.md`.
+   The MPRIS endpoint is opt-in (Settings → Playback progress → *Expose fake MPRIS endpoint*) and stays unregistered by default to avoid being picked up by tools like `discord-music-presence`. For shell scripts that should not depend on `qdbus` being installed, see `dbus-send` recipes in `ARCHITECTURE.md`.
 
 > **Hotkey capture note:** the app grabs its configured hotkey bindings (keys and scroll) at the evdev level, so those exact events won't be visible to Qt while the app is running. To reassign a *currently active* hotkey, right-click the hotkey field in Settings → Profiles, choose **Unassign**, save, reopen the profile, and capture the new binding.
 
@@ -449,6 +450,7 @@ keyboard-volume-app/
 ├── .clang-format                # Code formatting configuration
 ├── LICENSE
 ├── AGENTS.md
+├── ARCHITECTURE.md
 ├── CLAUDE.md
 ├── GEMINI.md
 └── ROADMAP.md
@@ -490,7 +492,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Globalne przechwytywanie** — odczytuje zdarzenia bezpośrednio z urządzeń evdev (klawiatury i myszy), działa niezależnie od tego, które okno jest aktywne
 - **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające skonfigurowane skróty (klawisze lub zdarzenia scroll) w którymkolwiek profilu, aby system nie przechwytywał ich
 - **Konfigurowalne skróty** — Głośność w górę, Głośność w dół, Wyciszenie i tryb skupienia każdego profilu można przypisać do dowolnego klawisza lub pokrętła myszy przez Ustawienia → Profile; prawy klik na polu hotkeya otwiera menu **Wyczyść**; domyślnie są to dedykowane klawisze multimedialne
-- **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; opcjonalnie rozwija się o postęp MPRIS, etykietę utworu i czas odtwarzania; kliknięcie lub przeciągnięcie paska przewija odtwarzacz, jeśli ten na to pozwala; transmisje live pokazują `LIVE`; znika automatycznie po upływie skonfigurowanego czasu
+- **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; opcjonalnie rozwija się o postęp MPRIS, etykietę utworu i czas odtwarzania; przeciągnięcie dowolnej widocznej krawędzi lub rogu trwale zmienia rozmiar OSD; kliknięcie lub przeciągnięcie paska przewija odtwarzacz, jeśli ten na to pozwala; transmisje live pokazują `LIVE`; znika automatycznie po upływie skonfigurowanego czasu
 - **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego oraz dostęp do ustawień
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera niesystemowe klienty audio PipeWire, także aplikacje podłączone, ale aktualnie nieodtwarzające dźwięku
 - **Odzyskiwanie backendu audio** — ponownie łączy się z PulseAudio/pipewire-pulse po restarcie daemona i zachowuje skonfigurowaną wybraną aplikację
@@ -564,7 +566,7 @@ Ubuntu / Debian:
 sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libtag1-dev libxcb-dev libwayland-dev cmake g++ libgtest-dev
 ```
 
-Natywne pozycjonowanie OSD na Waylandzie jest kompilowane, gdy dostępne są pliki deweloperskie `wayland-client` oraz `LayerShellQt >= 6.6`. Na kompozytorach wlroots/KDE z protokołem `zwlr_layer_shell_v1` OSD używa natywnego pozycjonowania layer-shell. Na GNOME lub innych kompozytorach bez tego protokołu aplikacja zachowuje fallback do XWayland (`xcb`), gdy `QT_QPA_PLATFORM` nie jest ustawione. Auto-przełączanie według aktywnego okna używa `zwlr_foreign_toplevel_management_unstable_v1` na zgodnych kompozytorach Wayland i fallbacku X11/XWayland przez XCB.
+Natywne pozycjonowanie OSD na Waylandzie jest kompilowane, gdy dostępne są pliki deweloperskie `wayland-client` oraz `LayerShellQt >= 6.6`. Na kompozytorach wlroots/KDE z protokołem `zwlr_layer_shell_v1` OSD używa natywnego pozycjonowania layer-shell. Na GNOME lub innych kompozytorach bez tego protokołu aplikacja zachowuje fallback do XWayland (`xcb`), gdy `QT_QPA_PLATFORM` nie jest ustawione. Zmiana rozmiaru OSD jest obsługiwana wewnątrz aplikacji przez przeciąganie widocznych krawędzi lub rogów, więc działa zarówno w ścieżce natywnej layer-shell, jak i w fallbacku XWayland. Auto-przełączanie według aktywnego okna używa `zwlr_foreign_toplevel_management_unstable_v1` na zgodnych kompozytorach Wayland i fallbacku X11/XWayland przez XCB.
 
 **Kompilacja**
 ```bash
@@ -629,6 +631,7 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
 1. **Wybór aplikacji audio** — kliknij ikonę w zasobniku systemowym → wybierz aplikację z listy. Aplikacje aktualnie odtwarzające dźwięk są na górze; nieaktywne (podłączone do PipeWire, ale zapauzowane) pojawiają się poniżej.
 2. **Klawisze / pokrętło myszy** — naciśnij skonfigurowane klawisze głośności lub przewiń pokrętło myszy w górę albo w dół, aby zmienić głośność wybranej aplikacji o skonfigurowany krok.
 3. **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇.
+   Gdy OSD jest widoczne, przeciągnij dowolną krawędź lub róg, aby zmienić rozmiar; nowy rozmiar zapisuje się automatycznie.
 4. **Odświeżenie listy** — menu zasobnika → *Odśwież listę aplikacji*, aby ponownie wczytać aktywne aplikacje audio.
 5. **Zmiana urządzenia wejściowego** — menu zasobnika → *Zmień urządzenie wejściowe...*, aby wybrać inną klawiaturę bez restartu aplikacji.
 6. **Ustawienia** — menu zasobnika → *Ustawienia...*, aby skonfigurować:
@@ -775,7 +778,7 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
      org.mpris.MediaPlayer2.Quit
    ```
 
-   Endpoint MPRIS jest opt-in (Ustawienia → Postęp odtwarzania → *Eksponuj fałszywy endpoint MPRIS*) i domyślnie pozostaje niezarejestrowany, żeby narzędzia takie jak `discord-music-presence` go nie wykrywały. Dla skryptów powłoki, które nie powinny zależeć od obecności `qdbus`, w `CLAUDE.md` znajdziesz odpowiedniki w `dbus-send`.
+   Endpoint MPRIS jest opt-in (Ustawienia → Postęp odtwarzania → *Eksponuj fałszywy endpoint MPRIS*) i domyślnie pozostaje niezarejestrowany, żeby narzędzia takie jak `discord-music-presence` go nie wykrywały. Dla skryptów powłoki, które nie powinny zależeć od obecności `qdbus`, w `ARCHITECTURE.md` znajdziesz odpowiedniki w `dbus-send`.
 
 > **Uwaga dot. przechwytywania skrótów:** aplikacja blokuje aktualnie skonfigurowane skróty (klawisze i scroll) na poziomie evdev, więc te właśnie zdarzenia nie są widoczne dla Qt podczas działania programu. Aby zmienić *aktywny* skrót, kliknij prawym przyciskiem pole hotkeya w Ustawienia → Profile, wybierz **Wyczyść**, zapisz, otwórz profil ponownie i przechwyć nowe powiązanie.
 
@@ -905,6 +908,7 @@ keyboard-volume-app/
 ├── .clang-format                # Konfiguracja formatowania kodu
 ├── LICENSE
 ├── AGENTS.md
+├── ARCHITECTURE.md
 ├── CLAUDE.md
 ├── GEMINI.md
 └── ROADMAP.md

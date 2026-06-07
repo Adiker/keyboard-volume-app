@@ -1,7 +1,9 @@
 #pragma once
 #include <QWidget>
 #include <QColor>
+#include <QPoint>
 #include <QPixmap>
+#include <QRect>
 #include <QTimer>
 
 #ifdef HAVE_LAYER_SHELL_QT
@@ -9,6 +11,7 @@
 #endif
 
 class QHBoxLayout;
+class QHideEvent;
 class QLabel;
 class QMouseEvent;
 class QPushButton;
@@ -38,6 +41,10 @@ class OSDWindow : public QWidget
 
     // Display OSD at configured position.  volume is 0.0–1.0.
     void showVolume(const QString& appName, double volume, bool muted = false);
+
+    // Show OSD for a media key action (play/pause/next/prev/stop). Shows only the label,
+    // without volume bar, percentage, or progress row.
+    void showMediaAction(const QString& actionLabel);
 
     // Show a preview OSD at the given screen-relative position.
     void showPreview(int screenIdx, int x, int y, int timeoutMs = 1500);
@@ -117,11 +124,24 @@ class OSDWindow : public QWidget
 
   protected:
     void paintEvent(QPaintEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
     void enterEvent(QEnterEvent* event) override;
     void leaveEvent(QEvent* event) override;
     bool eventFilter(QObject* obj, QEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
 
   private:
+    enum ResizeEdge
+    {
+        EdgeNone = 0,
+        EdgeLeft = 1 << 0,
+        EdgeRight = 1 << 1,
+        EdgeTop = 1 << 2,
+        EdgeBottom = 1 << 3,
+    };
+
     // ── Volume row ───────────────────────────────────────────────────────────
     Config* m_config;
     QVBoxLayout* m_mainLayout = nullptr;
@@ -132,8 +152,19 @@ class OSDWindow : public QWidget
     QColor m_bgColor;
     bool m_previewMode = false;
     bool m_previewHeld = false;
+    bool m_mediaActionMode = false;
     int m_previewTimeoutMs = 1500;
     double m_previewScale = -1.0; // overrides config scale during settings preview; -1 = inactive
+    QPoint m_currentAbsPos;       // last clamped position applied through positionWindow()
+
+    // ── Mouse resize ─────────────────────────────────────────────────────────
+    bool m_resizing = false;
+    int m_resizeEdges = EdgeNone;
+    QPoint m_resizeStartGlobal;
+    QRect m_resizeStartGeometry;
+    QPoint m_resizeCurrentAbsPos;
+    double m_resizeStartScale = 1.0;
+    int m_resizeBaseHeight = 70;
 
     // ── Progress row ─────────────────────────────────────────────────────────
     QWidget* m_progressRow = nullptr; // container — show/hide as a unit
@@ -186,13 +217,36 @@ class OSDWindow : public QWidget
 
     // Resize OSD and re-apply position (handles both X11 and layer-shell).
     void applySize();
+    void applySizeAt(int absX, int absY, bool restartHideTimer = false);
 
     // Scale a pixel dimension by the configured osdScale factor.
     int scaled(int base) const;
+    double activeScale() const;
+    int currentBaseHeight() const;
 
     // Re-apply all inner widget sizes/margins after osdScale changes.
     // Must be called from reloadStyles() whenever scale may have changed.
     void rescale();
+    void rescaleAt(int absX, int absY, bool restartHideTimer = false);
+
+    // Manual resizing for the frameless OSD. Resize is proportional and persists
+    // as OsdConfig::osdScale when the drag finishes.
+    void installResizeEventFilters();
+    bool handleResizeEvent(QObject* obj, QEvent* event);
+    bool handleResizeMouseEvent(QObject* obj, QMouseEvent* event);
+    QPoint resizeLocalPos(QObject* obj, QMouseEvent* event) const;
+    int resizeEdgesAt(const QPoint& pos) const;
+    int resizeHitMargin() const;
+    Qt::CursorShape resizeCursorForEdges(int edges) const;
+    void updateResizeCursor(QObject* obj, int edges);
+    void startResize(int edges, const QPoint& globalPos);
+    void updateResize(const QPoint& globalPos);
+    void finishResize(bool persist);
+    double scaleForResize(const QPoint& globalPos) const;
+    QPoint anchoredResizePos(double scale) const;
+    QPoint clampedResizePos(const QPoint& absPos, double scale) const;
+    void persistResize(double scale, const QPoint& absPos);
+    void restartHideTimerAfterResize();
 
     // Update m_labelName text based on progressLabelMode + cached track info.
     void refreshNameLabel();
