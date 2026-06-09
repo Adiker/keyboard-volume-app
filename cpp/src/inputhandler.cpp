@@ -994,5 +994,14 @@ void InputHandler::run()
 
     if (epfd >= 0) ::close(epfd);
 
+    if (!devices.empty())
+    {
+        for (auto& dev : devices) dev->preserveLedStateFromUinput();
+        for (auto& dev : devices) dev->destroyUinput();
+        for (auto& dev : devices) dev->ungrab();
+        QThread::msleep(750);
+        for (auto& dev : devices) dev->restorePreservedLedState();
+    }
+
     if (!devices.empty()) qDebug() << "[InputHandler] Released" << devices.size() << "devices";
 }

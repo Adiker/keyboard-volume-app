@@ -32,9 +32,11 @@ class EvdevDevice
     libevdev* dev() const;
 
     bool grab();
+    void ungrab();
     bool isGrabbed() const;
 
     bool createUinput();
+    void destroyUinput();
     libevdev_uinput* uinput() const;
     int uinputFd() const;
 
@@ -43,6 +45,8 @@ class EvdevDevice
     bool hasEventType(unsigned int type) const;
     bool hasEventCode(unsigned int type, unsigned int code) const;
     bool setLedValue(unsigned int code, bool enabled);
+    void preserveLedStateFromUinput();
+    void restorePreservedLedState();
 
   private:
     int m_fd = -1;
@@ -50,4 +54,6 @@ class EvdevDevice
     libevdev_uinput* m_ui = nullptr;
     bool m_writable = false;
     bool m_grabbed = false;
+    bool m_hasPreservedLedState = false;
+    unsigned int m_preservedLedMask = 0;
 };
