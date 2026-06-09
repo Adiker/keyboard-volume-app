@@ -11,7 +11,11 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/epoll.h>
+#include <sys/ioctl.h>
 #include <linux/input.h>
+#include <algorithm>
+#include <array>
+#include <cerrno>
 #include <cstring>
 #include <memory>
 #include <vector>
@@ -259,6 +263,128 @@ done:
 }
 
 // ─── Shared helpers ────────────────────────────────────────────────────────────
+namespace
+{
+
+constexpr std::array<unsigned int, 3> kMirroredLedCodes{LED_NUML, LED_CAPSL, LED_SCROLLL};
+constexpr int kLedBitsPerWord = static_cast<int>(sizeof(unsigned long) * 8);
+constexpr int kLedStateWords = (LED_CNT + kLedBitsPerWord - 1) / kLedBitsPerWord;
+
+struct PollSource
+{
+    enum class Type
+    {
+        EvdevInput,
+        UinputOutput,
+    };
+
+    Type type;
+    EvdevDevice* dev;
+};
+
+bool isMirroredLedCode(unsigned int code)
+{
+    return std::find(kMirroredLedCodes.begin(), kMirroredLedCodes.end(), code) !=
+           kMirroredLedCodes.end();
+}
+
+bool ledBitIsSet(const std::array<unsigned long, kLedStateWords>& bits, unsigned int code)
+{
+    return (bits[code / kLedBitsPerWord] & (1UL << (code % kLedBitsPerWord))) != 0;
+}
+
+bool setFdNonBlocking(int fd)
+{
+    const int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) return false;
+    if ((flags & O_NONBLOCK) != 0) return true;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+}
+
+void mirrorLedToPhysical(EvdevDevice* dev, unsigned int code, bool enabled)
+{
+    if (!dev || !isMirroredLedCode(code) || !dev->hasEventCode(EV_LED, code)) return;
+
+    if (!dev->setLedValue(code, enabled))
+    {
+        qWarning() << "[InputHandler] Cannot mirror keyboard LED" << code
+                   << (enabled ? "on" : "off") << "to physical device";
+    }
+}
+
+void handleUinputOutputEvent(EvdevDevice* dev, const input_event& ev)
+{
+    if (ev.type != EV_LED) return;
+    mirrorLedToPhysical(dev, ev.code, ev.value != 0);
+}
+
+void drainUinputOutput(EvdevDevice* dev)
+{
+    const int fd = dev ? dev->uinputFd() : -1;
+    if (fd < 0) return;
+
+    while (true)
+    {
+        input_event ev{};
+        const ssize_t n = ::read(fd, &ev, sizeof(ev));
+        if (n == static_cast<ssize_t>(sizeof(ev)))
+        {
+            handleUinputOutputEvent(dev, ev);
+            continue;
+        }
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+        {
+            if (errno == EINTR) continue;
+            break;
+        }
+        if (n < 0)
+        {
+            qWarning() << "[InputHandler] Cannot read uinput output event:" << strerror(errno);
+        }
+        break;
+    }
+}
+
+void syncPhysicalLedsFromUinput(EvdevDevice* dev)
+{
+    if (!dev || !dev->uinput() || !dev->hasEventType(EV_LED)) return;
+
+    const char* devnode = libevdev_uinput_get_devnode(dev->uinput());
+    if (!devnode)
+    {
+        qWarning() << "[InputHandler] Cannot query uinput devnode for initial LED sync";
+        return;
+    }
+
+    const int fd = ::open(devnode, O_RDONLY | O_NONBLOCK);
+    if (fd < 0)
+    {
+        qWarning() << "[InputHandler] Cannot open" << devnode
+                   << "for initial LED sync:" << strerror(errno);
+        return;
+    }
+
+    std::array<unsigned long, kLedStateWords> bits{};
+    const int rc = ioctl(fd, EVIOCGLED(sizeof(bits)), bits.data());
+    const int savedErrno = errno;
+    ::close(fd);
+
+    if (rc < 0)
+    {
+        qWarning() << "[InputHandler] Cannot query initial LED state for" << devnode << ":"
+                   << strerror(savedErrno);
+        return;
+    }
+
+    for (unsigned int code : kMirroredLedCodes)
+    {
+        if (dev->hasEventCode(EV_LED, code))
+            mirrorLedToPhysical(dev, code, ledBitIsSet(bits, code));
+    }
+}
+
+} // namespace
+
 static inline void forwardUinputEvent(EvdevDevice* dev, const input_event& ev)
 {
     if (dev->isGrabbed() && dev->uinput())
@@ -590,6 +716,21 @@ void InputHandler::run()
             continue;
         }
 
+        if (exclusive && dev->hasEventType(EV_LED))
+        {
+            dev->close();
+            if (!dev->open(path, EvdevDevice::OpenMode::ReadWrite))
+            {
+                qWarning() << "[InputHandler] Cannot open" << path
+                           << "read/write for LED sync — retrying read-only";
+                if (!dev->open(path))
+                {
+                    qDebug() << "[InputHandler] Cannot reopen" << path << "read-only";
+                    continue;
+                }
+            }
+        }
+
         if (exclusive)
         {
             if (!dev->grab())
@@ -603,6 +744,20 @@ void InputHandler::run()
                          << "— releasing grab and skipping";
                 continue;
             }
+            if (dev->hasEventType(EV_LED) && dev->isWritable())
+            {
+                const int uinputFd = dev->uinputFd();
+                if (uinputFd >= 0 && !setFdNonBlocking(uinputFd))
+                {
+                    qWarning() << "[InputHandler] Cannot make uinput output fd non-blocking for"
+                               << path << "— LED sync disabled for this device";
+                }
+            }
+            else if (dev->hasEventType(EV_LED))
+            {
+                qWarning() << "[InputHandler] LED sync disabled for" << path
+                           << "because the device is not writable";
+            }
             qDebug() << "[InputHandler] Created uinput for" << path;
         }
         qDebug() << "[InputHandler] Opened" << path
@@ -613,19 +768,43 @@ void InputHandler::run()
     if (devices.empty()) return;
 
     int epfd = epoll_create1(0);
+    std::vector<PollSource> pollSources;
+    pollSources.reserve(devices.size() * 2);
     if (epfd >= 0)
     {
         for (auto& dev : devices)
         {
+            pollSources.push_back({PollSource::Type::EvdevInput, dev.get()});
             epoll_event evnt{};
             evnt.events = EPOLLIN;
-            evnt.data.ptr = dev.get();
+            evnt.data.ptr = &pollSources.back();
             epoll_ctl(epfd, EPOLL_CTL_ADD, dev->fd(), &evnt);
+
+            const int uinputFd = dev->uinputFd();
+            if (dev->isWritable() && dev->hasEventType(EV_LED) && uinputFd >= 0 &&
+                setFdNonBlocking(uinputFd))
+            {
+                pollSources.push_back({PollSource::Type::UinputOutput, dev.get()});
+                epoll_event uinputEvnt{};
+                uinputEvnt.events = EPOLLIN;
+                uinputEvnt.data.ptr = &pollSources.back();
+                epoll_ctl(epfd, EPOLL_CTL_ADD, uinputFd, &uinputEvnt);
+            }
         }
     }
 
     // Modifier state — observed only on grabbed devices (v1 limitation).
     QSet<int> heldModifiers;
+    qint64 startupLedSyncUntilMs = QDateTime::currentMSecsSinceEpoch() + 2000;
+    qint64 nextStartupLedSyncMs = QDateTime::currentMSecsSinceEpoch();
+
+    auto syncStartupLedsIfDue = [&]()
+    {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (now > startupLedSyncUntilMs || now < nextStartupLedSyncMs) return;
+        for (auto& dev : devices) syncPhysicalLedsFromUinput(dev.get());
+        nextStartupLedSyncMs = now + 250;
+    };
 
     while (m_running)
     {
@@ -642,11 +821,20 @@ void InputHandler::run()
             m_running = false;
             break;
         }
+        syncStartupLedsIfDue();
         if (n == 0) continue;
 
         for (int i = 0; i < n; ++i)
         {
-            auto* e = static_cast<EvdevDevice*>(events[i].data.ptr);
+            auto* source = static_cast<PollSource*>(events[i].data.ptr);
+            if (!source || !source->dev) continue;
+            if (source->type == PollSource::Type::UinputOutput)
+            {
+                drainUinputOutput(source->dev);
+                continue;
+            }
+
+            auto* e = source->dev;
             input_event ev{};
             int rc;
             while ((rc = libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0)

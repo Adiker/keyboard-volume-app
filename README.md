@@ -114,7 +114,7 @@ cmake --build cpp/build -j$(nproc)
 
 This produces `cpp/build/keyboard-volume-app` and `cpp/build/kv-ctl`.
 
-**Input device permissions** — evdev requires read access to `/dev/input/event*`. Add your user to the `input` group:
+**Input device permissions** — evdev requires read access to `/dev/input/event*`; write access is used to keep keyboard lock LEDs synchronized when devices are mirrored through uinput. Add your user to the `input` group:
 
 ```bash
 sudo usermod -aG input $USER
@@ -576,7 +576,7 @@ cmake --build cpp/build -j$(nproc)
 
 Powstają binarki `cpp/build/keyboard-volume-app` oraz `cpp/build/kv-ctl`.
 
-**Uprawnienia do urządzenia wejściowego** — evdev wymaga dostępu do odczytu plików `/dev/input/event*`. Dodaj swojego użytkownika do grupy `input`:
+**Uprawnienia do urządzenia wejściowego** — evdev wymaga dostępu do odczytu plików `/dev/input/event*`; zapis jest używany do synchronizacji diod lock klawiatury, gdy urządzenia są odbijane przez uinput. Dodaj swojego użytkownika do grupy `input`:
 
 ```bash
 sudo usermod -aG input $USER
