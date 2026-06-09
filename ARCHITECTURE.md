@@ -681,7 +681,7 @@ dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-repl
 `keyboard-volume-app-git` package for Arch Linux / AUR:
 https://aur.archlinux.org/packages/keyboard-volume-app-git
 
-The AUR package builds from the upstream `main` branch via `git clone`. The GitHub source tree keeps `pkg/arch/PKGBUILD` as the source of truth; the AUR git repository should contain only the publishing files (`PKGBUILD`, `.SRCINFO`, and any future required patch/install files).
+The AUR package builds from the upstream `main` branch via `git clone`. The GitHub source tree keeps `pkg/arch/PKGBUILD` and `pkg/arch/.SRCINFO` as the source-controlled publishing files; regenerate `.SRCINFO` whenever `PKGBUILD` changes. The AUR git repository should contain only those publishing files (`PKGBUILD`, `.SRCINFO`, and any future required patch/install files), not the full upstream source tree.
 
 - `pkgver()` uses `git describe --tags --long` to generate a version like `r0.1.0.24.gc2cd813`
 - `depends`: `qt6-base libevdev libpulse libpipewire taglib pipewire layer-shell-qt`

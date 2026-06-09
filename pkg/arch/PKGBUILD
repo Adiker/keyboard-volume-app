@@ -1,6 +1,6 @@
 # Maintainer: Adiker <https://github.com/Adiker>
 pkgname=keyboard-volume-app-git
-pkgver=r0.1.0.0.g0000000
+pkgver=r0.1.0.142.gc1b301c
 pkgrel=1
 pkgdesc="Per-app volume control via keyboard with OSD overlay (Qt6)"
 arch=('x86_64')
