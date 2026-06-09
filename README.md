@@ -81,7 +81,7 @@ makepkg -si
 
 The [`keyboard-volume-app-git`](https://aur.archlinux.org/packages/keyboard-volume-app-git) package tracks the upstream `main` branch, builds Release binaries, and installs everything to `/usr` including `keyboard-volume-app`, `kv-ctl`, the `.desktop` entry, icon, and systemd user service.
 
-To test the PKGBUILD from this checkout instead:
+To build directly using the PKGBUILD in this repo (sources still pulled from GitHub `main`):
 
 ```bash
 cd pkg/arch
@@ -557,7 +557,7 @@ makepkg -si
 
 Pakiet [`keyboard-volume-app-git`](https://aur.archlinux.org/packages/keyboard-volume-app-git) śledzi upstreamowy branch `main`, buduje binarki Release i instaluje wszystko do `/usr`, w tym `keyboard-volume-app`, `kv-ctl`, wpis `.desktop`, ikonę i usługę systemd user.
 
-Aby przetestować PKGBUILD z tego checkoutu:
+Aby budować bezpośrednio przez PKGBUILD z tego repozytorium (źródła nadal są pobierane z GitHuba z brancha `main`):
 
 ```bash
 cd pkg/arch
