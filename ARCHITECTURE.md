@@ -151,6 +151,10 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
     "stop": 0
   },
   "auto_profile_switch": false,
+  "ui": {
+    "settings_dialog_width": 0,
+    "settings_dialog_height": 0
+  },
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
       "modifiers": [],
@@ -179,6 +183,8 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
 ```
 
 Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linux evdev key codes (`KEY_VOLUMEUP`=115, `KEY_VOLUMEDOWN`=114, `KEY_MUTE`=113). Scroll bindings use object form such as `{ "type": "rel", "code": 8, "direction": 1 }` for `EV_REL / REL_WHEEL`.
+
+**UI persistence (`ui`).** Top-level object for automatic GUI state — not exposed in Settings as editable fields. `settings_dialog_width` / `settings_dialog_height` store the last Settings window size in pixels; `0` means “use `sizeHint()` on next open”. `SettingsDialog::hideEvent()` writes them via `Config::setSettingsDialogSize()` (Qt `accept()`/`reject()` hide without `closeEvent`, so persistence must not rely on `closeEvent` alone). On show, size is clamped to the target screen’s available geometry; Preview/OK/Cancel stay outside a `QScrollArea` so they remain reachable when content is taller than the display.
 
 **Media hotkeys (global, MPRIS dispatch).** `media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, `stop`. Each accepts the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Stored as `struct MediaHotkeyConfig { HotkeyBinding playPause, next, previous, stop; }` exposed via `Config::mediaHotkeys()` / `Config::setMediaHotkeys()`. Independent of profiles — `InputHandler` resolves bindings in the order **profile > scene > media**: profile bindings first (modifier-aware via `resolveProfileHotkey()`), then scene apply bindings (`resolveSceneHotkey()`, modifier-agnostic in v1, first scene wins on a duplicate binding), then `resolveMediaHotkey()`. Bound keys dispatch via signals `media_play_pause/next/previous/stop` from the InputHandler thread to `MprisClient` slots in the main thread (queued connection); when auto-profile switching has a focused audio target, `App::onFocusedBinaryChanged()` passes it to `MprisClient::setPreferredApp()` so media controls prefer the matching tracked player. If no focused player matches, `MprisClient` falls back to `tracked_players` priority and then the first Playing → Paused player. The same controls are exposed on D-Bus as `org.keyboardvolumeapp.VolumeControl.Media{PlayPause,Next,Previous,Stop}` and via `kv-ctl media play-pause|next|previous|stop`. Debounce reuses the 100 ms profile debounce table with sentinel keys `__media__` (media) and `__scene__:<id>` (scenes). `OsdConfig::mediaKeysOsdMode` controls optional OSD feedback for these hotkeys: `off` shows nothing, `action` shows only the pressed media action label, and `full` queries the selected/auto-active app volume through `VolumeController::queryVolume()` so the normal volume OSD appears.
 
@@ -256,12 +262,13 @@ Modal `QDialog` for changing the default audio application. Opened from the tray
 Header-only utility that centers a dialog on the screen containing the given global position. Used to fix dialog placement on XWayland multi-monitor setups where Qt defaults to the primary screen, which is often wrong.
 
 ```cpp
-inline void centerDialogOnScreenAt(QWidget *window, const QPoint &globalPos)
+inline void centerDialogOnScreenAt(QWidget *window, const QPoint &globalPos,
+                                   bool preserveSize = false)
 ```
 
 - `QApplication::screenAt(globalPos)` → fallback to `primaryScreen()`.
-- `ensurePolished()` + `adjustSize()` to compute layout before measuring.
-- Final size = `sizeHint` expanded to `minimumSizeHint` and `minimumSize`; `resize()` if needed.
+- When `preserveSize` is `false` (default): `ensurePolished()` + `adjustSize()`; final size = `sizeHint` expanded to `minimumSizeHint` and `minimumSize`; `resize()` if needed.
+- When `preserveSize` is `true`: skip the resize step — used by `SettingsDialog::showEvent()` after restoring a saved size from config.
 - Position centered inside `screen->availableGeometry()`, clamped to screen bounds.
 - `window->move(x, y)` — no event filters, QTimer, or window-flag manipulation.
 
