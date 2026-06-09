@@ -241,6 +241,11 @@ QJsonObject Config::defaultJson()
         {QStringLiteral("profiles"), QJsonArray{defaultProfile}},
         {QStringLiteral("scenes"), QJsonArray{}},
         {QStringLiteral("auto_profile_switch"), false},
+        {QStringLiteral("ui"),
+         QJsonObject{
+             {QStringLiteral("settings_dialog_width"), 0},
+             {QStringLiteral("settings_dialog_height"), 0},
+         }},
     };
 }
 
@@ -1165,6 +1170,24 @@ void Config::setAutoProfileSwitch(bool enabled)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_data[QStringLiteral("auto_profile_switch")] = enabled;
+    saveUnlocked();
+}
+
+QSize Config::settingsDialogSize() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const QJsonObject ui = m_data[QStringLiteral("ui")].toObject();
+    return QSize(ui[QStringLiteral("settings_dialog_width")].toInt(0),
+                 ui[QStringLiteral("settings_dialog_height")].toInt(0));
+}
+
+void Config::setSettingsDialogSize(const QSize& size)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    QJsonObject ui = m_data[QStringLiteral("ui")].toObject();
+    ui[QStringLiteral("settings_dialog_width")] = qMax(0, size.width());
+    ui[QStringLiteral("settings_dialog_height")] = qMax(0, size.height());
+    m_data[QStringLiteral("ui")] = ui;
     saveUnlocked();
 }
 

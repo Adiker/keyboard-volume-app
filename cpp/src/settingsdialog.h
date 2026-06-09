@@ -10,6 +10,12 @@ class QDoubleSpinBox;
 class QComboBox;
 class QCheckBox;
 class QTableWidget;
+class QLabel;
+class QScrollArea;
+class QDialogButtonBox;
+class QCloseEvent;
+class QHideEvent;
+class QShowEvent;
 class Config;
 class InputHandler;
 
@@ -152,6 +158,11 @@ class SettingsDialog : public QDialog
     void onDuplicateScene();
     void onApplyScene();
 
+  protected:
+    void showEvent(QShowEvent* event) override;
+    void hideEvent(QHideEvent* event) override;
+    void closeEvent(QCloseEvent* event) override;
+
   private:
     void buildUi();
     void refreshProfilesTable();
@@ -191,6 +202,7 @@ class SettingsDialog : public QDialog
     QLineEdit* m_customLabelTop = nullptr;
     QLineEdit* m_customLabelBottom = nullptr;
     QCheckBox* m_customLabelShowArt = nullptr;
+    QLabel* m_tokensHint = nullptr;
     QLineEdit* m_trackedPlayers = nullptr;
     QCheckBox* m_mediaControlsEnabled = nullptr;
     QCheckBox* m_exposeMpris = nullptr;
@@ -215,4 +227,9 @@ class SettingsDialog : public QDialog
     QPushButton* m_btnSceneDuplicate = nullptr;
     QPushButton* m_btnSceneApply = nullptr;
     QList<AudioScene> m_scenes; // working copy until saveAndAccept()
+
+    QScrollArea* m_scrollArea = nullptr;
+    QPushButton* m_previewBtn = nullptr;
+    QDialogButtonBox* m_buttonBox = nullptr;
+    bool m_sizeReadyToPersist = false;
 };

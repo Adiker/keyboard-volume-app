@@ -31,6 +31,11 @@
 #include <QMessageBox>
 #include <QAction>
 #include <QTableWidget>
+#include <QScrollArea>
+#include <QFrame>
+#include <QShowEvent>
+#include <QHideEvent>
+#include <QtGlobal>
 #include <QHeaderView>
 #include <QStringList>
 
@@ -364,7 +369,17 @@ SettingsDialog::SettingsDialog(Config* config, InputHandler* inputHandler,
 
 void SettingsDialog::buildUi()
 {
-    QVBoxLayout* layout = new QVBoxLayout(this);
+    QVBoxLayout* outer = new QVBoxLayout(this);
+    outer->setContentsMargins(0, 0, 0, 0);
+
+    m_scrollArea = new QScrollArea(this);
+    m_scrollArea->setObjectName(QStringLiteral("settingsScroll"));
+    m_scrollArea->setWidgetResizable(true);
+    m_scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_scrollArea->setFrameShape(QFrame::NoFrame);
+
+    QWidget* scrollContent = new QWidget;
+    QVBoxLayout* layout = new QVBoxLayout(scrollContent);
     QFormLayout* form = new QFormLayout;
     form->setLabelAlignment(Qt::AlignRight);
     form->setSpacing(10);
@@ -544,30 +559,40 @@ void SettingsDialog::buildUi()
 
     // Custom label group — visible only when "custom" is selected.
     m_customLabelGroup = new QWidget(this);
-    QFormLayout* customForm = new QFormLayout(m_customLabelGroup);
+    auto* customOuter = new QVBoxLayout(m_customLabelGroup);
+    customOuter->setContentsMargins(0, 0, 0, 0);
+    customOuter->setSpacing(4);
+
+    auto* customFormHost = new QWidget(m_customLabelGroup);
+    QFormLayout* customForm = new QFormLayout(customFormHost);
     customForm->setLabelAlignment(Qt::AlignRight);
     customForm->setSpacing(8);
     customForm->setContentsMargins(0, 0, 0, 0);
+    customForm->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
-    m_customLabelTop = new QLineEdit(m_customLabelGroup);
+    m_customLabelTop = new QLineEdit(customFormHost);
     m_customLabelTop->setText(osd.customLabelTop);
     customForm->addRow(::tr(QStringLiteral("settings.progress.custom_top")), m_customLabelTop);
 
-    m_customLabelBottom = new QLineEdit(m_customLabelGroup);
+    m_customLabelBottom = new QLineEdit(customFormHost);
     m_customLabelBottom->setText(osd.customLabelBottom);
     customForm->addRow(::tr(QStringLiteral("settings.progress.custom_bottom")),
                        m_customLabelBottom);
 
-    m_customLabelShowArt = new QCheckBox(::tr(QStringLiteral("settings.progress.custom_show_art")),
-                                         m_customLabelGroup);
+    m_customLabelShowArt =
+        new QCheckBox(::tr(QStringLiteral("settings.progress.custom_show_art")), customFormHost);
     m_customLabelShowArt->setChecked(osd.customLabelShowArt);
     customForm->addRow(QString(), m_customLabelShowArt);
+    customOuter->addWidget(customFormHost);
 
-    QLabel* tokensHint = new QLabel(::tr(QStringLiteral("settings.progress.custom_tokens_hint")),
-                                    m_customLabelGroup);
-    tokensHint->setStyleSheet(QStringLiteral("color: gray; font-style: italic; font-size: 9pt;"));
-    tokensHint->setWordWrap(true);
-    customForm->addRow(QString(), tokensHint);
+    // Outside QFormLayout — multi-line hints get clipped when placed in a form row.
+    m_tokensHint = new QLabel(::tr(QStringLiteral("settings.progress.custom_tokens_hint")),
+                              m_customLabelGroup);
+    m_tokensHint->setObjectName(QStringLiteral("tokensHint"));
+    m_tokensHint->setStyleSheet(QStringLiteral("color: gray; font-style: italic; font-size: 9pt;"));
+    m_tokensHint->setWordWrap(true);
+    m_tokensHint->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+    customOuter->addWidget(m_tokensHint);
 
     progressForm->addRow(QString(), m_customLabelGroup);
     connect(m_progressLabelMode, &QComboBox::currentIndexChanged, this,
@@ -722,18 +747,19 @@ void SettingsDialog::buildUi()
     connect(exportBtn, &QPushButton::clicked, this, &SettingsDialog::onExportConfig);
     connect(importBtn, &QPushButton::clicked, this, &SettingsDialog::onImportConfig);
 
-    // Preview button
-    QPushButton* previewBtn = new QPushButton(::tr(QStringLiteral("settings.preview_btn")), this);
-    connect(previewBtn, &QPushButton::pressed, this, &SettingsDialog::onPreviewPressed);
-    connect(previewBtn, &QPushButton::released, this, &SettingsDialog::onPreviewReleased);
-    layout->addWidget(previewBtn);
+    m_scrollArea->setWidget(scrollContent);
+    outer->addWidget(m_scrollArea, 1);
 
-    // OK / Cancel
-    QDialogButtonBox* buttons =
-        new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    connect(buttons, &QDialogButtonBox::accepted, this, &SettingsDialog::saveAndAccept);
-    connect(buttons, &QDialogButtonBox::rejected, this, &SettingsDialog::reject);
-    layout->addWidget(buttons);
+    // Preview + OK/Cancel stay outside the scroll area so they are always reachable.
+    m_previewBtn = new QPushButton(::tr(QStringLiteral("settings.preview_btn")), this);
+    connect(m_previewBtn, &QPushButton::pressed, this, &SettingsDialog::onPreviewPressed);
+    connect(m_previewBtn, &QPushButton::released, this, &SettingsDialog::onPreviewReleased);
+    outer->addWidget(m_previewBtn);
+
+    m_buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+    connect(m_buttonBox, &QDialogButtonBox::accepted, this, &SettingsDialog::saveAndAccept);
+    connect(m_buttonBox, &QDialogButtonBox::rejected, this, &SettingsDialog::reject);
+    outer->addWidget(m_buttonBox);
 
     // Live position preview
     connect(m_screen, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
@@ -754,6 +780,45 @@ void SettingsDialog::buildUi()
             [this](int) { emitStylePreview(); });
     connect(m_osdScale, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             [this](double) { emitStylePreview(); });
+}
+
+void SettingsDialog::showEvent(QShowEvent* event)
+{
+    QDialog::showEvent(event);
+
+    QScreen* scr = screen();
+    if (!scr) scr = QApplication::primaryScreen();
+    if (!scr) return;
+
+    const QRect avail = scr->availableGeometry();
+    const int margin = 16;
+    const int maxDialogH = qMax(400, avail.height() - margin);
+    const int maxDialogW = qMax(minimumWidth(), avail.width() - margin);
+    setMaximumHeight(maxDialogH);
+    setMaximumWidth(maxDialogW);
+    if (m_scrollArea) m_scrollArea->setMinimumHeight(200);
+
+    const QSize saved = m_config->settingsDialogSize();
+    int w = saved.width() > 0 ? saved.width() : sizeHint().width();
+    int h = saved.height() > 0 ? saved.height() : sizeHint().height();
+    w = qBound(minimumWidth(), w, maxDialogW);
+    h = qBound(minimumSizeHint().height(), h, maxDialogH);
+    resize(w, h);
+    centerDialogOnScreenAt(this, frameGeometry().center(), true);
+    m_sizeReadyToPersist = true;
+}
+
+void SettingsDialog::hideEvent(QHideEvent* event)
+{
+    // accept()/reject() hide the dialog without calling closeEvent — persist here.
+    if (m_config && m_sizeReadyToPersist) m_config->setSettingsDialogSize(size());
+    QDialog::hideEvent(event);
+}
+
+void SettingsDialog::closeEvent(QCloseEvent* event)
+{
+    if (m_config && m_sizeReadyToPersist) m_config->setSettingsDialogSize(size());
+    QDialog::closeEvent(event);
 }
 
 void SettingsDialog::onPreviewPressed()

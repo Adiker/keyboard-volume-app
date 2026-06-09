@@ -1,4 +1,5 @@
 #pragma once
+#include <QSize>
 #include <QString>
 #include <QJsonObject>
 #include <QList>
@@ -345,6 +346,10 @@ class Config
     // audio target. Disabled by default (off).
     bool autoProfileSwitch() const;
     void setAutoProfileSwitch(bool enabled);
+
+    // Settings dialog geometry (0 width/height = use default size on next open).
+    QSize settingsDialogSize() const;
+    void setSettingsDialogSize(const QSize& size);
 
     // Find the first profile whose app field matches `appName` (case-insensitive
     // contains match) and has autoSwitch == true. Returns default-constructed
