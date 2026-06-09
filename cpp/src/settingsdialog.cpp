@@ -804,21 +804,15 @@ void SettingsDialog::showEvent(QShowEvent* event)
     w = qBound(minimumWidth(), w, maxDialogW);
     h = qBound(minimumSizeHint().height(), h, maxDialogH);
     resize(w, h);
-    centerDialogOnScreenAt(this, frameGeometry().center(), true);
+    centerDialogOnScreenAt(this, scr->geometry().center(), true);
     m_sizeReadyToPersist = true;
 }
 
 void SettingsDialog::hideEvent(QHideEvent* event)
 {
-    // accept()/reject() hide the dialog without calling closeEvent — persist here.
+    // accept()/reject() and window-manager close both end in hide() — persist here.
     if (m_config && m_sizeReadyToPersist) m_config->setSettingsDialogSize(size());
     QDialog::hideEvent(event);
-}
-
-void SettingsDialog::closeEvent(QCloseEvent* event)
-{
-    if (m_config && m_sizeReadyToPersist) m_config->setSettingsDialogSize(size());
-    QDialog::closeEvent(event);
 }
 
 void SettingsDialog::onPreviewPressed()

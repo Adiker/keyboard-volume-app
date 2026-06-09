@@ -13,7 +13,6 @@ class QTableWidget;
 class QLabel;
 class QScrollArea;
 class QDialogButtonBox;
-class QCloseEvent;
 class QHideEvent;
 class QShowEvent;
 class Config;
@@ -161,7 +160,6 @@ class SettingsDialog : public QDialog
   protected:
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
-    void closeEvent(QCloseEvent* event) override;
 
   private:
     void buildUi();
