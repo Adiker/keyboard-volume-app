@@ -18,7 +18,6 @@
 
 #ifdef HAVE_WAYLAND_CLIENT
 #include <wayland-client.h>
-#include <cstring>
 #endif
 
 #include <QApplication>
@@ -33,6 +32,7 @@
 #include <QDBusConnectionInterface>
 #include <cerrno>
 #include <csignal>
+#include <cstring>
 #include <fcntl.h>
 #include <memory>
 #include <unistd.h>
@@ -74,7 +74,8 @@ std::unique_ptr<QSocketNotifier> installUnixSignalHandlers(QObject* parent)
     setFdFlag(g_signalPipe[0], F_GETFD, FD_CLOEXEC);
     setFdFlag(g_signalPipe[1], F_GETFD, FD_CLOEXEC);
 
-    struct sigaction action {};
+    struct sigaction action;
+    std::memset(&action, 0, sizeof(action));
     action.sa_handler = handleUnixSignal;
     sigemptyset(&action.sa_mask);
     action.sa_flags = 0;
