@@ -280,6 +280,7 @@ struct PollSource
 
     Type type;
     EvdevDevice* dev;
+    int fd;
 };
 
 bool isMirroredLedCode(unsigned int code)
@@ -774,22 +775,21 @@ void InputHandler::run()
     {
         for (auto& dev : devices)
         {
-            pollSources.push_back({PollSource::Type::EvdevInput, dev.get()});
-            epoll_event evnt{};
-            evnt.events = EPOLLIN;
-            evnt.data.ptr = &pollSources.back();
-            epoll_ctl(epfd, EPOLL_CTL_ADD, dev->fd(), &evnt);
+            pollSources.push_back({PollSource::Type::EvdevInput, dev.get(), dev->fd()});
 
             const int uinputFd = dev->uinputFd();
             if (dev->isWritable() && dev->hasEventType(EV_LED) && uinputFd >= 0 &&
                 setFdNonBlocking(uinputFd))
             {
-                pollSources.push_back({PollSource::Type::UinputOutput, dev.get()});
-                epoll_event uinputEvnt{};
-                uinputEvnt.events = EPOLLIN;
-                uinputEvnt.data.ptr = &pollSources.back();
-                epoll_ctl(epfd, EPOLL_CTL_ADD, uinputFd, &uinputEvnt);
+                pollSources.push_back({PollSource::Type::UinputOutput, dev.get(), uinputFd});
             }
+        }
+        for (auto& source : pollSources)
+        {
+            epoll_event evnt{};
+            evnt.events = EPOLLIN;
+            evnt.data.ptr = &source;
+            epoll_ctl(epfd, EPOLL_CTL_ADD, source.fd, &evnt);
         }
     }
 
