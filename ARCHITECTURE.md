@@ -99,6 +99,8 @@ On first run (`Config::isFirstRun()`), a `FirstRunWizard` is shown before `App::
 
 **CLI flags:** `keyboard-volume-app` supports `--version` and `--help` via `QCommandLineParser`. `APP_VERSION` is injected from `CMakeLists.txt` at build time.
 
+**Termination signals:** `main.cpp` installs SIGTERM/SIGINT handlers through a self-pipe and `QSocketNotifier`, so systemd stop, logout, and terminal interrupts request `qApp->quit()` through the Qt event loop. This is required for `App::cleanup()` to stop `InputHandler` cleanly and preserve physical keyboard LED state.
+
 **`kv-ctl`:** separate lightweight `QCoreApplication` binary linked only with `Qt6::Core` and `Qt6::DBus`. It does not start the tray app and does not shell out to `qdbus`; it sends synchronous calls to the running daemon on the session bus.
 
 `Config` is held as `std::unique_ptr<Config>`; `m_osd` is explicitly `delete`d in `~App()`.
@@ -309,6 +311,8 @@ App/binary filter constants (`SYSTEM_BINARIES`, `SKIP_APP_NAMES`) live in `pwuti
 
 **`InputHandler`** (extends `QThread`): reads evdev events from the selected device and all other devices advertising any configured hotkey binding (`EV_KEY` keys or scroll `EV_REL` codes). All such devices are grabbed exclusively and mirrored via uinput so non-hotkey events pass through transparently. Hotkey events that resolve to a profile are swallowed (never re-injected); hotkey events with no matching profile are forwarded so typing/scrolling isn't blocked.
 
+For grabbed devices with keyboard LEDs, the physical evdev node is opened read/write when possible. The uinput fd is added to the same `epoll()` loop so output `EV_LED` events from the desktop (`LED_NUML`, `LED_CAPSL`, `LED_SCROLLL`) are mirrored back to the physical keyboard via `libevdev_kernel_set_led_value()`. This keeps logical lock state and hardware indicators in sync while the desktop talks to the virtual uinput mirror. On shutdown, `InputHandler` preserves LED state for all uinput mirrors, destroys all mirrors/grabs, waits briefly for the desktop input stack to settle, then restores the preserved state on the physical devices; do not collapse this into per-device destructor cleanup or later uinput removals can switch LEDs off again.
+
 API: `setProfiles(QList<Profile>)` / `currentProfiles()`. Signals carry the resolved `profileId` so `App` can route to the right audio app:
 ```cpp
 void volume_up(const QString &profileId);
@@ -333,7 +337,7 @@ Key repeat events (`ev.value == 2`) are handled alongside regular press events (
 
 `std::atomic<bool>` used for all thread-shared flags (`m_running`) — never `volatile bool`.
 
-**`EvdevDevice`** (RAII, move-only) in `evdevdevice.h/cpp` — manages fd, `libevdev*`, grab/ungrab, and `libevdev_uinput*` with automatic cleanup in destructor. Used by `InputHandler`, `DeviceSelectorDialog`, and `FirstRunWizard`. `getVolumeDevices()` also lives in `inputhandler.h/cpp`.
+**`EvdevDevice`** (RAII, move-only) in `evdevdevice.h/cpp` — manages fd, optional read/write mode for LED mirroring, `libevdev*`, grab/ungrab, and `libevdev_uinput*` with automatic cleanup in destructor. Used by `InputHandler`, `DeviceSelectorDialog`, and `FirstRunWizard`. `getVolumeDevices()` also lives in `inputhandler.h/cpp`.
 
 **Device selection logic:**
 - `findSiblingDevices(path)` — finds all nodes sharing the same `phys` prefix

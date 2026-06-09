@@ -18,7 +18,6 @@
 
 #ifdef HAVE_WAYLAND_CLIENT
 #include <wayland-client.h>
-#include <cstring>
 #endif
 
 #include <QApplication>
@@ -27,15 +26,77 @@
 #include <QMessageBox>
 #include <QObject>
 #include <QProcess>
+#include <QSocketNotifier>
 #include <QTimer>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
+#include <cerrno>
+#include <csignal>
+#include <cstring>
+#include <fcntl.h>
 #include <memory>
+#include <unistd.h>
 
 // ─── Wayland state ───────────────────────────────────────────────────────────
 // Defined here; declared extern in waylandstate.h.
 // Set before QApplication, read-only afterwards (no mutex needed).
 bool g_nativeWayland = false;
+
+namespace
+{
+
+int g_signalPipe[2] = {-1, -1};
+
+void handleUnixSignal(int signo)
+{
+    if (g_signalPipe[1] < 0) return;
+    const char byte = static_cast<char>(signo);
+    const ssize_t ignored = ::write(g_signalPipe[1], &byte, 1);
+    (void)ignored;
+}
+
+void setFdFlag(int fd, int command, int flag)
+{
+    const int flags = fcntl(fd, command, 0);
+    if (flags >= 0) fcntl(fd, command == F_GETFD ? F_SETFD : F_SETFL, flags | flag);
+}
+
+std::unique_ptr<QSocketNotifier> installUnixSignalHandlers(QObject* parent)
+{
+    if (::pipe(g_signalPipe) != 0)
+    {
+        qWarning() << "Could not install signal pipe:" << strerror(errno);
+        return {};
+    }
+
+    setFdFlag(g_signalPipe[0], F_GETFL, O_NONBLOCK);
+    setFdFlag(g_signalPipe[1], F_GETFL, O_NONBLOCK);
+    setFdFlag(g_signalPipe[0], F_GETFD, FD_CLOEXEC);
+    setFdFlag(g_signalPipe[1], F_GETFD, FD_CLOEXEC);
+
+    struct sigaction action;
+    std::memset(&action, 0, sizeof(action));
+    action.sa_handler = handleUnixSignal;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    sigaction(SIGTERM, &action, nullptr);
+    sigaction(SIGINT, &action, nullptr);
+
+    auto notifier =
+        std::make_unique<QSocketNotifier>(g_signalPipe[0], QSocketNotifier::Read, parent);
+    QObject::connect(notifier.get(), &QSocketNotifier::activated, parent,
+                     []
+                     {
+                         char buffer[32];
+                         while (::read(g_signalPipe[0], buffer, sizeof(buffer)) > 0)
+                         {
+                         }
+                         qApp->quit();
+                     });
+    return notifier;
+}
+
+} // namespace
 
 #ifdef HAVE_WAYLAND_CLIENT
 // Probe Wayland registry for zwlr_layer_shell_v1 before QApplication is created.
@@ -646,6 +707,7 @@ int main(int argc, char* argv[])
     QApplication qtApp(argc, argv);
     qtApp.setQuitOnLastWindowClosed(false);
     qtApp.setApplicationVersion(QStringLiteral(APP_VERSION));
+    auto signalNotifier = installUnixSignalHandlers(&qtApp);
 
     QCommandLineParser parser;
     parser.setApplicationDescription("Keyboard volume controller with OSD");
