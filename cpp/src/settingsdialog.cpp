@@ -47,8 +47,9 @@
 
 namespace
 {
-// Fit combo width to the longest item, but cap min/max so ExpandingFieldsGrow does not
-// stretch the control across the full dialog when the user resizes it wider.
+// Fit combo width to the longest item without stretching across the dialog on resize.
+// Minimum policy + content-based minimum width avoids clipping while keeping fields
+// at their natural width (no ExpandingFieldsGrow / fixed maximum-width cap).
 void sizeComboToContents(QComboBox* combo)
 {
     combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
@@ -69,8 +70,7 @@ void sizeComboToContents(QComboBox* combo)
     const int arrowW = style->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, combo);
     const int contentW = maxTextW + arrowW + framePad + 4;
     combo->setMinimumWidth(contentW);
-    combo->setMaximumWidth(contentW);
-    combo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    combo->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
 }
 } // namespace
 
@@ -415,7 +415,6 @@ void SettingsDialog::buildUi()
     QFormLayout* form = new QFormLayout;
     form->setLabelAlignment(Qt::AlignRight);
     form->setSpacing(10);
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
     OsdConfig osd = m_config->osd();
     m_profiles = m_config->profiles();
