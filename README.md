@@ -64,15 +64,29 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 
 ### Installation
 
-#### Arch Linux (PKGBUILD)
+#### Arch Linux / AUR
 
 ```bash
-git clone https://github.com/Adiker/keyboard-volume-app.git
-cd keyboard-volume-app/pkg/arch
+yay -S keyboard-volume-app-git
+```
+
+Without an AUR helper:
+
+```bash
+sudo pacman -S --needed base-devel git
+git clone https://aur.archlinux.org/keyboard-volume-app-git.git
+cd keyboard-volume-app-git
 makepkg -si
 ```
 
-This clones `main`, builds Release binaries, and installs everything to `/usr` including `keyboard-volume-app`, `kv-ctl`, the `.desktop` entry, icon, and systemd user service.
+The [`keyboard-volume-app-git`](https://aur.archlinux.org/packages/keyboard-volume-app-git) package tracks the upstream `main` branch, builds Release binaries, and installs everything to `/usr` including `keyboard-volume-app`, `kv-ctl`, the `.desktop` entry, icon, and systemd user service.
+
+To build directly using the PKGBUILD in this repo (sources still pulled from GitHub `main`):
+
+```bash
+cd pkg/arch
+makepkg -si
+```
 
 #### Debian / RPM packages
 
@@ -526,15 +540,29 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 
 ### Instalacja
 
-#### Arch Linux (PKGBUILD)
+#### Arch Linux / AUR
 
 ```bash
-git clone https://github.com/Adiker/keyboard-volume-app.git
-cd keyboard-volume-app/pkg/arch
+yay -S keyboard-volume-app-git
+```
+
+Bez helpera AUR:
+
+```bash
+sudo pacman -S --needed base-devel git
+git clone https://aur.archlinux.org/keyboard-volume-app-git.git
+cd keyboard-volume-app-git
 makepkg -si
 ```
 
-Pobiera branch `main`, buduje binarki Release i instaluje wszystko do `/usr`, w tym `keyboard-volume-app`, `kv-ctl`, wpis `.desktop`, ikonę i usługę systemd user.
+Pakiet [`keyboard-volume-app-git`](https://aur.archlinux.org/packages/keyboard-volume-app-git) śledzi upstreamowy branch `main`, buduje binarki Release i instaluje wszystko do `/usr`, w tym `keyboard-volume-app`, `kv-ctl`, wpis `.desktop`, ikonę i usługę systemd user.
+
+Aby budować bezpośrednio przez PKGBUILD z tego repozytorium (źródła nadal są pobierane z GitHuba z brancha `main`):
+
+```bash
+cd pkg/arch
+makepkg -si
+```
 
 #### Pakiety Debian / RPM
 

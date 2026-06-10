@@ -678,17 +678,42 @@ dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-repl
 
 ### `pkg/arch/PKGBUILD` — Arch Linux package
 
-`keyboard-volume-app-git` package for Arch Linux / AUR. Builds from the `main` branch via `git clone`.
+`keyboard-volume-app-git` package for Arch Linux / AUR:
+https://aur.archlinux.org/packages/keyboard-volume-app-git
+
+The AUR package builds from the upstream `main` branch via `git clone`. The GitHub source tree keeps `pkg/arch/PKGBUILD` and `pkg/arch/.SRCINFO` as the source-controlled publishing files; regenerate `.SRCINFO` whenever `PKGBUILD` changes. The AUR git repository should contain only those publishing files (`PKGBUILD`, `.SRCINFO`, and any future required patch/install files), not the full upstream source tree.
 
 - `pkgver()` uses `git describe --tags --long` to generate a version like `r0.1.0.24.gc2cd813`
-- `depends`: `qt6-base libevdev libpulse libpipewire pipewire layer-shell-qt`
+- `depends`: `qt6-base libevdev libpulse libpipewire taglib pipewire layer-shell-qt`
 - `makedepends`: `cmake gcc pkg-config git wayland layer-shell-qt`
 - CMake Release build with `BUILD_TESTING=OFF` and `DESTDIR` install
 - Installs: binary → `/usr/bin/`, `.desktop` → `/usr/share/applications/`, icon → `/usr/share/pixmaps/`, systemd user service → `/usr/lib/systemd/user/`
 
-To build locally: `cd pkg/arch && makepkg -f --skipchecksums`
-To validate: `namcap PKGBUILD`
-Before AUR submission: `makepkg --printsrcinfo > .SRCINFO`
+Local validation from the project checkout:
+
+```bash
+cd pkg/arch
+rm -rf src pkg *.pkg.tar.*
+makepkg -Cfs
+namcap PKGBUILD
+namcap keyboard-volume-app-git-*.pkg.tar.zst
+```
+
+AUR publishing / update workflow:
+
+```bash
+cd pkg/arch
+makepkg --printsrcinfo > .SRCINFO
+
+git clone ssh://aur@aur.archlinux.org/keyboard-volume-app-git.git /tmp/keyboard-volume-app-git-aur
+cp PKGBUILD .SRCINFO /tmp/keyboard-volume-app-git-aur/
+cd /tmp/keyboard-volume-app-git-aur
+git add PKGBUILD .SRCINFO
+git commit -m "Update package"
+git push origin master
+```
+
+AUR accepts pushes to `master`; do not push the whole upstream repository there. If there is no functional package change and only docs changed upstream, no AUR update is needed.
 
 **Distribution files installed by CMake:**
 - `resources/keyboard-volume-app.desktop` — clean `.desktop` without hardcoded paths; tracked in git (the root-level `keyboard-volume-app.desktop` with dev paths remains gitignored)
