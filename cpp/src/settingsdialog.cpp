@@ -38,10 +38,20 @@
 #include <QtGlobal>
 #include <QHeaderView>
 #include <QStringList>
-#include <QSizePolicy>
 
 #include <linux/input.h>       // KEY_* constants
 #include <libevdev/libevdev.h> // libevdev_event_code_get_name()
+
+namespace
+{
+void sizeComboToContents(QComboBox* combo)
+{
+    combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    int maxChars = 0;
+    for (int i = 0; i < combo->count(); ++i) maxChars = qMax(maxChars, combo->itemText(i).size());
+    if (maxChars > 0) combo->setMinimumContentsLength(maxChars);
+}
+} // namespace
 
 // ─── ColorButton ──────────────────────────────────────────────────────────────
 ColorButton::ColorButton(const QString& hexColor, QWidget* parent) : QPushButton(parent)
@@ -384,7 +394,6 @@ void SettingsDialog::buildUi()
     QFormLayout* form = new QFormLayout;
     form->setLabelAlignment(Qt::AlignRight);
     form->setSpacing(10);
-    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
     OsdConfig osd = m_config->osd();
     m_profiles = m_config->profiles();
@@ -406,7 +415,7 @@ void SettingsDialog::buildUi()
         }
         m_lang->setCurrentIndex(idx);
     }
-    m_lang->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    sizeComboToContents(m_lang);
     form->addRow(::tr(QStringLiteral("settings.language")), m_lang);
 
     // OSD screen
@@ -423,7 +432,7 @@ void SettingsDialog::buildUi()
         m_screen->addItem(label, i);
     }
     if (osd.screen < m_screen->count()) m_screen->setCurrentIndex(osd.screen);
-    m_screen->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    sizeComboToContents(m_screen);
     form->addRow(::tr(QStringLiteral("settings.osd_screen")), m_screen);
 
     // OSD timeout
