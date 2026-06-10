@@ -150,6 +150,8 @@ class OSDWindow : public QWidget
     QLabel* m_labelPct = nullptr;
     QTimer* m_hideTimer = nullptr;
     QColor m_bgColor;
+    QString m_cachedStyleText;
+    QString m_cachedStyleBar;
     bool m_previewMode = false;
     bool m_previewHeld = false;
     bool m_mediaActionMode = false;
@@ -165,6 +167,8 @@ class OSDWindow : public QWidget
     QPoint m_resizeCurrentAbsPos;
     double m_resizeStartScale = 1.0;
     int m_resizeBaseHeight = 70;
+    int m_resizeCachedLayoutKey = -1;
+    QPoint m_resizeLastAppliedPos{-1, -1};
 
     // ── Progress row ─────────────────────────────────────────────────────────
     QWidget* m_progressRow = nullptr; // container — show/hide as a unit
@@ -210,7 +214,11 @@ class OSDWindow : public QWidget
     void applyStyles();
     void applyColorStyles(const QString& colorBg, const QString& colorText, const QString& colorBar,
                           int opacity);
+    void applyScaleFonts(bool scheduleUpdate = true);
+    void applyResizeFontsFast(double scale);
+    void enterResizeStyleMode();
     void positionWindow(int absX, int absY);
+    void positionWindowDuringResize(int absX, int absY, int w, int h);
     std::pair<int, int> absPos() const;
     // Clamp (absX, absY) so the window stays within its screen's available geometry.
     std::pair<int, int> clampedPos(int absX, int absY) const;
@@ -228,6 +236,7 @@ class OSDWindow : public QWidget
     // Must be called from reloadStyles() whenever scale may have changed.
     void rescale();
     void rescaleAt(int absX, int absY, bool restartHideTimer = false);
+    void rescaleDuringResize(int absX, int absY, int newW, int newH);
 
     // Manual resizing for the frameless OSD. Resize is proportional and persists
     // as OsdConfig::osdScale when the drag finishes.
@@ -243,8 +252,8 @@ class OSDWindow : public QWidget
     void updateResize(const QPoint& globalPos);
     void finishResize(bool persist);
     double scaleForResize(const QPoint& globalPos) const;
-    QPoint anchoredResizePos(double scale) const;
-    QPoint clampedResizePos(const QPoint& absPos, double scale) const;
+    QPoint anchoredResizePos(int newW, int newH) const;
+    QPoint clampedResizePos(const QPoint& absPos, int newW, int newH) const;
     void persistResize(double scale, const QPoint& absPos);
     void restartHideTimerAfterResize();
 

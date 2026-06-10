@@ -10,6 +10,7 @@
 
 #include <QApplication>
 #include <QEnterEvent>
+#include <QFont>
 #include <QLabel>
 #include <QHideEvent>
 #include <QMouseEvent>
@@ -307,13 +308,33 @@ void OSDWindow::applyColorStyles(const QString& colorBg, const QString& colorTex
     if (text.startsWith(QLatin1Char('#'))) text.remove(0, 1);
     QString bar = colorBar;
     if (bar.startsWith(QLatin1Char('#'))) bar.remove(0, 1);
+    m_cachedStyleText = text;
+    m_cachedStyleBar = bar;
+    applyScaleFonts();
+}
 
-    const double s = m_previewScale > 0.0 ? m_previewScale : m_config->osd().osdScale;
+void OSDWindow::applyScaleFonts(bool scheduleUpdate)
+{
+    if (m_cachedStyleText.isEmpty() || m_cachedStyleBar.isEmpty())
+    {
+        const OsdConfig osd = m_config->osd();
+        QString text = osd.colorText;
+        if (text.startsWith(QLatin1Char('#'))) text.remove(0, 1);
+        QString bar = osd.colorBar;
+        if (bar.startsWith(QLatin1Char('#'))) bar.remove(0, 1);
+        m_cachedStyleText = text;
+        m_cachedStyleBar = bar;
+    }
+
+    const double s = activeScale();
     const int ptName = qMax(6, qRound(11 * s));
     const int ptPct = qMax(5, qRound(9 * s));
     const int ptTrack = qMax(5, qRound(9 * s));
     const int ptTime = qMax(4, qRound(8 * s));
     const int ptCtrl = qMax(6, qRound(12 * s));
+
+    const QString& text = m_cachedStyleText;
+    const QString& bar = m_cachedStyleBar;
 
     setStyleSheet(
         QStringLiteral(
@@ -360,7 +381,62 @@ void OSDWindow::applyColorStyles(const QString& colorBg, const QString& colorTex
             .arg(text, bar)
             .arg(ptCtrl);
     if (m_controlsRow) m_controlsRow->setStyleSheet(ctrlStyle);
-    update();
+    if (scheduleUpdate) update();
+}
+
+void OSDWindow::applyResizeFontsFast(double scale)
+{
+    const auto setPt = [](QWidget* widget, double basePt, int minPt, double s)
+    {
+        if (!widget) return;
+        QFont font = widget->font();
+        font.setPointSizeF(std::max(static_cast<double>(minPt), basePt * s));
+        widget->setFont(font);
+    };
+
+    setPt(m_labelName, 11, 6, scale);
+    setPt(m_labelPct, 9, 5, scale);
+    if (m_labelTrack) setPt(m_labelTrack, 9, 5, scale);
+    if (m_labelTime) setPt(m_labelTime, 8, 4, scale);
+    for (auto* btn : {m_btnPrev, m_btnPlayPause, m_btnNext}) setPt(btn, 12, 6, scale);
+}
+
+void OSDWindow::enterResizeStyleMode()
+{
+    if (m_cachedStyleText.isEmpty() || m_cachedStyleBar.isEmpty())
+    {
+        const OsdConfig osd = m_config->osd();
+        QString text = osd.colorText;
+        if (text.startsWith(QLatin1Char('#'))) text.remove(0, 1);
+        QString bar = osd.colorBar;
+        if (bar.startsWith(QLatin1Char('#'))) bar.remove(0, 1);
+        m_cachedStyleText = text;
+        m_cachedStyleBar = bar;
+    }
+
+    const QString& text = m_cachedStyleText;
+    const QString& bar = m_cachedStyleBar;
+    const QString labelBase = QStringLiteral("color: #%1; background: transparent;").arg(text);
+
+    setStyleSheet(
+        QStringLiteral(
+            "QLabel { color: #%1; background: transparent; }"
+            "QProgressBar { background-color: #333333; border: none; border-radius: 3px; }"
+            "QProgressBar::chunk { background-color: #%2; border-radius: 3px; }")
+            .arg(text, bar));
+
+    m_labelName->setStyleSheet(QStringLiteral("font-weight: bold; ") + labelBase);
+    m_labelPct->setStyleSheet(labelBase);
+    if (m_labelTrack) m_labelTrack->setStyleSheet(labelBase);
+    if (m_labelTime) m_labelTime->setStyleSheet(labelBase);
+    if (m_controlsRow)
+    {
+        m_controlsRow->setStyleSheet(
+            QStringLiteral("QPushButton#ctrl_btn { background: transparent; border: none; "
+                           "color: #%1; padding: 0; }"
+                           "QPushButton#ctrl_btn:hover { color: #%2; }")
+                .arg(text, bar));
+    }
 }
 
 // ─── paintEvent ───────────────────────────────────────────────────────────────
@@ -428,6 +504,13 @@ void OSDWindow::rescale()
 
 void OSDWindow::rescaleAt(int absX, int absY, bool restartHideTimer)
 {
+    if (m_resizing)
+    {
+        rescaleDuringResize(absX, absY, qRound(OSD_W * activeScale()),
+                            qRound(m_resizeBaseHeight * activeScale()));
+        return;
+    }
+
     // Re-apply all inner widget sizes that were baked in buildUi() with the
     // scale at construction time.  Must be called whenever osdScale changes.
     m_mainLayout->setContentsMargins(scaled(10), scaled(8), scaled(10), scaled(8));
@@ -452,6 +535,43 @@ void OSDWindow::rescaleAt(int absX, int absY, bool restartHideTimer)
         if (btn) btn->setFixedSize(scaled(24), scaled(20));
 
     applySizeAt(absX, absY, restartHideTimer); // updates outer window dimensions and repositions
+}
+
+void OSDWindow::rescaleDuringResize(int absX, int absY, int newW, int newH)
+{
+    const int w = newW;
+    const int h = newH;
+    const int layoutKey = (w << 16) | h;
+
+    if (layoutKey != m_resizeCachedLayoutKey)
+    {
+        m_resizeCachedLayoutKey = layoutKey;
+        m_mainLayout->setContentsMargins(scaled(10), scaled(8), scaled(10), scaled(8));
+        m_mainLayout->setSpacing(scaled(4));
+        m_bar->setFixedHeight(scaled(10));
+
+        if (m_progressOuterLayout)
+        {
+            m_progressOuterLayout->setContentsMargins(0, scaled(2), 0, 0);
+            m_progressOuterLayout->setSpacing(scaled(6));
+        }
+        if (m_progressLayout)
+        {
+            m_progressLayout->setContentsMargins(0, 0, 0, 0);
+            m_progressLayout->setSpacing(scaled(2));
+        }
+        if (m_albumArt) m_albumArt->setFixedSize(scaled(36), scaled(36));
+        if (m_progressBar) m_progressBar->setFixedHeight(scaled(8));
+        if (m_controlsLayout) m_controlsLayout->setSpacing(scaled(8));
+        for (auto* btn : {m_btnPrev, m_btnPlayPause, m_btnNext})
+            if (btn) btn->setFixedSize(scaled(24), scaled(20));
+    }
+
+    const bool sizeChanged = size() != QSize(w, h);
+    if (sizeChanged) setFixedSize(w, h);
+    const bool posChanged = m_resizeLastAppliedPos != QPoint(absX, absY);
+    if (posChanged || sizeChanged) positionWindowDuringResize(absX, absY, w, h);
+    applyResizeFontsFast(activeScale());
 }
 
 void OSDWindow::applySize()
@@ -584,16 +704,57 @@ void OSDWindow::positionWindow(int absX, int absY)
         }
         m_lsWindow->setMargins(QMargins(relX, relY, 0, 0));
 
-        show();
-        raise();
+        if (!m_resizing)
+        {
+            show();
+            raise();
+        }
         return;
     }
 #endif
     move(x, y);
     setGeometry(x, y, width(), height());
-    show();
-    raise();
+    if (!m_resizing)
+    {
+        show();
+        raise();
+    }
     if (QWindow* wh = windowHandle()) wh->setPosition(x, y);
+}
+
+void OSDWindow::positionWindowDuringResize(int absX, int absY, int w, int h)
+{
+    m_resizeLastAppliedPos = QPoint(absX, absY);
+    m_currentAbsPos = QPoint(absX, absY);
+
+#ifdef HAVE_LAYER_SHELL_QT
+    if (m_layerShellActive && m_lsWindow)
+    {
+        QScreen* screen = QApplication::screenAt(QPoint(absX, absY));
+        if (!screen && !QApplication::screens().isEmpty()) screen = QApplication::screens().first();
+
+        if (screen && screen != m_lsScreen)
+        {
+            m_lsWindow->setScreen(screen);
+            m_lsScreen = screen;
+        }
+
+        if (QWindow* wh = windowHandle()) wh->resize(w, h);
+
+        int relX = absX;
+        int relY = absY;
+        if (screen)
+        {
+            const QRect geo = screen->geometry();
+            relX = absX - geo.x();
+            relY = absY - geo.y();
+        }
+        m_lsWindow->setMargins(QMargins(relX, relY, 0, 0));
+        return;
+    }
+#endif
+    setGeometry(absX, absY, w, h);
+    if (QWindow* wh = windowHandle()) wh->setPosition(absX, absY);
 }
 
 // ─── Manual mouse resize ──────────────────────────────────────────────────────
@@ -714,6 +875,8 @@ void OSDWindow::startResize(int edges, const QPoint& globalPos)
 {
     if (edges == EdgeNone) return;
     finishSeeking();
+    m_resizeCachedLayoutKey = -1;
+    m_resizeLastAppliedPos = QPoint(-1, -1);
     m_resizing = true;
     m_resizeEdges = edges;
     m_resizeStartGlobal = globalPos;
@@ -722,19 +885,24 @@ void OSDWindow::startResize(int edges, const QPoint& globalPos)
     m_resizeStartScale = activeScale();
     m_resizeBaseHeight = currentBaseHeight();
     m_hideTimer->stop();
+    enterResizeStyleMode();
     setCursor(resizeCursorForEdges(edges));
     grabMouse();
 }
 
 void OSDWindow::updateResize(const QPoint& globalPos)
 {
+    setUpdatesEnabled(false);
     const double scale = scaleForResize(globalPos);
-    const QPoint anchored = anchoredResizePos(scale);
-    const QPoint pos = clampedResizePos(anchored, scale);
+    const int newW = qRound(OSD_W * scale);
+    const int newH = qRound(m_resizeBaseHeight * scale);
+    const QPoint anchored = anchoredResizePos(newW, newH);
+    const QPoint pos = clampedResizePos(anchored, newW, newH);
     m_previewScale = scale;
     m_resizeCurrentAbsPos = pos;
-    applyStyles();
-    rescaleAt(pos.x(), pos.y());
+    rescaleDuringResize(pos.x(), pos.y(), newW, newH);
+    setUpdatesEnabled(true);
+    update();
 }
 
 void OSDWindow::finishResize(bool persist)
@@ -746,6 +914,8 @@ void OSDWindow::finishResize(bool persist)
     releaseMouse();
     m_resizing = false;
     m_resizeEdges = EdgeNone;
+    m_resizeCachedLayoutKey = -1;
+    m_resizeLastAppliedPos = QPoint(-1, -1);
     unsetCursor();
 
     if (persist)
@@ -766,38 +936,45 @@ void OSDWindow::finishResize(bool persist)
 double OSDWindow::scaleForResize(const QPoint& globalPos) const
 {
     const QPoint delta = globalPos - m_resizeStartGlobal;
-    double best = m_resizeStartScale;
-    double bestDelta = -1.0;
+    const bool horiz = (m_resizeEdges & (EdgeLeft | EdgeRight)) != 0;
+    const bool vert = (m_resizeEdges & (EdgeTop | EdgeBottom)) != 0;
 
-    auto consider = [&](double candidate)
+    if (horiz && vert)
     {
-        if (!std::isfinite(candidate)) return;
-        const double distance = std::abs(candidate - m_resizeStartScale);
-        if (distance > bestDelta)
-        {
-            best = candidate;
-            bestDelta = distance;
-        }
-    };
+        const int anchorX = (m_resizeEdges & EdgeLeft) ? m_resizeStartGeometry.right()
+                                                       : m_resizeStartGeometry.left();
+        const int anchorY = (m_resizeEdges & EdgeTop) ? m_resizeStartGeometry.bottom()
+                                                      : m_resizeStartGeometry.top();
+        const QPoint anchor(anchorX, anchorY);
+        const double startDist =
+            std::hypot(m_resizeStartGlobal.x() - anchor.x(), m_resizeStartGlobal.y() - anchor.y());
+        const double currentDist =
+            std::hypot(globalPos.x() - anchor.x(), globalPos.y() - anchor.y());
+        if (startDist < 1.0) return std::clamp(m_resizeStartScale, 0.5, 3.0);
 
+        constexpr double kCornerGain = 1.18;
+        const double ratio = currentDist / startDist;
+        const double boosted = 1.0 + (ratio - 1.0) * kCornerGain;
+        return std::clamp(m_resizeStartScale * boosted, 0.5, 3.0);
+    }
+
+    double scale = m_resizeStartScale;
     if (m_resizeEdges & EdgeLeft)
-        consider(static_cast<double>(m_resizeStartGeometry.width() - delta.x()) / OSD_W);
-    if (m_resizeEdges & EdgeRight)
-        consider(static_cast<double>(m_resizeStartGeometry.width() + delta.x()) / OSD_W);
-    if (m_resizeEdges & EdgeTop)
-        consider(static_cast<double>(m_resizeStartGeometry.height() - delta.y()) /
-                 m_resizeBaseHeight);
-    if (m_resizeEdges & EdgeBottom)
-        consider(static_cast<double>(m_resizeStartGeometry.height() + delta.y()) /
-                 m_resizeBaseHeight);
+        scale = static_cast<double>(m_resizeStartGeometry.width() - delta.x()) / OSD_W;
+    else if (m_resizeEdges & EdgeRight)
+        scale = static_cast<double>(m_resizeStartGeometry.width() + delta.x()) / OSD_W;
+    else if (m_resizeEdges & EdgeTop)
+        scale =
+            static_cast<double>(m_resizeStartGeometry.height() - delta.y()) / m_resizeBaseHeight;
+    else if (m_resizeEdges & EdgeBottom)
+        scale =
+            static_cast<double>(m_resizeStartGeometry.height() + delta.y()) / m_resizeBaseHeight;
 
-    return std::clamp(best, 0.5, 3.0);
+    return std::clamp(scale, 0.5, 3.0);
 }
 
-QPoint OSDWindow::anchoredResizePos(double scale) const
+QPoint OSDWindow::anchoredResizePos(int newW, int newH) const
 {
-    const int newW = qRound(OSD_W * scale);
-    const int newH = qRound(m_resizeBaseHeight * scale);
     const int startRight = m_resizeStartGeometry.x() + m_resizeStartGeometry.width();
     const int startBottom = m_resizeStartGeometry.y() + m_resizeStartGeometry.height();
 
@@ -807,7 +984,7 @@ QPoint OSDWindow::anchoredResizePos(double scale) const
     return pos;
 }
 
-QPoint OSDWindow::clampedResizePos(const QPoint& absPos, double scale) const
+QPoint OSDWindow::clampedResizePos(const QPoint& absPos, int newW, int newH) const
 {
     QScreen* screen = QApplication::screenAt(absPos);
     if (!screen) screen = QApplication::screenAt(m_resizeStartGeometry.center());
@@ -815,8 +992,6 @@ QPoint OSDWindow::clampedResizePos(const QPoint& absPos, double scale) const
     if (!screen) return absPos;
 
     const QRect avail = screen->availableGeometry();
-    const int newW = qRound(OSD_W * scale);
-    const int newH = qRound(m_resizeBaseHeight * scale);
     const int maxX = std::max(avail.left(), avail.left() + avail.width() - newW);
     const int maxY = std::max(avail.top(), avail.top() + avail.height() - newH);
     return {std::clamp(absPos.x(), avail.left(), maxX), std::clamp(absPos.y(), avail.top(), maxY)};
