@@ -38,18 +38,39 @@
 #include <QtGlobal>
 #include <QHeaderView>
 #include <QStringList>
+#include <QFontMetrics>
+#include <QSizePolicy>
+#include <QStyle>
 
 #include <linux/input.h>       // KEY_* constants
 #include <libevdev/libevdev.h> // libevdev_event_code_get_name()
 
 namespace
 {
+// Fit combo width to the longest item, but cap min/max so ExpandingFieldsGrow does not
+// stretch the control across the full dialog when the user resizes it wider.
 void sizeComboToContents(QComboBox* combo)
 {
     combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    QFontMetrics fm(combo->font());
+    int maxTextW = 0;
     int maxChars = 0;
-    for (int i = 0; i < combo->count(); ++i) maxChars = qMax(maxChars, combo->itemText(i).size());
+    for (int i = 0; i < combo->count(); ++i)
+    {
+        const QString& text = combo->itemText(i);
+        maxTextW = qMax(maxTextW, fm.horizontalAdvance(text));
+        maxChars = qMax(maxChars, text.size());
+    }
     if (maxChars > 0) combo->setMinimumContentsLength(maxChars);
+    if (maxTextW <= 0) return;
+
+    QStyle* style = combo->style();
+    const int framePad = style->pixelMetric(QStyle::PM_ComboBoxFrameWidth, nullptr, combo) * 2;
+    const int arrowW = style->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, combo);
+    const int contentW = maxTextW + arrowW + framePad + 4;
+    combo->setMinimumWidth(contentW);
+    combo->setMaximumWidth(contentW);
+    combo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 }
 } // namespace
 
@@ -394,6 +415,7 @@ void SettingsDialog::buildUi()
     QFormLayout* form = new QFormLayout;
     form->setLabelAlignment(Qt::AlignRight);
     form->setSpacing(10);
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
     OsdConfig osd = m_config->osd();
     m_profiles = m_config->profiles();
