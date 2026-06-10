@@ -383,6 +383,7 @@ void SettingsDialog::buildUi()
     QFormLayout* form = new QFormLayout;
     form->setLabelAlignment(Qt::AlignRight);
     form->setSpacing(10);
+    form->setFieldGrowthPolicy(QFormLayout::ExpandingFieldsGrow);
 
     OsdConfig osd = m_config->osd();
     m_profiles = m_config->profiles();
