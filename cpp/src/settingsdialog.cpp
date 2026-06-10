@@ -38,9 +38,41 @@
 #include <QtGlobal>
 #include <QHeaderView>
 #include <QStringList>
+#include <QFontMetrics>
+#include <QSizePolicy>
+#include <QStyle>
 
 #include <linux/input.h>       // KEY_* constants
 #include <libevdev/libevdev.h> // libevdev_event_code_get_name()
+
+namespace
+{
+// Fit combo width to the longest item without stretching across the dialog on resize.
+// Minimum policy + content-based minimum width avoids clipping while keeping fields
+// at their natural width (no ExpandingFieldsGrow / fixed maximum-width cap).
+void sizeComboToContents(QComboBox* combo)
+{
+    combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    QFontMetrics fm(combo->font());
+    int maxTextW = 0;
+    int maxChars = 0;
+    for (int i = 0; i < combo->count(); ++i)
+    {
+        const QString& text = combo->itemText(i);
+        maxTextW = qMax(maxTextW, fm.horizontalAdvance(text));
+        maxChars = qMax(maxChars, text.size());
+    }
+    if (maxChars > 0) combo->setMinimumContentsLength(maxChars);
+    if (maxTextW <= 0) return;
+
+    QStyle* style = combo->style();
+    const int framePad = style->pixelMetric(QStyle::PM_ComboBoxFrameWidth, nullptr, combo) * 2;
+    const int arrowW = style->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, combo);
+    const int contentW = maxTextW + arrowW + framePad + 4;
+    combo->setMinimumWidth(contentW);
+    combo->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+}
+} // namespace
 
 // ─── ColorButton ──────────────────────────────────────────────────────────────
 ColorButton::ColorButton(const QString& hexColor, QWidget* parent) : QPushButton(parent)
@@ -404,6 +436,7 @@ void SettingsDialog::buildUi()
         }
         m_lang->setCurrentIndex(idx);
     }
+    sizeComboToContents(m_lang);
     form->addRow(::tr(QStringLiteral("settings.language")), m_lang);
 
     // OSD screen
@@ -420,6 +453,7 @@ void SettingsDialog::buildUi()
         m_screen->addItem(label, i);
     }
     if (osd.screen < m_screen->count()) m_screen->setCurrentIndex(osd.screen);
+    sizeComboToContents(m_screen);
     form->addRow(::tr(QStringLiteral("settings.osd_screen")), m_screen);
 
     // OSD timeout
