@@ -38,6 +38,7 @@
 #include <QtGlobal>
 #include <QHeaderView>
 #include <QStringList>
+#include <QSizePolicy>
 
 #include <linux/input.h>       // KEY_* constants
 #include <libevdev/libevdev.h> // libevdev_event_code_get_name()
@@ -405,6 +406,7 @@ void SettingsDialog::buildUi()
         }
         m_lang->setCurrentIndex(idx);
     }
+    m_lang->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     form->addRow(::tr(QStringLiteral("settings.language")), m_lang);
 
     // OSD screen
@@ -421,6 +423,7 @@ void SettingsDialog::buildUi()
         m_screen->addItem(label, i);
     }
     if (osd.screen < m_screen->count()) m_screen->setCurrentIndex(osd.screen);
+    m_screen->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     form->addRow(::tr(QStringLiteral("settings.osd_screen")), m_screen);
 
     // OSD timeout
