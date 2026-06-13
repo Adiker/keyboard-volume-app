@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QLabel>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QScreen>
 #include <QTemporaryDir>
 
@@ -373,6 +374,95 @@ TEST(OSDWindowResize, ProgressBarCenterIsNotAResizeGrip)
     const QPoint center =
         window.m_progressBar->mapTo(&window, window.m_progressBar->rect().center());
     EXPECT_EQ(window.resizeEdgesAt(center), OSDWindow::EdgeNone);
+}
+
+void enablePositionControls(Config& config)
+{
+    OsdConfig osd = config.osd();
+    osd.positionControlsEnabled = true;
+    osd.positionArrowsEnabled = true;
+    osd.positionDragEnabled = true;
+    config.setOsd(osd);
+}
+
+TEST(OSDWindowPosition, SnapTopSetsYToAvailableTop)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+    moveOsdConfig(config, 200, 200);
+    enablePositionControls(config);
+
+    OSDWindow window(&config);
+    window.showVolume(QStringLiteral("spotify"), 0.5);
+    QApplication::processEvents();
+
+    QScreen* screen = QApplication::screenAt(window.pos());
+    ASSERT_NE(screen, nullptr);
+    const int expectedTop = screen->availableGeometry().top();
+
+    window.snapUp();
+    QApplication::processEvents();
+
+    EXPECT_EQ(window.pos().y(), expectedTop);
+    EXPECT_EQ(config.osd().y, expectedTop - screen->geometry().y());
+}
+
+TEST(OSDWindowPosition, DragPersistsPosition)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+    moveOsdConfig(config, 160, 160);
+    enablePositionControls(config);
+
+    OSDWindow window(&config);
+    window.showVolume(QStringLiteral("spotify"), 0.5);
+    QApplication::processEvents();
+
+    const QPoint startGlobal = window.mapToGlobal(window.rect().center());
+    const QPoint startLocal = window.rect().center();
+    window.startMove(startGlobal, startLocal);
+    window.updateMove(startGlobal + QPoint(30, 20));
+    window.finishMove(true);
+
+    EXPECT_EQ(window.m_currentAbsPos, screenRelativeToAbs(config.osd()));
+}
+
+TEST(OSDWindowPosition, DisabledHidesArrowRow)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OSDWindow window(&config);
+    EXPECT_TRUE(window.m_btnPosUp->isHidden());
+
+    enablePositionControls(config);
+    window.setPositionControlsEnabled(true);
+    EXPECT_FALSE(window.m_btnPosUp->isHidden());
+}
+
+TEST(OSDWindowPosition, StepScaleAnchorsCenter)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+    moveOsdConfig(config, 160, 160);
+    enablePositionControls(config);
+
+    OSDWindow window(&config);
+    window.showVolume(QStringLiteral("spotify"), 0.5);
+    QApplication::processEvents();
+
+    const QPoint centerBefore = window.pos() + QPoint(window.width() / 2, window.height() / 2);
+    window.stepScaleUp();
+    QApplication::processEvents();
+    const QPoint centerAfter = window.pos() + QPoint(window.width() / 2, window.height() / 2);
+
+    EXPECT_NEAR(centerBefore.x(), centerAfter.x(), 2);
+    EXPECT_NEAR(centerBefore.y(), centerAfter.y(), 2);
+    EXPECT_NEAR(config.osd().osdScale, 1.1, 0.02);
 }
 
 int main(int argc, char** argv)

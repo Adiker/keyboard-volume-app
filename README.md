@@ -29,7 +29,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Global key capture** — reads directly from evdev input devices (keyboards and mice), works regardless of which window is focused
 - **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising configured hotkey bindings (keys or scroll) from any profile, so the desktop never intercepts them
 - **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio hotkeys (keys or mouse wheel) are reassignable via Settings → Profiles; right-click any hotkey field for an **Unassign** menu option to clear it; defaults are the dedicated media keys
-- **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; can optionally expand with MPRIS playback progress, track label and elapsed/total time; drag any visible OSD edge or corner to resize it persistently; click or drag the progress bar to seek when the player allows it; live streams show `LIVE`; auto-hides after a configurable timeout
+- **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; can optionally expand with MPRIS playback progress, track label and elapsed/total time; drag any visible OSD edge or corner to resize it persistently; optional reposition controls (on-OSD arrow buttons, interior mouse drag, configurable keyboard shortcuts while visible); click or drag the progress bar to seek when the player allows it; live streams show `LIVE`; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists non-system PipeWire audio clients, including apps that are connected but not currently playing
 - **Friendly audio app names** — normalizes PipeWire/PulseAudio streams where the visible app and controllable stream differ, so wrappers such as Harmonoid can appear as the real app while still controlling the underlying stream
@@ -190,6 +190,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    - Interface language (English / Polski)
    - OSD display timeout (ms)
    - OSD screen position (X / Y)
+   - **OSD repositioning** (optional, off by default) — enable arrow buttons that snap the OSD to screen edges, interior mouse drag, and/or keyboard shortcuts active only while the OSD is visible; assign each shortcut in Settings (empty = disabled; e.g. arrow keys for snap, `+`/`−` for scale)
    - OSD opacity (0–100%)
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
@@ -406,6 +407,8 @@ Hotkey values are evdev bindings: legacy integers are `EV_KEY` codes (`KEY_VOLUM
 `auto_profile_switch` (default `false`) globally enables auto-profile switching by focused window. Per-profile `auto_switch` (default `true`) controls whether a given profile participates in auto-switching.
 
 OSD playback progress is configured under `osd`. `progress_enabled` is the master toggle, `progress_interactive` allows seek-capable players to be controlled from the progress bar, `progress_poll_ms` is clamped to `200..2000`, `progress_label_mode` is `app`, `track`, or `both`, and `tracked_players` is a priority list matched against MPRIS service names. When `auto_profile_switch` redirects volume keys to a focused audio app, matching tracked MPRIS players are preferred for the progress row and media controls; if no focused match exists, the same `tracked_players` priority fallback is used. When enabled and a tracked player is active, the OSD expands from the base volume view to a progress row with a track label, 0-1000 progress bar, and time label. Clicking or dragging the bar sends MPRIS `SetPosition` while the player reports `CanSeek` and a known length. Streams with unknown length disable the bar and show `LIVE`. Set `progress_interactive: false` to disable click/drag seek globally while keeping the visual progress row — useful if the player supports `CanSeek` but you prefer keyboard-only control.
+
+Optional OSD repositioning lives under the same `osd` section: `position_controls_enabled` (default `false`) with sub-options for on-OSD arrows, interior mouse drag, and keyboard shortcuts. Bindings in `layout_hotkeys` use the same evdev format as profile/media hotkeys; leave a field at `0` to keep that action disabled. Keyboard shortcuts are active only while the OSD overlay is visible.
 
 For troubleshooting rare MPRIS progress glitches, start the app with `KVA_DEBUG_PROGRESS=1` to log progress metadata, position source, and OSD bar decisions.
 

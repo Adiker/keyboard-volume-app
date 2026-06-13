@@ -104,6 +104,14 @@ class OSDWindow : public QWidget
     // Empty string clears any previously set name. Triggers label refresh.
     void setPlayerName(const QString& playerName);
 
+    // ── Position controls (optional) ───────────────────────────────────────────
+    void snapUp();
+    void snapDown();
+    void snapLeft();
+    void snapRight();
+    void stepScaleUp();
+    void stepScaleDown();
+
   public slots:
     // Update the album art from a cached pixmap (called by App after
     // AlbumArtCache::ready). Passing an empty pixmap clears the image.
@@ -122,8 +130,12 @@ class OSDWindow : public QWidget
     void nextRequested();
     void previousRequested();
 
+    // True while the OSD is visible and layout keyboard shortcuts may fire.
+    void layoutKeysActiveChanged(bool active);
+
   protected:
     void paintEvent(QPaintEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
     void hideEvent(QHideEvent* event) override;
     void enterEvent(QEnterEvent* event) override;
     void leaveEvent(QEvent* event) override;
@@ -140,6 +152,14 @@ class OSDWindow : public QWidget
         EdgeRight = 1 << 1,
         EdgeTop = 1 << 2,
         EdgeBottom = 1 << 3,
+    };
+
+    enum ScreenEdge
+    {
+        ScreenTop,
+        ScreenBottom,
+        ScreenLeft,
+        ScreenRight,
     };
 
     // ── Volume row ───────────────────────────────────────────────────────────
@@ -169,6 +189,23 @@ class OSDWindow : public QWidget
     int m_resizeBaseHeight = 70;
     int m_resizeCachedLayoutKey = -1;
     QPoint m_resizeLastAppliedPos{-1, -1};
+
+    // ── Position controls (corner overlay arrows) ─────────────────────────────
+    QPushButton* m_btnPosUp = nullptr;
+    QPushButton* m_btnPosDown = nullptr;
+    QPushButton* m_btnPosLeft = nullptr;
+    QPushButton* m_btnPosRight = nullptr;
+    bool m_positionControlsEnabled = false;
+    bool m_positionArrowsEnabled = false;
+    bool m_positionDragEnabled = false;
+    bool m_layoutKeysActiveEmitted = false;
+
+    // ── Mouse move (drag OSD interior) ───────────────────────────────────────
+    bool m_moving = false;
+    QPoint m_moveStartGlobal;
+    QPoint m_moveStartAbsPos;
+    QScreen* m_moveDragScreen = nullptr;
+    QPoint m_moveLastAppliedPos{-1, -1};
 
     // ── Progress row ─────────────────────────────────────────────────────────
     QWidget* m_progressRow = nullptr; // container — show/hide as a unit
@@ -219,10 +256,14 @@ class OSDWindow : public QWidget
     void applyResizeFontsFast(double scale);
     void enterResizeStyleMode();
     void positionWindow(int absX, int absY);
+    void positionWindowDuringMove(int absX, int absY);
     void positionWindowDuringResize(int absX, int absY, int w, int h);
     std::pair<int, int> absPos() const;
     // Clamp (absX, absY) so the window stays within its screen's available geometry.
     std::pair<int, int> clampedPos(int absX, int absY) const;
+    std::pair<int, int> clampedPosOnScreen(int absX, int absY, QScreen* screen) const;
+    QPoint clampMoveLocal(const QPoint& localPos) const;
+    QPoint layerShellAbsolutePos() const;
 
     // Resize OSD and re-apply position (handles both X11 and layer-shell).
     void applySize();
@@ -256,7 +297,22 @@ class OSDWindow : public QWidget
     QPoint anchoredResizePos(int newW, int newH) const;
     QPoint clampedResizePos(const QPoint& absPos, int newW, int newH) const;
     void persistResize(double scale, const QPoint& absPos);
+    void persistPosition(const QPoint& absPos);
     void restartHideTimerAfterResize();
+
+    void snapToScreenEdge(ScreenEdge edge);
+    void stepScale(double delta);
+    void setPositionControlsEnabled(bool on);
+    void updateLayoutKeysActive();
+    bool positionArrowsVisible() const;
+    void layoutPositionButtons();
+    void updatePositionButtonsVisibility();
+    bool isMoveDragBlocked(QObject* obj) const;
+    bool isMoveDragZone(const QPoint& localPos) const;
+    bool handleMoveMouseEvent(QObject* obj, QMouseEvent* event);
+    void startMove(const QPoint& globalPos, const QPoint& localPos);
+    void updateMove(const QPoint& globalPos);
+    void finishMove(bool persist);
 
     // Update m_labelName text based on progressLabelMode + cached track info.
     void refreshNameLabel();
