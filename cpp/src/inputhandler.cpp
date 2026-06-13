@@ -497,6 +497,51 @@ MediaAction resolveMediaHotkey(int code, const MediaHotkeyConfig& cfg)
     return resolveMediaHotkey(HotkeyBinding::key(code), cfg);
 }
 
+OsdLayoutAction resolveOsdLayoutAction(const HotkeyBinding& binding,
+                                       const OsdLayoutHotkeyConfig& cfg)
+{
+    if (!binding.isAssigned()) return OsdLayoutAction::None;
+    if (cfg.snapUp.isAssigned() && cfg.snapUp == binding) return OsdLayoutAction::SnapUp;
+    if (cfg.snapDown.isAssigned() && cfg.snapDown == binding) return OsdLayoutAction::SnapDown;
+    if (cfg.snapLeft.isAssigned() && cfg.snapLeft == binding) return OsdLayoutAction::SnapLeft;
+    if (cfg.snapRight.isAssigned() && cfg.snapRight == binding) return OsdLayoutAction::SnapRight;
+    if (cfg.scaleUp.isAssigned() && cfg.scaleUp == binding) return OsdLayoutAction::ScaleUp;
+    if (cfg.scaleDown.isAssigned() && cfg.scaleDown == binding) return OsdLayoutAction::ScaleDown;
+    return OsdLayoutAction::None;
+}
+
+OsdLayoutAction resolveOsdLayoutAction(const HotkeyBinding& binding, const input_event& ev,
+                                       const OsdLayoutHotkeyConfig& cfg)
+{
+    auto matchField = [&](const HotkeyBinding& hk, OsdLayoutAction action) -> OsdLayoutAction
+    {
+        if (!hk.isAssigned()) return OsdLayoutAction::None;
+        if (hk.type == HotkeyBindingType::Key)
+            return hk == binding ? action : OsdLayoutAction::None;
+        return matchesInputEvent(hk, ev) ? action : OsdLayoutAction::None;
+    };
+
+    if (OsdLayoutAction a = matchField(cfg.snapUp, OsdLayoutAction::SnapUp);
+        a != OsdLayoutAction::None)
+        return a;
+    if (OsdLayoutAction a = matchField(cfg.snapDown, OsdLayoutAction::SnapDown);
+        a != OsdLayoutAction::None)
+        return a;
+    if (OsdLayoutAction a = matchField(cfg.snapLeft, OsdLayoutAction::SnapLeft);
+        a != OsdLayoutAction::None)
+        return a;
+    if (OsdLayoutAction a = matchField(cfg.snapRight, OsdLayoutAction::SnapRight);
+        a != OsdLayoutAction::None)
+        return a;
+    if (OsdLayoutAction a = matchField(cfg.scaleUp, OsdLayoutAction::ScaleUp);
+        a != OsdLayoutAction::None)
+        return a;
+    if (OsdLayoutAction a = matchField(cfg.scaleDown, OsdLayoutAction::ScaleDown);
+        a != OsdLayoutAction::None)
+        return a;
+    return OsdLayoutAction::None;
+}
+
 QString resolveSceneHotkey(const HotkeyBinding& binding, const QList<AudioScene>& scenes)
 {
     if (!binding.isAssigned()) return {};
@@ -528,6 +573,7 @@ bool matchesInputEvent(const HotkeyBinding& binding, const input_event& ev)
 // ─── InputHandler ─────────────────────────────────────────────────────────────
 InputHandler::InputHandler(QObject* parent) : QThread(parent)
 {
+    qRegisterMetaType<OsdLayoutAction>("OsdLayoutAction");
     // Seed with one default profile so a fresh InputHandler is usable
     // even before the App calls setProfiles().
     Profile def;
@@ -572,6 +618,23 @@ QList<AudioScene> InputHandler::currentScenes() const
     return m_scenes;
 }
 
+void InputHandler::setOsdLayoutInput(const OsdLayoutInputConfig& cfg)
+{
+    QMutexLocker lock(&m_profilesMutex);
+    m_osdLayoutInput = cfg;
+}
+
+OsdLayoutInputConfig InputHandler::currentOsdLayoutInput() const
+{
+    QMutexLocker lock(&m_profilesMutex);
+    return m_osdLayoutInput;
+}
+
+void InputHandler::setOsdLayoutKeysActive(bool active)
+{
+    m_osdLayoutKeysActive.store(active);
+}
+
 void InputHandler::startDevice(const QString& newPath)
 {
     stop();
@@ -602,12 +665,17 @@ void InputHandler::run()
     const QList<Profile> profiles = currentProfiles();
     const MediaHotkeyConfig mediaCfg = currentMediaHotkeys();
     const QList<AudioScene> scenes = currentScenes();
+    const OsdLayoutInputConfig layoutInput = currentOsdLayoutInput();
+    const bool layoutGrab =
+        layoutInput.positionControlsEnabled && layoutInput.positionKeyboardEnabled;
+    const OsdLayoutHotkeyConfig layoutCfg = layoutInput.hotkeys;
 
     // Sentinel profile id used as the second key of m_lastTriggerMs for media
     // bindings, so debounce buckets never collide with real profile ids.
     const QString kMediaProfile = QStringLiteral("__media__");
     // Sentinel prefix for scene debounce buckets (one bucket per scene id).
     const QString kSceneProfilePrefix = QStringLiteral("__scene__:");
+    const QString kOsdLayoutProfile = QStringLiteral("__osd_layout__");
 
     // Union of every hotkey binding used by any profile + global media bindings
     // + scene apply bindings.
@@ -627,6 +695,15 @@ void InputHandler::run()
     for (const AudioScene& scene : scenes)
     {
         if (scene.hotkey.isAssigned()) hotkeys.insert(scene.hotkey);
+    }
+    if (layoutGrab)
+    {
+        if (layoutCfg.snapUp.isAssigned()) hotkeys.insert(layoutCfg.snapUp);
+        if (layoutCfg.snapDown.isAssigned()) hotkeys.insert(layoutCfg.snapDown);
+        if (layoutCfg.snapLeft.isAssigned()) hotkeys.insert(layoutCfg.snapLeft);
+        if (layoutCfg.snapRight.isAssigned()) hotkeys.insert(layoutCfg.snapRight);
+        if (layoutCfg.scaleUp.isAssigned()) hotkeys.insert(layoutCfg.scaleUp);
+        if (layoutCfg.scaleDown.isAssigned()) hotkeys.insert(layoutCfg.scaleDown);
     }
 
     if (hotkeys.isEmpty())
@@ -702,6 +779,16 @@ void InputHandler::run()
         if (now - last < 100) return;
         m_lastTriggerMs[key] = now;
         emit scene_apply(sceneId);
+    };
+
+    auto dispatchOsdLayout = [&](const HotkeyBinding& binding, OsdLayoutAction action)
+    {
+        const QPair<HotkeyBinding, QString> key{binding, kOsdLayoutProfile};
+        qint64 now = QDateTime::currentMSecsSinceEpoch();
+        qint64 last = m_lastTriggerMs.value(key, 0LL);
+        if (now - last < 100) return;
+        m_lastTriggerMs[key] = now;
+        emit osdLayoutAction(action);
     };
 
     const auto candidates = findHotkeyDevices(m_devicePath, hotkeys);
@@ -868,6 +955,16 @@ void InputHandler::run()
                     {
                         if (ev.value == 1 || ev.value == 2)
                         { // press or repeat
+                            if (layoutGrab && m_osdLayoutKeysActive.load())
+                            {
+                                const OsdLayoutAction layoutAction =
+                                    resolveOsdLayoutAction(binding, layoutCfg);
+                                if (layoutAction != OsdLayoutAction::None)
+                                {
+                                    dispatchOsdLayout(binding, layoutAction);
+                                    continue;
+                                }
+                            }
                             const ProfileHotkeyMatch match = resolveProfileHotkey(
                                 binding, normalizeHeldModifiers(heldModifiers), profiles);
                             if (!match.profileId.isEmpty())
@@ -899,6 +996,9 @@ void InputHandler::run()
                         }
                         else if (ev.value == 0)
                         {
+                            if (layoutGrab && m_osdLayoutKeysActive.load() &&
+                                resolveOsdLayoutAction(binding, layoutCfg) != OsdLayoutAction::None)
+                                continue;
                             // Release of a scene-only or media-only binding must
                             // also be consumed so the desktop doesn't see a
                             // key-up without a key-down.
@@ -959,6 +1059,16 @@ void InputHandler::run()
 
                         if (configured)
                         {
+                            if (layoutGrab && m_osdLayoutKeysActive.load())
+                            {
+                                const OsdLayoutAction layoutAction =
+                                    resolveOsdLayoutAction(matchedBinding, ev, layoutCfg);
+                                if (layoutAction != OsdLayoutAction::None)
+                                {
+                                    dispatchOsdLayout(matchedBinding, layoutAction);
+                                    continue;
+                                }
+                            }
                             const ProfileHotkeyMatch match = resolveProfileHotkey(
                                 matchedBinding, normalizeHeldModifiers(heldModifiers), profiles);
                             if (!match.profileId.isEmpty())

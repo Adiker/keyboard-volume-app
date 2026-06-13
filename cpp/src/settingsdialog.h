@@ -141,6 +141,7 @@ class SettingsDialog : public QDialog
     void emitStylePreview();
     void saveAndAccept();
     void updateCustomLabelVisibility();
+    void updatePositionControlsVisibility();
     void onExportConfig();
     void onImportConfig();
 
@@ -183,6 +184,20 @@ class SettingsDialog : public QDialog
     ColorButton* m_colorBar = nullptr;
     QSpinBox* m_opacity = nullptr;
     QCheckBox* m_autoProfile = nullptr;
+
+    // OSD position controls
+    QCheckBox* m_positionControlsEnabled = nullptr;
+    QCheckBox* m_positionArrowsEnabled = nullptr;
+    QCheckBox* m_positionDragEnabled = nullptr;
+    QCheckBox* m_positionKeyboardEnabled = nullptr;
+    QWidget* m_layoutHotkeysGroup = nullptr;
+    QLabel* m_positionKeyboardHint = nullptr;
+    HotkeyCapture* m_layoutSnapUp = nullptr;
+    HotkeyCapture* m_layoutSnapDown = nullptr;
+    HotkeyCapture* m_layoutSnapLeft = nullptr;
+    HotkeyCapture* m_layoutSnapRight = nullptr;
+    HotkeyCapture* m_layoutScaleUp = nullptr;
+    HotkeyCapture* m_layoutScaleDown = nullptr;
 
     // Media hotkeys (global, MPRIS dispatch — independent of profiles)
     HotkeyCapture* m_mediaPlayPause = nullptr;

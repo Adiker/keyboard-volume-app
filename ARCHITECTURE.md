@@ -142,7 +142,19 @@ Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`
     "tracked_players": ["spotify", "vlc", "strawberry", "harmonoid", "youtube"],
     "media_controls_enabled": true,
     "expose_mpris": false,
-    "osd_scale": 1.0
+    "osd_scale": 1.0,
+    "position_controls_enabled": false,
+    "position_arrows_enabled": false,
+    "position_drag_enabled": false,
+    "position_keyboard_enabled": false,
+    "layout_hotkeys": {
+      "snap_up": 0,
+      "snap_down": 0,
+      "snap_left": 0,
+      "snap_right": 0,
+      "scale_up": 0,
+      "scale_down": 0
+    }
   },
   "volume_step": 5,
   "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113 },
@@ -206,7 +218,7 @@ Hotkey values are evdev bindings. Legacy integer values still mean `EV_KEY` Linu
 
 Legacy `progress_label_mode` values are migrated on load and persisted: `"track"` → `"title_artist"`, `"both"` → `"app_track"`. Unknown values collapse to `"app"`.
 
-`tracked_players` is a priority allowlist matched case/format-insensitively against MPRIS service names, so names like `YoutubeMusic` can match config entries like `youtube-music`. When focus auto-switch has a matching audio target, that target is preferred within the allowlist before the priority fallback. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `media_keys_osd_mode` is `off` / `action` / `full` (default `off`); legacy `show_media_keys_osd: true` migrates to `action`, `false` migrates to `off`, and saves keep `show_media_keys_osd = mode != off` for older builds. `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling; visible OSD edges/corners can update it at runtime through custom mouse resizing.
+`tracked_players` is a priority allowlist matched case/format-insensitively against MPRIS service names, so names like `YoutubeMusic` can match config entries like `youtube-music`. When focus auto-switch has a matching audio target, that target is preferred within the allowlist before the priority fallback. `media_controls_enabled` shows or hides the prev/play-pause/next buttons row (default `true`). `media_keys_osd_mode` is `off` / `action` / `full` (default `off`); legacy `show_media_keys_osd: true` migrates to `action`, `false` migrates to `off`, and saves keep `show_media_keys_osd = mode != off` for older builds. `expose_mpris` controls whether `org.mpris.MediaPlayer2.keyboardvolumeapp` is registered on the session bus (default `false` — disabled to avoid false-positive detection by apps like discord-music-presence). `osd_scale` is an application-level size multiplier (0.5–3.0, default 1.0) applied on top of Qt DPI scaling; visible OSD edges/corners can update it at runtime through custom mouse resizing. Optional `position_controls_enabled` (default `false`) enables repositioning while the OSD is visible: `position_arrows_enabled` shows on-OSD edge-snap buttons, `position_drag_enabled` allows dragging the interior to move, and `position_keyboard_enabled` activates evdev bindings from `layout_hotkeys` (all unassigned by default). Layout hotkeys are grabbed only when keyboard repositioning is enabled, but consumed only while the OSD overlay is visible; otherwise events pass through uinput.
 
 **Profiles** (canonical source of truth for hotkey → app mapping). Each entry:
 - `struct Profile { QString id, name; QStringList apps; HotkeyConfig hotkeys; QSet<Modifier> modifiers; DuckingConfig ducking; bool autoSwitch; int volMin; int volMax; QString sink; }` — `sink` is the stable PulseAudio sink **name** (empty = system default; cleared in stream-restore when the user switches back to default in Settings)

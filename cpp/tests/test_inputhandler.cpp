@@ -432,6 +432,34 @@ TEST(ResolveMediaHotkey, RelativeWheelMatchesDirection)
     EXPECT_EQ(resolveMediaHotkey(HotkeyBinding::relative(REL_WHEEL, 1), cfg), MediaAction::None);
 }
 
+// ─── OSD layout hotkey resolution ─────────────────────────────────────────────
+
+TEST(ResolveOsdLayoutAction, UnassignedReturnsNone)
+{
+    OsdLayoutHotkeyConfig cfg;
+    EXPECT_EQ(resolveOsdLayoutAction(HotkeyBinding::key(KEY_UP), cfg), OsdLayoutAction::None);
+}
+
+TEST(ResolveOsdLayoutAction, AssignedSnapUpMatches)
+{
+    OsdLayoutHotkeyConfig cfg;
+    cfg.snapUp = HotkeyBinding::key(KEY_UP);
+    EXPECT_EQ(resolveOsdLayoutAction(HotkeyBinding::key(KEY_UP), cfg), OsdLayoutAction::SnapUp);
+    EXPECT_EQ(resolveOsdLayoutAction(HotkeyBinding::key(KEY_DOWN), cfg), OsdLayoutAction::None);
+}
+
+TEST(ResolveOsdLayoutAction, ScaleDownRelativeMatchesEvent)
+{
+    OsdLayoutHotkeyConfig cfg;
+    cfg.scaleDown = HotkeyBinding::relative(REL_WHEEL, -1);
+    input_event ev{};
+    ev.type = EV_REL;
+    ev.code = REL_WHEEL;
+    ev.value = -1;
+    EXPECT_EQ(resolveOsdLayoutAction(HotkeyBinding::relative(REL_WHEEL, -1), ev, cfg),
+              OsdLayoutAction::ScaleDown);
+}
+
 // ─── Scene hotkey resolution ──────────────────────────────────────────────────
 namespace
 {
