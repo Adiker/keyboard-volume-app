@@ -421,8 +421,7 @@ TEST(OSDWindowPosition, DragPersistsPosition)
     QApplication::processEvents();
 
     const QPoint startGlobal = window.mapToGlobal(window.rect().center());
-    const QPoint startLocal = window.rect().center();
-    window.startMove(startGlobal, startLocal);
+    window.startMove(startGlobal);
     window.updateMove(startGlobal + QPoint(30, 20));
     window.finishMove(true);
 

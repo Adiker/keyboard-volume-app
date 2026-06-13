@@ -1035,7 +1035,10 @@ void InputHandler::run()
                                          binding, normalizeHeldModifiers(heldModifiers), profiles)
                                          .profileId.isEmpty() ||
                                     !resolveSceneHotkey(binding, scenes).isEmpty() ||
-                                    resolveMediaHotkey(binding, mediaCfg) != MediaAction::None)
+                                    resolveMediaHotkey(binding, mediaCfg) != MediaAction::None ||
+                                    (layoutGrab && m_osdLayoutKeysActive.load() &&
+                                     resolveOsdLayoutAction(binding, companion, layoutCfg) !=
+                                         OsdLayoutAction::None))
                                 {
                                     suppress = true;
                                     break;

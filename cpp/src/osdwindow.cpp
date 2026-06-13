@@ -734,13 +734,6 @@ std::pair<int, int> OSDWindow::clampedPos(int absX, int absY) const
     return clampedPosOnScreen(absX, absY, screen);
 }
 
-QPoint OSDWindow::clampMoveLocal(const QPoint& localPos) const
-{
-    const int w = qMax(1, width());
-    const int h = qMax(1, height());
-    return {std::clamp(localPos.x(), 0, w - 1), std::clamp(localPos.y(), 0, h - 1)};
-}
-
 QPoint OSDWindow::layerShellAbsolutePos() const
 {
 #ifdef HAVE_LAYER_SHELL_QT
@@ -926,15 +919,11 @@ bool OSDWindow::handleResizeMouseEvent(QObject* obj, QMouseEvent* event)
     const int edges = resizeEdgesAt(resizeLocalPos(obj, event));
     if (event->type() == QEvent::MouseMove)
     {
-        if (m_positionDragEnabled && m_positionControlsEnabled && !m_previewMode &&
-            edges == EdgeNone && isMoveDragZone(resizeLocalPos(obj, event)) &&
-            !isMoveDragBlocked(obj))
-            updateResizeCursor(obj, EdgeNone); // open hand set below
-        else
-            updateResizeCursor(obj, edges);
-        if (m_positionDragEnabled && m_positionControlsEnabled && !m_previewMode &&
-            edges == EdgeNone && isMoveDragZone(resizeLocalPos(obj, event)) &&
-            !isMoveDragBlocked(obj))
+        const bool openHand = m_positionDragEnabled && m_positionControlsEnabled &&
+                              !m_previewMode && edges == EdgeNone &&
+                              isMoveDragZone(resizeLocalPos(obj, event)) && !isMoveDragBlocked(obj);
+        updateResizeCursor(obj, openHand ? EdgeNone : edges);
+        if (openHand)
         {
             auto* widget = qobject_cast<QWidget*>(obj);
             if (widget) widget->setCursor(Qt::OpenHandCursor);
@@ -945,6 +934,7 @@ bool OSDWindow::handleResizeMouseEvent(QObject* obj, QMouseEvent* event)
     if (event->type() == QEvent::MouseButtonPress && event->button() == Qt::LeftButton &&
         edges != EdgeNone)
     {
+        if (isMoveDragBlocked(obj)) return false;
         startResize(edges, event->globalPosition().toPoint());
         return true;
     }
@@ -1137,8 +1127,29 @@ QPoint OSDWindow::clampedResizePos(const QPoint& absPos, int newW, int newH) con
 
 void OSDWindow::persistResize(double scale, const QPoint& absPos)
 {
-    persistPosition(absPos);
     OsdConfig osd = m_config->osd();
+    const QList<QScreen*> screens = QApplication::screens();
+    QScreen* screen = QApplication::screenAt(absPos);
+    int screenIdx = osd.screen;
+    if (screen)
+    {
+        const int idx = screens.indexOf(screen);
+        if (idx >= 0) screenIdx = idx;
+    }
+    if (screenIdx < 0 || screenIdx >= screens.size()) screenIdx = 0;
+
+    osd.screen = screenIdx;
+    if (screenIdx >= 0 && screenIdx < screens.size())
+    {
+        const QRect geo = screens[screenIdx]->geometry();
+        osd.x = absPos.x() - geo.x();
+        osd.y = absPos.y() - geo.y();
+    }
+    else
+    {
+        osd.x = absPos.x();
+        osd.y = absPos.y();
+    }
     osd.osdScale = std::clamp(scale, 0.5, 3.0);
     m_config->setOsd(osd);
 }
@@ -1611,13 +1622,19 @@ void OSDWindow::snapToScreenEdge(ScreenEdge edge)
 {
     if (!m_positionControlsEnabled || m_previewMode) return;
 
-    QScreen* screen = QApplication::screenAt(m_currentAbsPos);
+#ifdef HAVE_LAYER_SHELL_QT
+    const QPoint absPos =
+        (m_layerShellActive && m_lsWindow) ? layerShellAbsolutePos() : m_currentAbsPos;
+#else
+    const QPoint absPos = m_currentAbsPos;
+#endif
+    QScreen* screen = QApplication::screenAt(absPos);
     if (!screen && !QApplication::screens().isEmpty()) screen = QApplication::screens().first();
     if (!screen) return;
 
     const QRect avail = screen->availableGeometry();
-    int absX = m_currentAbsPos.x();
-    int absY = m_currentAbsPos.y();
+    int absX = absPos.x();
+    int absY = absPos.y();
     const int w = width();
     const int h = height();
 
@@ -1754,15 +1771,14 @@ bool OSDWindow::handleMoveMouseEvent(QObject* obj, QMouseEvent* event)
         const QPoint local = resizeLocalPos(obj, event);
         if (resizeEdgesAt(local) != EdgeNone) return false;
         if (!isMoveDragZone(local) || isMoveDragBlocked(obj)) return false;
-        startMove(event->globalPosition().toPoint(), local);
+        startMove(event->globalPosition().toPoint());
         return true;
     }
     return false;
 }
 
-void OSDWindow::startMove(const QPoint& globalPos, const QPoint& localPos)
+void OSDWindow::startMove(const QPoint& globalPos)
 {
-    Q_UNUSED(localPos);
     finishSeeking();
     m_moving = true;
     m_moveLastAppliedPos = QPoint(-1, -1);

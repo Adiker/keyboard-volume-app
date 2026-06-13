@@ -262,7 +262,6 @@ class OSDWindow : public QWidget
     // Clamp (absX, absY) so the window stays within its screen's available geometry.
     std::pair<int, int> clampedPos(int absX, int absY) const;
     std::pair<int, int> clampedPosOnScreen(int absX, int absY, QScreen* screen) const;
-    QPoint clampMoveLocal(const QPoint& localPos) const;
     QPoint layerShellAbsolutePos() const;
 
     // Resize OSD and re-apply position (handles both X11 and layer-shell).
@@ -310,7 +309,7 @@ class OSDWindow : public QWidget
     bool isMoveDragBlocked(QObject* obj) const;
     bool isMoveDragZone(const QPoint& localPos) const;
     bool handleMoveMouseEvent(QObject* obj, QMouseEvent* event);
-    void startMove(const QPoint& globalPos, const QPoint& localPos);
+    void startMove(const QPoint& globalPos);
     void updateMove(const QPoint& globalPos);
     void finishMove(bool persist);
 
