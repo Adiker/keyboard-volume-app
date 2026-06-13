@@ -1411,6 +1411,33 @@ TEST(ConfigOsdProgress, OsdScaleClamped)
     EXPECT_DOUBLE_EQ(config3.osd().osdScale, 0.5); // clamped to min
 }
 
+TEST(ConfigOsdPosition, LayoutHotkeysRoundTrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OsdConfig osd = config.osd();
+    osd.positionControlsEnabled = true;
+    osd.positionArrowsEnabled = true;
+    osd.positionDragEnabled = true;
+    osd.positionKeyboardEnabled = true;
+    osd.layoutHotkeys.snapUp = HotkeyBinding::key(103);
+    osd.layoutHotkeys.snapDown = HotkeyBinding::key(108);
+    osd.layoutHotkeys.scaleUp = HotkeyBinding::relative(REL_WHEEL, 1);
+    config.setOsd(osd);
+
+    Config config2(tmp.path());
+    const OsdConfig loaded = config2.osd();
+    EXPECT_TRUE(loaded.positionControlsEnabled);
+    EXPECT_TRUE(loaded.positionArrowsEnabled);
+    EXPECT_TRUE(loaded.positionDragEnabled);
+    EXPECT_TRUE(loaded.positionKeyboardEnabled);
+    EXPECT_EQ(loaded.layoutHotkeys.snapUp, HotkeyBinding::key(103));
+    EXPECT_EQ(loaded.layoutHotkeys.snapDown, HotkeyBinding::key(108));
+    EXPECT_EQ(loaded.layoutHotkeys.scaleUp, HotkeyBinding::relative(REL_WHEEL, 1));
+}
+
 // ─── Per-profile volume limits ─────────────────────────────────────────────────
 
 TEST(ConfigProfileVolumeLimits, DefaultsAreFullRange)

@@ -17,6 +17,52 @@ enum class MediaKeysOsdMode
     Full,
 };
 
+// ─── Hotkey binding (shared by profiles, media, scenes, OSD layout) ───────────
+enum class HotkeyBindingType
+{
+    Key,
+    Relative,
+};
+
+struct HotkeyBinding
+{
+    HotkeyBindingType type = HotkeyBindingType::Key;
+    int code = 0;
+    int direction = 0; // 0 for keys, sign (+/-) for EV_REL bindings
+
+    HotkeyBinding() = default;
+    HotkeyBinding(int keyCode) : code(std::max(0, keyCode)) {}
+
+    static HotkeyBinding key(int keyCode)
+    {
+        return HotkeyBinding(keyCode);
+    }
+    static HotkeyBinding relative(int relCode, int relDirection)
+    {
+        HotkeyBinding b;
+        b.type = HotkeyBindingType::Relative;
+        b.code = std::max(0, relCode);
+        b.direction = relDirection < 0 ? -1 : (relDirection > 0 ? 1 : 0);
+        return b;
+    }
+    bool isAssigned() const
+    {
+        return code > 0 && (type == HotkeyBindingType::Key || direction != 0);
+    }
+};
+
+// OSD layout hotkeys — active only while the OSD overlay is visible. Defaults
+// are unassigned so the app does not grab arrow/plus/minus keys silently.
+struct OsdLayoutHotkeyConfig
+{
+    HotkeyBinding snapUp;
+    HotkeyBinding snapDown;
+    HotkeyBinding snapLeft;
+    HotkeyBinding snapRight;
+    HotkeyBinding scaleUp;
+    HotkeyBinding scaleDown;
+};
+
 // ─── OSD configuration sub-struct ─────────────────────────────────────────────
 struct OsdConfig
 {
@@ -68,40 +114,13 @@ struct OsdConfig
 
     // ── OSD scale ─────────────────────────────────────────────────────────────
     double osdScale = 1.0; // overall OSD scale factor, clamped 0.5–3.0
-};
 
-// ─── Hotkeys ──────────────────────────────────────────────────────────────────
-enum class HotkeyBindingType
-{
-    Key,
-    Relative,
-};
-
-struct HotkeyBinding
-{
-    HotkeyBindingType type = HotkeyBindingType::Key;
-    int code = 0;
-    int direction = 0; // 0 for keys, sign (+/-) for EV_REL bindings
-
-    HotkeyBinding() = default;
-    HotkeyBinding(int keyCode) : code(std::max(0, keyCode)) {}
-
-    static HotkeyBinding key(int keyCode)
-    {
-        return HotkeyBinding(keyCode);
-    }
-    static HotkeyBinding relative(int relCode, int relDirection)
-    {
-        HotkeyBinding b;
-        b.type = HotkeyBindingType::Relative;
-        b.code = std::max(0, relCode);
-        b.direction = relDirection < 0 ? -1 : (relDirection > 0 ? 1 : 0);
-        return b;
-    }
-    bool isAssigned() const
-    {
-        return code > 0 && (type == HotkeyBindingType::Key || direction != 0);
-    }
+    // ── OSD position controls (optional reposition / resize while OSD visible) ─
+    bool positionControlsEnabled = false;
+    bool positionArrowsEnabled = false;
+    bool positionDragEnabled = false;
+    bool positionKeyboardEnabled = false;
+    OsdLayoutHotkeyConfig layoutHotkeys;
 };
 
 struct HotkeyConfig
@@ -229,6 +248,16 @@ inline bool operator==(const MediaHotkeyConfig& a, const MediaHotkeyConfig& b)
            a.stop == b.stop;
 }
 inline bool operator!=(const MediaHotkeyConfig& a, const MediaHotkeyConfig& b)
+{
+    return !(a == b);
+}
+
+inline bool operator==(const OsdLayoutHotkeyConfig& a, const OsdLayoutHotkeyConfig& b)
+{
+    return a.snapUp == b.snapUp && a.snapDown == b.snapDown && a.snapLeft == b.snapLeft &&
+           a.snapRight == b.snapRight && a.scaleUp == b.scaleUp && a.scaleDown == b.scaleDown;
+}
+inline bool operator!=(const OsdLayoutHotkeyConfig& a, const OsdLayoutHotkeyConfig& b)
 {
     return !(a == b);
 }

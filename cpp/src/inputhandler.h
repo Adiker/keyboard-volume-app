@@ -70,6 +70,40 @@ enum class MediaAction
 MediaAction resolveMediaHotkey(const HotkeyBinding& binding, const MediaHotkeyConfig& cfg);
 MediaAction resolveMediaHotkey(int code, const MediaHotkeyConfig& cfg);
 
+// ─── OSD layout hotkey resolution (visible-gated in InputHandler) ────────────
+enum class OsdLayoutAction
+{
+    None,
+    SnapUp,
+    SnapDown,
+    SnapLeft,
+    SnapRight,
+    ScaleUp,
+    ScaleDown,
+};
+
+struct OsdLayoutInputConfig
+{
+    bool positionControlsEnabled = false;
+    bool positionKeyboardEnabled = false;
+    OsdLayoutHotkeyConfig hotkeys;
+};
+
+OsdLayoutAction resolveOsdLayoutAction(const HotkeyBinding& binding,
+                                       const OsdLayoutHotkeyConfig& cfg);
+OsdLayoutAction resolveOsdLayoutAction(const HotkeyBinding& binding, const input_event& ev,
+                                       const OsdLayoutHotkeyConfig& cfg);
+
+inline bool operator==(const OsdLayoutInputConfig& a, const OsdLayoutInputConfig& b)
+{
+    return a.positionControlsEnabled == b.positionControlsEnabled &&
+           a.positionKeyboardEnabled == b.positionKeyboardEnabled && a.hotkeys == b.hotkeys;
+}
+inline bool operator!=(const OsdLayoutInputConfig& a, const OsdLayoutInputConfig& b)
+{
+    return !(a == b);
+}
+
 // ─── Scene hotkey resolution (global, scene dispatch) ────────────────────────
 // Resolved after profile match fails but before media so a profile binding
 // always wins. When two scenes share the same hotkey binding, the first scene
@@ -157,6 +191,11 @@ class InputHandler : public QThread
     void setScenes(const QList<AudioScene>& scenes);
     QList<AudioScene> currentScenes() const;
 
+    void setOsdLayoutInput(const OsdLayoutInputConfig& cfg);
+    OsdLayoutInputConfig currentOsdLayoutInput() const;
+
+    void setOsdLayoutKeysActive(bool active);
+
     QString devicePath() const
     {
         return m_devicePath;
@@ -189,6 +228,9 @@ class InputHandler : public QThread
     // VolumeController::applyScene via Config lookup.
     void scene_apply(const QString& sceneId);
 
+    // OSD layout — snap/scale while the overlay is visible (visible-gated).
+    void osdLayoutAction(OsdLayoutAction action);
+
   protected:
     void run() override;
 
@@ -197,9 +239,12 @@ class InputHandler : public QThread
     std::atomic<bool> m_running{false};
 
     mutable QMutex m_profilesMutex;
-    QList<Profile> m_profiles;        // guarded by m_profilesMutex
-    MediaHotkeyConfig m_mediaHotkeys; // guarded by m_profilesMutex
-    QList<AudioScene> m_scenes;       // guarded by m_profilesMutex
+    QList<Profile> m_profiles;             // guarded by m_profilesMutex
+    MediaHotkeyConfig m_mediaHotkeys;      // guarded by m_profilesMutex
+    QList<AudioScene> m_scenes;            // guarded by m_profilesMutex
+    OsdLayoutInputConfig m_osdLayoutInput; // guarded by m_profilesMutex
+
+    std::atomic<bool> m_osdLayoutKeysActive{false};
 
     // Per-(binding, profileId) last-trigger timestamp (ms) for 100 ms debounce.
     // Media hotkeys reuse the same map with profileId == "__media__".

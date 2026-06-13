@@ -519,6 +519,80 @@ void SettingsDialog::buildUi()
 
     layout->addLayout(form);
 
+    // ── OSD position controls ───────────────────────────────────────────────
+    QLabel* positionHeader = new QLabel(::tr(QStringLiteral("settings.position.section")), this);
+    positionHeader->setStyleSheet(QStringLiteral("font-weight: bold; margin-top: 8px;"));
+    layout->addWidget(positionHeader);
+
+    QFormLayout* positionForm = new QFormLayout;
+    positionForm->setLabelAlignment(Qt::AlignRight);
+    positionForm->setSpacing(8);
+
+    m_positionControlsEnabled =
+        new QCheckBox(::tr(QStringLiteral("settings.position_controls")), this);
+    m_positionControlsEnabled->setChecked(osd.positionControlsEnabled);
+    positionForm->addRow(QString(), m_positionControlsEnabled);
+
+    m_positionArrowsEnabled = new QCheckBox(::tr(QStringLiteral("settings.position_arrows")), this);
+    m_positionArrowsEnabled->setChecked(osd.positionArrowsEnabled);
+    positionForm->addRow(QString(), m_positionArrowsEnabled);
+
+    m_positionDragEnabled = new QCheckBox(::tr(QStringLiteral("settings.position_drag")), this);
+    m_positionDragEnabled->setChecked(osd.positionDragEnabled);
+    positionForm->addRow(QString(), m_positionDragEnabled);
+
+    m_positionKeyboardEnabled =
+        new QCheckBox(::tr(QStringLiteral("settings.position_keyboard")), this);
+    m_positionKeyboardEnabled->setChecked(osd.positionKeyboardEnabled);
+    positionForm->addRow(QString(), m_positionKeyboardEnabled);
+
+    m_layoutHotkeysGroup = new QWidget(this);
+    auto* layoutHotkeysOuter = new QVBoxLayout(m_layoutHotkeysGroup);
+    layoutHotkeysOuter->setContentsMargins(0, 0, 0, 0);
+    layoutHotkeysOuter->setSpacing(4);
+
+    auto* layoutHotkeysHost = new QWidget(m_layoutHotkeysGroup);
+    QFormLayout* layoutHotkeysForm = new QFormLayout(layoutHotkeysHost);
+    layoutHotkeysForm->setLabelAlignment(Qt::AlignRight);
+    layoutHotkeysForm->setSpacing(8);
+    layoutHotkeysForm->setContentsMargins(0, 0, 0, 0);
+
+    const OsdLayoutHotkeyConfig& layoutHk = osd.layoutHotkeys;
+    m_layoutSnapUp = new HotkeyCapture(layoutHk.snapUp, m_inputHandler, layoutHotkeysHost);
+    m_layoutSnapDown = new HotkeyCapture(layoutHk.snapDown, m_inputHandler, layoutHotkeysHost);
+    m_layoutSnapLeft = new HotkeyCapture(layoutHk.snapLeft, m_inputHandler, layoutHotkeysHost);
+    m_layoutSnapRight = new HotkeyCapture(layoutHk.snapRight, m_inputHandler, layoutHotkeysHost);
+    m_layoutScaleUp = new HotkeyCapture(layoutHk.scaleUp, m_inputHandler, layoutHotkeysHost);
+    m_layoutScaleDown = new HotkeyCapture(layoutHk.scaleDown, m_inputHandler, layoutHotkeysHost);
+
+    layoutHotkeysForm->addRow(::tr(QStringLiteral("settings.position.snap_up")), m_layoutSnapUp);
+    layoutHotkeysForm->addRow(::tr(QStringLiteral("settings.position.snap_down")),
+                              m_layoutSnapDown);
+    layoutHotkeysForm->addRow(::tr(QStringLiteral("settings.position.snap_left")),
+                              m_layoutSnapLeft);
+    layoutHotkeysForm->addRow(::tr(QStringLiteral("settings.position.snap_right")),
+                              m_layoutSnapRight);
+    layoutHotkeysForm->addRow(::tr(QStringLiteral("settings.position.scale_up")), m_layoutScaleUp);
+    layoutHotkeysForm->addRow(::tr(QStringLiteral("settings.position.scale_down")),
+                              m_layoutScaleDown);
+    layoutHotkeysOuter->addWidget(layoutHotkeysHost);
+
+    m_positionKeyboardHint =
+        new QLabel(::tr(QStringLiteral("settings.position.keyboard_hint")), m_layoutHotkeysGroup);
+    m_positionKeyboardHint->setStyleSheet(
+        QStringLiteral("color: gray; font-style: italic; font-size: 9pt;"));
+    m_positionKeyboardHint->setWordWrap(true);
+    layoutHotkeysOuter->addWidget(m_positionKeyboardHint);
+
+    positionForm->addRow(QString(), m_layoutHotkeysGroup);
+    layout->addLayout(positionForm);
+
+    connect(m_positionControlsEnabled, &QCheckBox::toggled, this,
+            &SettingsDialog::updatePositionControlsVisibility);
+    connect(m_positionKeyboardEnabled, &QCheckBox::toggled, this,
+            &SettingsDialog::updatePositionControlsVisibility);
+    updatePositionControlsVisibility();
+
     // ── Media hotkeys section ────────────────────────────────────────────
     // Global media bindings — independent of profiles. Bound keys dispatch
     // play-pause / next / previous / stop to the active MPRIS player chosen
@@ -968,6 +1042,16 @@ void SettingsDialog::saveAndAccept()
                                : (mediaOsdMode == QLatin1String("full") ? MediaKeysOsdMode::Full
                                                                         : MediaKeysOsdMode::Off);
     osd.osdScale = std::clamp(m_osdScale->value(), 0.5, 3.0);
+    osd.positionControlsEnabled = m_positionControlsEnabled->isChecked();
+    osd.positionArrowsEnabled = m_positionArrowsEnabled->isChecked();
+    osd.positionDragEnabled = m_positionDragEnabled->isChecked();
+    osd.positionKeyboardEnabled = m_positionKeyboardEnabled->isChecked();
+    osd.layoutHotkeys.snapUp = m_layoutSnapUp->binding();
+    osd.layoutHotkeys.snapDown = m_layoutSnapDown->binding();
+    osd.layoutHotkeys.snapLeft = m_layoutSnapLeft->binding();
+    osd.layoutHotkeys.snapRight = m_layoutSnapRight->binding();
+    osd.layoutHotkeys.scaleUp = m_layoutScaleUp->binding();
+    osd.layoutHotkeys.scaleDown = m_layoutScaleDown->binding();
     m_config->setOsd(osd);
 
     m_config->setVolumeStep(m_step->value());
@@ -1156,6 +1240,19 @@ void SettingsDialog::updateCustomLabelVisibility()
     if (!m_customLabelGroup || !m_progressLabelMode) return;
     const bool custom = m_progressLabelMode->currentData().toString() == QLatin1String("custom");
     m_customLabelGroup->setVisible(custom);
+}
+
+void SettingsDialog::updatePositionControlsVisibility()
+{
+    const bool master = m_positionControlsEnabled && m_positionControlsEnabled->isChecked();
+    if (m_positionArrowsEnabled) m_positionArrowsEnabled->setEnabled(master);
+    if (m_positionDragEnabled) m_positionDragEnabled->setEnabled(master);
+    if (m_positionKeyboardEnabled) m_positionKeyboardEnabled->setEnabled(master);
+
+    const bool keyboard =
+        master && m_positionKeyboardEnabled && m_positionKeyboardEnabled->isChecked();
+    if (m_layoutHotkeysGroup) m_layoutHotkeysGroup->setEnabled(keyboard);
+    if (m_positionKeyboardHint) m_positionKeyboardHint->setEnabled(keyboard);
 }
 
 void SettingsDialog::onAddProfile()

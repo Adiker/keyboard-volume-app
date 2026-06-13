@@ -69,6 +69,32 @@ HotkeyBinding bindingFromJson(const QJsonValue& value, int defaultKey)
     return HotkeyBinding(value.toInt(defaultKey));
 }
 
+OsdLayoutHotkeyConfig layoutHotkeysFromJson(const QJsonObject& o)
+{
+    const QJsonObject hk = o[QStringLiteral("layout_hotkeys")].toObject();
+    OsdLayoutHotkeyConfig cfg;
+    if (hk.isEmpty()) return cfg;
+    cfg.snapUp = bindingFromJson(hk[QStringLiteral("snap_up")], 0);
+    cfg.snapDown = bindingFromJson(hk[QStringLiteral("snap_down")], 0);
+    cfg.snapLeft = bindingFromJson(hk[QStringLiteral("snap_left")], 0);
+    cfg.snapRight = bindingFromJson(hk[QStringLiteral("snap_right")], 0);
+    cfg.scaleUp = bindingFromJson(hk[QStringLiteral("scale_up")], 0);
+    cfg.scaleDown = bindingFromJson(hk[QStringLiteral("scale_down")], 0);
+    return cfg;
+}
+
+QJsonObject layoutHotkeysToJson(const OsdLayoutHotkeyConfig& cfg)
+{
+    return QJsonObject{
+        {QStringLiteral("snap_up"), bindingToJson(cfg.snapUp)},
+        {QStringLiteral("snap_down"), bindingToJson(cfg.snapDown)},
+        {QStringLiteral("snap_left"), bindingToJson(cfg.snapLeft)},
+        {QStringLiteral("snap_right"), bindingToJson(cfg.snapRight)},
+        {QStringLiteral("scale_up"), bindingToJson(cfg.scaleUp)},
+        {QStringLiteral("scale_down"), bindingToJson(cfg.scaleDown)},
+    };
+}
+
 QStringList profileAppsFromObject(const QJsonObject& profile)
 {
     QStringList apps;
@@ -224,6 +250,19 @@ QJsonObject Config::defaultJson()
              {QStringLiteral("media_keys_osd_mode"), QStringLiteral("off")},
              {QStringLiteral("show_media_keys_osd"), false},
              {QStringLiteral("osd_scale"), 1.0},
+             {QStringLiteral("position_controls_enabled"), false},
+             {QStringLiteral("position_arrows_enabled"), false},
+             {QStringLiteral("position_drag_enabled"), false},
+             {QStringLiteral("position_keyboard_enabled"), false},
+             {QStringLiteral("layout_hotkeys"),
+              QJsonObject{
+                  {QStringLiteral("snap_up"), 0},
+                  {QStringLiteral("snap_down"), 0},
+                  {QStringLiteral("snap_left"), 0},
+                  {QStringLiteral("snap_right"), 0},
+                  {QStringLiteral("scale_up"), 0},
+                  {QStringLiteral("scale_down"), 0},
+              }},
          }},
         {QStringLiteral("hotkeys"),
          QJsonObject{
@@ -921,6 +960,11 @@ OsdConfig Config::osd() const
             : (o[QStringLiteral("show_media_keys_osd")].toBool(false) ? MediaKeysOsdMode::Action
                                                                       : MediaKeysOsdMode::Off);
     c.osdScale = std::clamp(o[QStringLiteral("osd_scale")].toDouble(1.0), 0.5, 3.0);
+    c.positionControlsEnabled = o[QStringLiteral("position_controls_enabled")].toBool(false);
+    c.positionArrowsEnabled = o[QStringLiteral("position_arrows_enabled")].toBool(false);
+    c.positionDragEnabled = o[QStringLiteral("position_drag_enabled")].toBool(false);
+    c.positionKeyboardEnabled = o[QStringLiteral("position_keyboard_enabled")].toBool(false);
+    c.layoutHotkeys = layoutHotkeysFromJson(o);
     return c;
 }
 
@@ -951,6 +995,11 @@ void Config::setOsd(const OsdConfig& c)
         {QStringLiteral("media_keys_osd_mode"), mediaKeysOsdModeToString(c.mediaKeysOsdMode)},
         {QStringLiteral("show_media_keys_osd"), c.mediaKeysOsdMode != MediaKeysOsdMode::Off},
         {QStringLiteral("osd_scale"), std::clamp(c.osdScale, 0.5, 3.0)},
+        {QStringLiteral("position_controls_enabled"), c.positionControlsEnabled},
+        {QStringLiteral("position_arrows_enabled"), c.positionArrowsEnabled},
+        {QStringLiteral("position_drag_enabled"), c.positionDragEnabled},
+        {QStringLiteral("position_keyboard_enabled"), c.positionKeyboardEnabled},
+        {QStringLiteral("layout_hotkeys"), layoutHotkeysToJson(c.layoutHotkeys)},
     };
     saveUnlocked();
 }

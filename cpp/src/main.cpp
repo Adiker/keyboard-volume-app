@@ -127,6 +127,16 @@ static bool probeLayerShell()
 }
 #endif
 
+OsdLayoutInputConfig osdLayoutInputFromConfig(const Config* config)
+{
+    OsdLayoutInputConfig input;
+    const OsdConfig osd = config->osd();
+    input.positionControlsEnabled = osd.positionControlsEnabled;
+    input.positionKeyboardEnabled = osd.positionKeyboardEnabled;
+    input.hotkeys = osd.layoutHotkeys;
+    return input;
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 // Root coordinator — wires all modules via Qt signals, mirrors App in main.py.
 class App : public QObject
@@ -218,6 +228,38 @@ class App : public QObject
                 {
                     const AudioScene scene = m_config->findSceneById(sceneId);
                     if (!scene.id.isEmpty()) m_volumeCtrl->applyScene(scene);
+                });
+
+        connect(m_osd, &OSDWindow::layoutKeysActiveChanged, m_input,
+                &InputHandler::setOsdLayoutKeysActive);
+
+        connect(m_input, &InputHandler::osdLayoutAction, this,
+                [this](OsdLayoutAction action)
+                {
+                    if (!m_config->osd().positionControlsEnabled || !m_osd) return;
+                    switch (action)
+                    {
+                    case OsdLayoutAction::SnapUp:
+                        m_osd->snapUp();
+                        break;
+                    case OsdLayoutAction::SnapDown:
+                        m_osd->snapDown();
+                        break;
+                    case OsdLayoutAction::SnapLeft:
+                        m_osd->snapLeft();
+                        break;
+                    case OsdLayoutAction::SnapRight:
+                        m_osd->snapRight();
+                        break;
+                    case OsdLayoutAction::ScaleUp:
+                        m_osd->stepScaleUp();
+                        break;
+                    case OsdLayoutAction::ScaleDown:
+                        m_osd->stepScaleDown();
+                        break;
+                    case OsdLayoutAction::None:
+                        break;
+                    }
                 });
 
         // Tray
@@ -315,6 +357,7 @@ class App : public QObject
         m_input->setProfiles(m_config->profiles());
         m_input->setMediaHotkeys(m_config->mediaHotkeys());
         m_input->setScenes(m_config->scenes());
+        m_input->setOsdLayoutInput(osdLayoutInputFromConfig(m_config.get()));
         if (!m_config->inputDevice().isEmpty())
         {
             m_input->startDevice(m_config->inputDevice());
@@ -330,14 +373,17 @@ class App : public QObject
         const QList<Profile> newProfiles = m_config->profiles();
         const MediaHotkeyConfig newMedia = m_config->mediaHotkeys();
         const QList<AudioScene> newScenes = m_config->scenes();
+        const OsdLayoutInputConfig newLayout = osdLayoutInputFromConfig(m_config.get());
         const bool profilesChanged = newProfiles != m_input->currentProfiles();
         const bool mediaChanged = newMedia != m_input->currentMediaHotkeys();
         const bool scenesChanged = newScenes != m_input->currentScenes();
-        if (!profilesChanged && !mediaChanged && !scenesChanged) return;
+        const bool layoutChanged = newLayout != m_input->currentOsdLayoutInput();
+        if (!profilesChanged && !mediaChanged && !scenesChanged && !layoutChanged) return;
         m_input->stop();
         if (profilesChanged) m_input->setProfiles(newProfiles);
         if (mediaChanged) m_input->setMediaHotkeys(newMedia);
         if (scenesChanged) m_input->setScenes(newScenes);
+        if (layoutChanged) m_input->setOsdLayoutInput(newLayout);
         if (!m_config->inputDevice().isEmpty()) m_input->startDevice(m_config->inputDevice());
     }
 
