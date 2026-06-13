@@ -304,27 +304,27 @@ void OSDWindow::applyColorStyles(const QString& colorBg, const QString& colorTex
     m_bgColor = QColor(colorBg);
     m_bgColor.setAlpha(qRound(opacity / 100.0 * 255));
 
-    QString text = colorText;
-    if (text.startsWith(QLatin1Char('#'))) text.remove(0, 1);
-    QString bar = colorBar;
-    if (bar.startsWith(QLatin1Char('#'))) bar.remove(0, 1);
-    m_cachedStyleText = text;
-    m_cachedStyleBar = bar;
+    m_cachedStyleText = colorText;
+    if (m_cachedStyleText.startsWith(QLatin1Char('#'))) m_cachedStyleText.remove(0, 1);
+    m_cachedStyleBar = colorBar;
+    if (m_cachedStyleBar.startsWith(QLatin1Char('#'))) m_cachedStyleBar.remove(0, 1);
     applyScaleFonts();
 }
 
-void OSDWindow::applyScaleFonts(bool scheduleUpdate)
+void OSDWindow::ensureColorCache()
 {
-    if (m_cachedStyleText.isEmpty() || m_cachedStyleBar.isEmpty())
-    {
-        const OsdConfig osd = m_config->osd();
-        QString text = osd.colorText;
-        if (text.startsWith(QLatin1Char('#'))) text.remove(0, 1);
-        QString bar = osd.colorBar;
-        if (bar.startsWith(QLatin1Char('#'))) bar.remove(0, 1);
-        m_cachedStyleText = text;
-        m_cachedStyleBar = bar;
-    }
+    if (!m_cachedStyleText.isEmpty() && !m_cachedStyleBar.isEmpty()) return;
+
+    const OsdConfig osd = m_config->osd();
+    m_cachedStyleText = osd.colorText;
+    if (m_cachedStyleText.startsWith(QLatin1Char('#'))) m_cachedStyleText.remove(0, 1);
+    m_cachedStyleBar = osd.colorBar;
+    if (m_cachedStyleBar.startsWith(QLatin1Char('#'))) m_cachedStyleBar.remove(0, 1);
+}
+
+void OSDWindow::applyScaleFonts()
+{
+    ensureColorCache();
 
     const double s = activeScale();
     const int ptName = qMax(6, qRound(11 * s));
@@ -381,7 +381,7 @@ void OSDWindow::applyScaleFonts(bool scheduleUpdate)
             .arg(text, bar)
             .arg(ptCtrl);
     if (m_controlsRow) m_controlsRow->setStyleSheet(ctrlStyle);
-    if (scheduleUpdate) update();
+    update();
 }
 
 void OSDWindow::applyResizeFontsFast(double scale)
@@ -403,16 +403,7 @@ void OSDWindow::applyResizeFontsFast(double scale)
 
 void OSDWindow::enterResizeStyleMode()
 {
-    if (m_cachedStyleText.isEmpty() || m_cachedStyleBar.isEmpty())
-    {
-        const OsdConfig osd = m_config->osd();
-        QString text = osd.colorText;
-        if (text.startsWith(QLatin1Char('#'))) text.remove(0, 1);
-        QString bar = osd.colorBar;
-        if (bar.startsWith(QLatin1Char('#'))) bar.remove(0, 1);
-        m_cachedStyleText = text;
-        m_cachedStyleBar = bar;
-    }
+    ensureColorCache();
 
     const QString& text = m_cachedStyleText;
     const QString& bar = m_cachedStyleBar;
@@ -504,6 +495,7 @@ void OSDWindow::rescale()
 
 void OSDWindow::rescaleAt(int absX, int absY, bool restartHideTimer)
 {
+    // reloadStyles() / applyPreviewScale() can fire while a resize drag is active.
     if (m_resizing)
     {
         rescaleDuringResize(absX, absY, qRound(OSD_W * activeScale()),
@@ -539,9 +531,7 @@ void OSDWindow::rescaleAt(int absX, int absY, bool restartHideTimer)
 
 void OSDWindow::rescaleDuringResize(int absX, int absY, int newW, int newH)
 {
-    const int w = newW;
-    const int h = newH;
-    const int layoutKey = (w << 16) | h;
+    const int layoutKey = (newW << 16) | newH;
 
     if (layoutKey != m_resizeCachedLayoutKey)
     {
@@ -567,10 +557,10 @@ void OSDWindow::rescaleDuringResize(int absX, int absY, int newW, int newH)
             if (btn) btn->setFixedSize(scaled(24), scaled(20));
     }
 
-    const bool sizeChanged = size() != QSize(w, h);
-    if (sizeChanged) setFixedSize(w, h);
+    const bool sizeChanged = size() != QSize(newW, newH);
+    if (sizeChanged) setFixedSize(newW, newH);
     const bool posChanged = m_resizeLastAppliedPos != QPoint(absX, absY);
-    if (posChanged || sizeChanged) positionWindowDuringResize(absX, absY, w, h);
+    if (posChanged || sizeChanged) positionWindowDuringResize(absX, absY, newW, newH);
     applyResizeFontsFast(activeScale());
 }
 
@@ -952,6 +942,7 @@ double OSDWindow::scaleForResize(const QPoint& globalPos) const
             std::hypot(globalPos.x() - anchor.x(), globalPos.y() - anchor.y());
         if (startDist < 1.0) return std::clamp(m_resizeStartScale, 0.5, 3.0);
 
+        // Empirically tuned: sqrt(2)≈1.41 felt too fast; 1.0 felt sluggish on diagonal drags.
         constexpr double kCornerGain = 1.18;
         const double ratio = currentDist / startDist;
         const double boosted = 1.0 + (ratio - 1.0) * kCornerGain;

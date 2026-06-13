@@ -214,7 +214,8 @@ class OSDWindow : public QWidget
     void applyStyles();
     void applyColorStyles(const QString& colorBg, const QString& colorText, const QString& colorBar,
                           int opacity);
-    void applyScaleFonts(bool scheduleUpdate = true);
+    void ensureColorCache();
+    void applyScaleFonts();
     void applyResizeFontsFast(double scale);
     void enterResizeStyleMode();
     void positionWindow(int absX, int absY);
