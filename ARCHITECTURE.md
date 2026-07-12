@@ -843,6 +843,13 @@ git diff --name-only --diff-filter=ACMR origin/main...HEAD \
 `Claude Code Review` is currently temporarily disabled via `if: false` in
 `.github/workflows/claude-code-review.yml`.
 
+`.github/workflows/security.yml` runs dependency review for pull requests and
+scans the full Git history for exposed secrets on pull requests, pushes to
+`main`, a weekly schedule, and manual dispatch. Workflow actions are pinned to
+full commit SHAs, permissions default to none (or read-only in the security
+workflow), and the Claude/OpenCode comment commands only accept requests from
+repository owners, members, or collaborators.
+
 ---
 
 ## Key Conventions
