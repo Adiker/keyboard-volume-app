@@ -22,14 +22,18 @@ on:
       - "**/CMakeLists.txt"
       - "**/*.cmake"
 
+permissions: {}
+
 jobs:
   format:
     name: Format changed C++ files
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -74,10 +78,12 @@ jobs:
     name: Clang-Tidy changed C++ files
     runs-on: ubuntu-24.04
     continue-on-error: true
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
@@ -161,6 +167,8 @@ jobs:
   build:
     name: Build and test (${{ matrix.build_type }})
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
 
     strategy:
       fail-fast: false
@@ -171,7 +179,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Install dependencies
         run: |
@@ -249,7 +257,7 @@ jobs:
 
       - name: Upload packages as artifacts (Release only)
         if: matrix.build_type == 'Release'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: keyboard-volume-app-packages
           path: |
