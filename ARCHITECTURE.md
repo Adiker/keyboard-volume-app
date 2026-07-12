@@ -852,6 +852,10 @@ are pinned to full commit SHAs, permissions default to none (or read-only in
 the security workflow), and the Claude/OpenCode comment commands only accept
 requests from repository owners, members, or collaborators.
 
+`.github/dependabot.yml` checks GitHub Actions daily and opens version-update
+pull requests against `main`. Dependabot recognizes the full-SHA action pins
+and their same-line version comments, so update pull requests preserve both.
+
 ---
 
 ## Key Conventions

@@ -3,6 +3,7 @@ name: Security checks
 on:
   pull_request:
     paths:
+      - ".github/dependabot.yml"
       - ".github/workflows/**"
       - "cpp/**"
       - "pkg/**"
