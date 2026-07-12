@@ -845,10 +845,12 @@ git diff --name-only --diff-filter=ACMR origin/main...HEAD \
 
 `.github/workflows/security.yml` runs dependency review for pull requests and
 scans the full Git history for exposed secrets on pull requests, pushes to
-`main`, a weekly schedule, and manual dispatch. Workflow actions are pinned to
-full commit SHAs, permissions default to none (or read-only in the security
-workflow), and the Claude/OpenCode comment commands only accept requests from
-repository owners, members, or collaborators.
+`main`, a weekly schedule, and manual dispatch. Pull-request runs use
+implementation-path filters, so documentation-only PRs skip the scan;
+the push to `main` and weekly runs still scan the full history. Workflow actions
+are pinned to full commit SHAs, permissions default to none (or read-only in
+the security workflow), and the Claude/OpenCode comment commands only accept
+requests from repository owners, members, or collaborators.
 
 ---
 
