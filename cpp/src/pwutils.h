@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QStringList>
 #include <QList>
 #include <QSet>
 #include <optional>
@@ -47,6 +48,9 @@ QList<PipeWireClient> listPipeWireClients(const QSet<QString>& systemBinaries = 
                                           const QSet<QString>& skipAppNames = SKIP_APP_NAMES);
 
 // Uses libpipewire to inspect and update PipeWire stream node Props.
-std::optional<PipeWireNode> findPipeWireNodeForApp(const QString& appName);
+// Optional matchCandidates expand the lookup beyond appName (alias reverse
+// resolution). Empty list → match appName only.
+std::optional<PipeWireNode> findPipeWireNodeForApp(const QString& appName,
+                                                   const QStringList& matchCandidates = {});
 bool setPipeWireNodeVolume(uint32_t nodeId, double volume);
 bool setPipeWireNodeMute(uint32_t nodeId, bool muted);

@@ -241,6 +241,17 @@ class PaWorker : public QObject
         m_config.store(config, std::memory_order_release);
     }
 
+    QList<AppAlias> currentAliases() const
+    {
+        Config* cfg = m_config.load(std::memory_order_acquire);
+        return cfg ? cfg->appAliases() : QList<AppAlias>{};
+    }
+
+    QStringList matchCandidatesFor(const QString& appName) const
+    {
+        return appMatchCandidates(appName, currentAliases());
+    }
+
   public slots:
     // Called once from the PA thread after moveToThread + start.
     void init()
@@ -355,7 +366,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName)) continue;
+                if (!si.matches(appName, currentAliases())) continue;
 
                 double newVol = std::clamp(si.volume + delta, minVol, maxVol);
                 pa_cvolume cv;
@@ -389,7 +400,7 @@ class PaWorker : public QObject
         }
 
         // 3. PipeWire node (libpipewire)
-        auto node = ::findPipeWireNodeForApp(appName);
+        auto node = ::findPipeWireNodeForApp(appName, matchCandidatesFor(appName));
         if (node)
         {
             double newVol = std::clamp(node->volume + delta, minVol, maxVol);
@@ -424,7 +435,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName)) continue;
+                if (!si.matches(appName, currentAliases())) continue;
 
                 int newMute = si.muted ? 0 : 1;
                 pa_operation* op = pa_context_set_sink_input_mute(m_ctx, si.index, newMute,
@@ -459,7 +470,7 @@ class PaWorker : public QObject
         }
 
         // 3. PipeWire node
-        auto node = ::findPipeWireNodeForApp(appName);
+        auto node = ::findPipeWireNodeForApp(appName, matchCandidatesFor(appName));
         if (node)
         {
             bool newMuted = !node->muted;
@@ -498,7 +509,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName)) continue;
+                if (!si.matches(appName, currentAliases())) continue;
 
                 if (si.muted == targetMuted)
                 {
@@ -548,7 +559,7 @@ class PaWorker : public QObject
         }
 
         // 3. PipeWire node
-        auto node = ::findPipeWireNodeForApp(appName);
+        auto node = ::findPipeWireNodeForApp(appName, matchCandidatesFor(appName));
         if (node && ::setPipeWireNodeMute(node->id, targetMuted))
         {
             m_appMutes[appName] = targetMuted;
@@ -588,7 +599,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName)) continue;
+                if (!si.matches(appName, currentAliases())) continue;
 
                 pa_cvolume cv;
                 pa_cvolume_set(&cv, 2, static_cast<pa_volume_t>(targetVolume * PA_VOLUME_NORM));
@@ -620,7 +631,7 @@ class PaWorker : public QObject
         }
 
         // 3. PipeWire node (libpipewire)
-        auto node = ::findPipeWireNodeForApp(appName);
+        auto node = ::findPipeWireNodeForApp(appName, matchCandidatesFor(appName));
         if (node && ::setPipeWireNodeVolume(node->id, targetVolume))
         {
             m_appVolumes[appName] = targetVolume;
@@ -667,7 +678,7 @@ class PaWorker : public QObject
             double currentVolume = app.volume;
             if (!app.active)
             {
-                if (auto node = ::findPipeWireNodeForApp(app.name))
+                if (auto node = ::findPipeWireNodeForApp(app.name, matchCandidatesFor(app.name)))
                 {
                     currentVolume = node->volume;
                 }
@@ -701,7 +712,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName)) continue;
+                if (!si.matches(appName, currentAliases())) continue;
 
                 pa_threaded_mainloop_unlock(m_mainloop);
                 m_appVolumes[appName] = si.volume;
@@ -723,7 +734,7 @@ class PaWorker : public QObject
         }
 
         // 3. PipeWire node (idle/paused app)
-        auto node = ::findPipeWireNodeForApp(appName);
+        auto node = ::findPipeWireNodeForApp(appName, matchCandidatesFor(appName));
         if (node)
         {
             m_appVolumes[appName] = node->volume;
@@ -856,7 +867,7 @@ class PaWorker : public QObject
             for (auto it = pendSinks.begin(); it != pendSinks.end(); ++it)
             {
                 const QString& app = it.key();
-                if (!si.matches(app)) continue;
+                if (!si.matches(app, currentAliases())) continue;
 
                 const QByteArray sinkBytes = it.value().toUtf8();
                 OperationOutcome outcome;
@@ -876,7 +887,7 @@ class PaWorker : public QObject
             for (auto it = pendVols.begin(); it != pendVols.end(); ++it)
             {
                 const QString& app = it.key();
-                if (!si.matches(app)) continue;
+                if (!si.matches(app, currentAliases())) continue;
 
                 pa_cvolume cv;
                 pa_cvolume_set(&cv, 2, static_cast<pa_volume_t>(it.value() * PA_VOLUME_NORM));
@@ -905,7 +916,7 @@ class PaWorker : public QObject
             {
                 const QString& app = it.key();
                 if (pendVols.contains(app)) continue; // already handled above
-                if (!si.matches(app)) continue;
+                if (!si.matches(app, currentAliases())) continue;
 
                 bool muteApplied = waitForOperation(
                     pa_context_set_sink_input_mute(m_ctx, si.index, it.value() ? 1 : 0,
@@ -1052,7 +1063,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName)) continue;
+                if (!si.matches(appName, currentAliases())) continue;
 
                 OperationOutcome outcome;
                 pa_operation* op = pa_context_move_sink_input_by_name(
@@ -1332,11 +1343,9 @@ class PaWorker : public QObject
         double volume;
         bool muted;
 
-        bool matches(const QString& appName) const
+        bool matches(const QString& appName, const QList<AppAlias>& aliases = {}) const
         {
-            return name.compare(appName, Qt::CaseInsensitive) == 0 ||
-                   binary.compare(appName, Qt::CaseInsensitive) == 0 ||
-                   mediaName.compare(appName, Qt::CaseInsensitive) == 0;
+            return appNameMatchesFields(appName, name, binary, mediaName, aliases);
         }
 
         QString displayName() const
@@ -1472,8 +1481,21 @@ class PaWorker : public QObject
         };
 
         add(app);
+        const QList<AppAlias> aliases = currentAliases();
+        for (const QString& candidate : appMatchCandidates(app, aliases)) add(candidate);
+
         const QString lowerApp = app.toLower();
-        for (const PipeWireClient& client : ::listPipeWireClients())
+        const QSet<QString> systemBinaries = [&]()
+        {
+            Config* cfg = m_config.load(std::memory_order_acquire);
+            return cfg ? cfg->effectiveSystemBinaries() : SYSTEM_BINARIES;
+        }();
+        const QSet<QString> skipAppNames = [&]()
+        {
+            Config* cfg = m_config.load(std::memory_order_acquire);
+            return cfg ? cfg->effectiveSkipAppNames() : SKIP_APP_NAMES;
+        }();
+        for (const PipeWireClient& client : ::listPipeWireClients(systemBinaries, skipAppNames))
         {
             if (appIdMatches(client.binary, lowerApp) || appIdMatches(client.name, lowerApp))
             {

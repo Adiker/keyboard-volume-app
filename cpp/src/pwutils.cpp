@@ -356,15 +356,21 @@ void refreshObjectInfo(PipeWireSession& session)
     pw_thread_loop_unlock(session.loop);
 }
 
-bool nodeMatchesApp(const RegistryGlobal& global, const QString& appName)
+bool nodeMatchesApp(const RegistryGlobal& global, const QStringList& candidates)
 {
     if (global.type != QString::fromUtf8(PW_TYPE_INTERFACE_Node)) return false;
-    if (global.name.compare(appName, Qt::CaseInsensitive) != 0 &&
-        global.binary.compare(appName, Qt::CaseInsensitive) != 0 &&
-        global.nodeName.compare(appName, Qt::CaseInsensitive) != 0 &&
-        global.mediaName.compare(appName, Qt::CaseInsensitive) != 0)
-        return false;
-    return global.mediaClass.startsWith(QStringLiteral("Stream/"));
+    if (!global.mediaClass.startsWith(QStringLiteral("Stream/"))) return false;
+
+    for (const QString& candidate : candidates)
+    {
+        if (candidate.isEmpty()) continue;
+        if (global.name.compare(candidate, Qt::CaseInsensitive) == 0 ||
+            global.binary.compare(candidate, Qt::CaseInsensitive) == 0 ||
+            global.nodeName.compare(candidate, Qt::CaseInsensitive) == 0 ||
+            global.mediaName.compare(candidate, Qt::CaseInsensitive) == 0)
+            return true;
+    }
+    return false;
 }
 
 bool readNodeProps(PipeWireSession& session, uint32_t nodeId, double* volume, bool* muted)
@@ -548,8 +554,12 @@ QList<PipeWireClient> listPipeWireClients(const QSet<QString>& systemBinaries,
     return clientsFromPipeWireGlobals(globals, systemBinaries, skipAppNames);
 }
 
-std::optional<PipeWireNode> findPipeWireNodeForApp(const QString& appName)
+std::optional<PipeWireNode> findPipeWireNodeForApp(const QString& appName,
+                                                   const QStringList& matchCandidates)
 {
+    QStringList candidates = matchCandidates;
+    if (candidates.isEmpty() && !appName.isEmpty()) candidates.append(appName);
+
     PipeWireSession session;
     if (!session.connect()) return std::nullopt;
     refreshObjectInfo(session);
@@ -557,7 +567,7 @@ std::optional<PipeWireNode> findPipeWireNodeForApp(const QString& appName)
     std::optional<RegistryGlobal> best;
     for (const RegistryGlobal& global : session.globals)
     {
-        if (!nodeMatchesApp(global, appName)) continue;
+        if (!nodeMatchesApp(global, candidates)) continue;
 
         if (global.mediaClass.contains(QStringLiteral("Output")))
         {

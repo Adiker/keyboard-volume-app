@@ -128,6 +128,55 @@ inline void applyAppAliasToNames(QString& displayName, QString& targetName,
     }
 }
 
+// Expand an app name used for volume/mute/sink ops to every string that may
+// appear in PulseAudio / PipeWire fields after aliases remap the control
+// target (e.g. alias chromium → youtube-music must still match PA binary
+// "chromium").
+inline QStringList appMatchCandidates(const QString& appName, const QList<AppAlias>& aliases)
+{
+    QStringList out;
+    auto add = [&](const QString& candidate)
+    {
+        const QString trimmed = candidate.trimmed();
+        if (trimmed.isEmpty()) return;
+        for (const QString& existing : std::as_const(out))
+        {
+            if (existing.compare(trimmed, Qt::CaseInsensitive) == 0) return;
+        }
+        out.append(trimmed);
+    };
+
+    add(appName);
+    if (aliases.isEmpty() || appName.isEmpty()) return out;
+
+    const QString lower = appName.toLower();
+    for (const AppAlias& alias : aliases)
+    {
+        const bool hitMatch = appIdMatches(alias.match, lower);
+        const bool hitDisplay = !alias.display.isEmpty() && appIdMatches(alias.display, lower);
+        const bool hitTarget = !alias.target.isEmpty() && appIdMatches(alias.target, lower);
+        if (!hitMatch && !hitDisplay && !hitTarget) continue;
+
+        add(alias.match);
+        add(alias.display);
+        add(alias.target);
+    }
+    return out;
+}
+
+inline bool appNameMatchesFields(const QString& appName, const QString& name, const QString& binary,
+                                 const QString& mediaName = {}, const QList<AppAlias>& aliases = {})
+{
+    for (const QString& candidate : appMatchCandidates(appName, aliases))
+    {
+        if (name.compare(candidate, Qt::CaseInsensitive) == 0 ||
+            binary.compare(candidate, Qt::CaseInsensitive) == 0 ||
+            mediaName.compare(candidate, Qt::CaseInsensitive) == 0)
+            return true;
+    }
+    return false;
+}
+
 template <typename ClientT>
 inline ClientT applyAppAlias(ClientT client, const QList<AppAlias>& aliases)
 {

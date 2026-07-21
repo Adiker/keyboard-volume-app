@@ -282,3 +282,29 @@ TEST(AppMatcher, ApplyAppAliasDisplayOnlyKeepsTarget)
     EXPECT_EQ(remapped.name.toStdString(), "Harmonoid");
     EXPECT_EQ(remapped.binary.toStdString(), "mpv");
 }
+
+TEST(AppMatcher, AppMatchCandidatesExpandAliasTarget)
+{
+    AppAlias alias;
+    alias.match = QStringLiteral("chromium");
+    alias.display = QStringLiteral("YouTube Music");
+    alias.target = QStringLiteral("youtube-music");
+
+    const QStringList candidates = appMatchCandidates(QStringLiteral("youtube-music"), {alias});
+    EXPECT_TRUE(candidates.contains(QStringLiteral("youtube-music")));
+    EXPECT_TRUE(candidates.contains(QStringLiteral("chromium")));
+    EXPECT_TRUE(candidates.contains(QStringLiteral("YouTube Music")));
+}
+
+TEST(AppMatcher, AppNameMatchesFieldsViaAliasReverseLookup)
+{
+    AppAlias alias;
+    alias.match = QStringLiteral("chromium");
+    alias.display = QStringLiteral("YouTube Music");
+    alias.target = QStringLiteral("youtube-music");
+
+    EXPECT_TRUE(appNameMatchesFields(QStringLiteral("youtube-music"), QStringLiteral("Chromium"),
+                                     QStringLiteral("chromium"), QString(), {alias}));
+    EXPECT_FALSE(appNameMatchesFields(QStringLiteral("youtube-music"), QStringLiteral("Firefox"),
+                                      QStringLiteral("firefox"), QString(), {alias}));
+}

@@ -418,13 +418,32 @@ class App : public QObject
     // transition so repeated hotkey presses don't spam PA. The guard is cleared
     // on settingsChanged and on sinksReady so a freshly plugged USB device or a
     // sink edit in Settings triggers an automatic re-route on the next press.
-    void activateProfile(const Profile& p)
+    // `alsoRouteApp` covers regex-only profiles (empty apps list) and Follow
+    // Focus targets that matched via app_regex rather than an explicit apps entry.
+    void activateProfile(const Profile& p, const QString& alsoRouteApp = {})
     {
         if (p.id.isEmpty() || !m_volumeCtrl) return;
         if (p.id == m_lastActivatedProfileId) return;
         m_lastActivatedProfileId = p.id;
         if (p.sink.isEmpty()) return;
-        for (const QString& app : p.apps)
+
+        QStringList toRoute = p.apps;
+        if (!alsoRouteApp.isEmpty())
+        {
+            bool alreadyListed = false;
+            const QString lower = alsoRouteApp.toLower();
+            for (const QString& app : toRoute)
+            {
+                if (appIdMatches(app, lower))
+                {
+                    alreadyListed = true;
+                    break;
+                }
+            }
+            if (!alreadyListed) toRoute.append(alsoRouteApp);
+        }
+
+        for (const QString& app : toRoute)
         {
             if (app.isEmpty()) continue;
             m_volumeCtrl->setAppSink(app, p.sink);
@@ -440,7 +459,7 @@ class App : public QObject
         // hotkey to a focused app belonging to a different profile, we must use
         // that profile's vol_min/vol_max, not the hotkey-emitting profile's.
         const Profile p = effectiveProfile(profileId);
-        activateProfile(p);
+        activateProfile(p, app);
         // async → volumeChanged signal; clamped to per-profile [vol_min, vol_max].
         m_volumeCtrl->changeVolume(app, direction * step, p.volMin / 100.0, p.volMax / 100.0);
     }
@@ -449,7 +468,7 @@ class App : public QObject
     {
         const QString app = effectiveApp(profileId);
         if (app.isEmpty()) return;
-        activateProfile(effectiveProfile(profileId));
+        activateProfile(effectiveProfile(profileId), app);
         m_volumeCtrl->toggleMute(app); // async → volumeChanged signal
     }
 
@@ -459,7 +478,7 @@ class App : public QObject
         if (app.isEmpty()) return;
         const Profile p = findProfile(profileId);
         if (!p.ducking.enabled || !p.ducking.hotkey.isAssigned()) return;
-        activateProfile(effectiveProfile(profileId));
+        activateProfile(effectiveProfile(profileId), app);
         m_volumeCtrl->toggleDucking(app, p.ducking.volume / 100.0);
     }
 
@@ -467,7 +486,7 @@ class App : public QObject
     {
         const QString app = effectiveApp(profileId);
         if (app.isEmpty()) return;
-        activateProfile(effectiveProfile(profileId));
+        activateProfile(effectiveProfile(profileId), app);
         m_volumeCtrl->queryVolume(app); // async → volumeChanged → OSD
     }
 
@@ -645,7 +664,7 @@ class App : public QObject
         if (!m_autoActiveApp.isEmpty())
         {
             const Profile matched = m_config->findProfileByApp(m_autoActiveApp);
-            if (!matched.id.isEmpty()) activateProfile(matched);
+            if (!matched.id.isEmpty()) activateProfile(matched, m_autoActiveApp);
         }
     }
 
