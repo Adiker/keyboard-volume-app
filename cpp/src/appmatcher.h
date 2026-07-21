@@ -6,6 +6,7 @@
 #include <QList>
 #include <QRegularExpression>
 #include <QString>
+#include <QStringList>
 
 // Match a focused-window binary/app id against the PipeWire app cache using a
 // case-insensitive substring check against both AudioApp::name and
@@ -60,78 +61,10 @@ inline bool profileListsApp(const Profile& profile, const QString& appName)
     return appRegexMatches(appName, profile.appRegex);
 }
 
-inline QString matchBinaryToApp(const QString& binary, const QList<AudioApp>& cache)
-{
-    if (binary.isEmpty()) return {};
-    const QString lower = binary.toLower();
-    for (const AudioApp& app : cache)
-    {
-        if (appIdMatches(app.name, lower) || appIdMatches(app.binary, lower))
-            return app.binary.isEmpty() ? app.name : app.binary;
-    }
-    return {};
-}
-
-inline Profile findAutoSwitchProfileForApp(const QString& appName, const QList<Profile>& profiles)
-{
-    if (appName.isEmpty()) return {};
-
-    for (const Profile& profile : profiles)
-    {
-        if (!profile.autoSwitch) continue;
-        if (profileListsApp(profile, appName)) return profile;
-    }
-    return {};
-}
-
-inline QString validateStickyAutoProfileTarget(const QString& currentTarget,
-                                               const QList<Profile>& profiles)
-{
-    if (currentTarget.isEmpty()) return {};
-    return findAutoSwitchProfileForApp(currentTarget, profiles).id.isEmpty() ? QString{}
-                                                                             : currentTarget;
-}
-
-inline QString resolveStickyAutoProfileTarget(const QString& focusedBinary,
-                                              const QList<AudioApp>& cache,
-                                              const QList<Profile>& profiles,
-                                              const QString& currentTarget)
-{
-    if (focusedBinary.isEmpty()) return currentTarget;
-
-    const QString matchedApp = matchBinaryToApp(focusedBinary, cache);
-    if (matchedApp.isEmpty()) return currentTarget;
-
-    const Profile matchedProfile = findAutoSwitchProfileForApp(matchedApp, profiles);
-    return matchedProfile.id.isEmpty() ? currentTarget : matchedApp;
-}
-
-// Apply the first matching alias to a detected client. UI shows `display`;
-// volume control uses `target` when set, otherwise the original binary.
-inline bool aliasMatchesNameOrBinary(const QString& name, const QString& binary,
-                                     const AppAlias& alias)
-{
-    if (alias.match.isEmpty()) return false;
-    const QString needle = alias.match.toLower();
-    return appIdMatches(name, needle) || appIdMatches(binary, needle);
-}
-
-inline void applyAppAliasToNames(QString& displayName, QString& targetName,
-                                 const QList<AppAlias>& aliases)
-{
-    for (const AppAlias& alias : aliases)
-    {
-        if (!aliasMatchesNameOrBinary(displayName, targetName, alias)) continue;
-        if (!alias.display.isEmpty()) displayName = alias.display;
-        if (!alias.target.isEmpty()) targetName = alias.target;
-        return;
-    }
-}
-
-// Expand an app name used for volume/mute/sink ops to every string that may
-// appear in PulseAudio / PipeWire fields after aliases remap the control
-// target (e.g. alias chromium → youtube-music must still match PA binary
-// "chromium").
+// Expand an app name used for volume/mute/sink ops (and Follow Focus) to every
+// string that may appear in PulseAudio / PipeWire fields after aliases remap
+// the control target (e.g. alias chromium → youtube-music must still match PA
+// binary "chromium").
 inline QStringList appMatchCandidates(const QString& appName, const QList<AppAlias>& aliases)
 {
     QStringList out;
@@ -175,6 +108,127 @@ inline bool appNameMatchesFields(const QString& appName, const QString& name, co
             return true;
     }
     return false;
+}
+
+inline QString matchBinaryToApp(const QString& binary, const QList<AudioApp>& cache,
+                                const QList<AppAlias>& aliases = {})
+{
+    if (binary.isEmpty()) return {};
+    const QString lower = binary.toLower();
+    for (const AudioApp& app : cache)
+    {
+        if (appIdMatches(app.name, lower) || appIdMatches(app.binary, lower))
+            return app.binary.isEmpty() ? app.name : app.binary;
+
+        // Cache may already hold the remapped alias target (youtube-music) while
+        // WindowTracker still reports the source binary (chromium). Expand through
+        // aliases so Follow Focus can resolve the control target.
+        const QString control = app.binary.isEmpty() ? app.name : app.binary;
+        if (control.isEmpty() && app.name.isEmpty()) continue;
+        for (const QString& candidate : appMatchCandidates(control, aliases))
+        {
+            if (appIdMatches(candidate, lower)) return control;
+        }
+        if (!app.name.isEmpty())
+        {
+            for (const QString& candidate : appMatchCandidates(app.name, aliases))
+            {
+                if (appIdMatches(candidate, lower)) return control.isEmpty() ? app.name : control;
+            }
+        }
+    }
+
+    // No live cache entry — still map a focused alias source to its control target
+    // so a profile can activate before the stream appears in the app list.
+    for (const AppAlias& alias : aliases)
+    {
+        if (!appIdMatches(alias.match, lower) &&
+            (alias.display.isEmpty() || !appIdMatches(alias.display, lower)))
+            continue;
+        if (!alias.target.isEmpty()) return alias.target;
+        if (!alias.display.isEmpty()) return alias.display;
+    }
+    return {};
+}
+
+inline Profile findAutoSwitchProfileForApp(const QString& appName, const QList<Profile>& profiles)
+{
+    if (appName.isEmpty()) return {};
+
+    for (const Profile& profile : profiles)
+    {
+        if (!profile.autoSwitch) continue;
+        if (profileListsApp(profile, appName)) return profile;
+    }
+    return {};
+}
+
+inline QString validateStickyAutoProfileTarget(const QString& currentTarget,
+                                               const QList<Profile>& profiles)
+{
+    if (currentTarget.isEmpty()) return {};
+    return findAutoSwitchProfileForApp(currentTarget, profiles).id.isEmpty() ? QString{}
+                                                                             : currentTarget;
+}
+
+inline QString resolveStickyAutoProfileTarget(const QString& focusedBinary,
+                                              const QList<AudioApp>& cache,
+                                              const QList<Profile>& profiles,
+                                              const QString& currentTarget,
+                                              const QList<AppAlias>& aliases = {})
+{
+    if (focusedBinary.isEmpty()) return currentTarget;
+
+    const QString matchedApp = matchBinaryToApp(focusedBinary, cache, aliases);
+    const QString preferredTarget = matchedApp.isEmpty() ? focusedBinary : matchedApp;
+
+    // Collect focused binary + remapped target + alias siblings so regex profiles
+    // that list the source name (chromium) still fire when cache only has the
+    // aliased control target (youtube-music).
+    QStringList tryApps = appMatchCandidates(preferredTarget, aliases);
+    for (const QString& candidate : appMatchCandidates(focusedBinary, aliases))
+    {
+        bool exists = false;
+        for (const QString& existing : std::as_const(tryApps))
+        {
+            if (existing.compare(candidate, Qt::CaseInsensitive) == 0)
+            {
+                exists = true;
+                break;
+            }
+        }
+        if (!exists) tryApps.append(candidate);
+    }
+
+    for (const QString& candidate : tryApps)
+    {
+        const Profile matchedProfile = findAutoSwitchProfileForApp(candidate, profiles);
+        if (matchedProfile.id.isEmpty()) continue;
+        return preferredTarget;
+    }
+    return currentTarget;
+}
+
+// Apply the first matching alias to a detected client. UI shows `display`;
+// volume control uses `target` when set, otherwise the original binary.
+inline bool aliasMatchesNameOrBinary(const QString& name, const QString& binary,
+                                     const AppAlias& alias)
+{
+    if (alias.match.isEmpty()) return false;
+    const QString needle = alias.match.toLower();
+    return appIdMatches(name, needle) || appIdMatches(binary, needle);
+}
+
+inline void applyAppAliasToNames(QString& displayName, QString& targetName,
+                                 const QList<AppAlias>& aliases)
+{
+    for (const AppAlias& alias : aliases)
+    {
+        if (!aliasMatchesNameOrBinary(displayName, targetName, alias)) continue;
+        if (!alias.display.isEmpty()) displayName = alias.display;
+        if (!alias.target.isEmpty()) targetName = alias.target;
+        return;
+    }
 }
 
 template <typename ClientT>

@@ -308,3 +308,33 @@ TEST(AppMatcher, AppNameMatchesFieldsViaAliasReverseLookup)
     EXPECT_FALSE(appNameMatchesFields(QStringLiteral("youtube-music"), QStringLiteral("Firefox"),
                                       QStringLiteral("firefox"), QString(), {alias}));
 }
+
+TEST(AppMatcher, MatchBinaryToAppResolvesAliasSourceFromRemappedCache)
+{
+    // Cache holds the remapped alias target; WindowTracker reports chromium.
+    const QList<AudioApp> cache{
+        makeApp(QStringLiteral("YouTube Music"), QStringLiteral("youtube-music"))};
+    AppAlias alias;
+    alias.match = QStringLiteral("chromium");
+    alias.display = QStringLiteral("YouTube Music");
+    alias.target = QStringLiteral("youtube-music");
+
+    EXPECT_EQ(matchBinaryToApp(QStringLiteral("chromium"), cache, {alias}),
+              QStringLiteral("youtube-music"));
+}
+
+TEST(AppMatcher, StickyAutoProfileFollowsAliasSourceBinary)
+{
+    const QList<AudioApp> cache{
+        makeApp(QStringLiteral("YouTube Music"), QStringLiteral("youtube-music"))};
+    const QList<Profile> profiles{
+        makeProfile(QStringLiteral("music"), {QStringLiteral("youtube-music")})};
+    AppAlias alias;
+    alias.match = QStringLiteral("chromium");
+    alias.display = QStringLiteral("YouTube Music");
+    alias.target = QStringLiteral("youtube-music");
+
+    EXPECT_EQ(resolveStickyAutoProfileTarget(QStringLiteral("chromium"), cache, profiles, QString(),
+                                             {alias}),
+              QStringLiteral("youtube-music"));
+}

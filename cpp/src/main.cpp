@@ -271,7 +271,11 @@ class App : public QObject
         connect(m_tray, &TrayApp::settingsChanged, this, &App::onHotkeysMaybeChanged);
         connect(m_tray, &TrayApp::settingsChanged, this, &App::onAutoSwitchMaybeChanged);
         connect(m_tray, &TrayApp::settingsChanged, this,
-                [this]() { m_lastActivatedProfileId.clear(); });
+                [this]()
+                {
+                    m_lastActivatedProfileId.clear();
+                    m_lastActivatedRouteApp.clear();
+                });
         connect(m_tray, &TrayApp::osdPreviewRequested, m_osd,
                 [this](int s, int x, int y) { m_osd->showPreview(s, x, y); });
         connect(m_tray, &TrayApp::osdPreviewFinished, m_osd, &OSDWindow::hidePreview);
@@ -289,7 +293,11 @@ class App : public QObject
         // re-applies the configured sink — addresses the "device appeared after
         // a failed first attempt" case without rerouting on every press.
         connect(m_volumeCtrl, &VolumeController::sinksReady, this,
-                [this](const QList<SinkInfo>&) { m_lastActivatedProfileId.clear(); });
+                [this](const QList<SinkInfo>&)
+                {
+                    m_lastActivatedProfileId.clear();
+                    m_lastActivatedRouteApp.clear();
+                });
 
         // MprisClient → OSDWindow progress row
         connect(m_mpris, &MprisClient::trackChanged, m_osd,
@@ -414,33 +422,54 @@ class App : public QObject
         return Profile{};
     }
 
-    // Route a profile's apps to its configured sink — runs once per profile-id
-    // transition so repeated hotkey presses don't spam PA. The guard is cleared
-    // on settingsChanged and on sinksReady so a freshly plugged USB device or a
-    // sink edit in Settings triggers an automatic re-route on the next press.
+    // Route a profile's apps to its configured sink. Guarded by (profile id,
+    // alsoRouteApp) so Follow Focus can re-route when focus moves between apps
+    // that share one regex profile (e.g. discord → slack) without spamming PA
+    // on repeated hotkeys for the same pair. The guard is cleared on
+    // settingsChanged and on sinksReady.
     // `alsoRouteApp` covers regex-only profiles (empty apps list) and Follow
     // Focus targets that matched via app_regex rather than an explicit apps entry.
     void activateProfile(const Profile& p, const QString& alsoRouteApp = {})
     {
         if (p.id.isEmpty() || !m_volumeCtrl) return;
-        if (p.id == m_lastActivatedProfileId) return;
+
+        const bool sameProfile = (p.id == m_lastActivatedProfileId);
+        const bool sameRoutedApp =
+            alsoRouteApp.compare(m_lastActivatedRouteApp, Qt::CaseInsensitive) == 0;
+        if (sameProfile && sameRoutedApp) return;
+
+        const bool profileChanged = !sameProfile;
         m_lastActivatedProfileId = p.id;
+        m_lastActivatedRouteApp = alsoRouteApp;
         if (p.sink.isEmpty()) return;
 
-        QStringList toRoute = p.apps;
-        if (!alsoRouteApp.isEmpty())
+        QStringList toRoute;
+        if (profileChanged)
         {
-            bool alreadyListed = false;
-            const QString lower = alsoRouteApp.toLower();
-            for (const QString& app : toRoute)
+            toRoute = p.apps;
+            if (!alsoRouteApp.isEmpty())
             {
-                if (appIdMatches(app, lower))
+                bool alreadyListed = false;
+                const QString lower = alsoRouteApp.toLower();
+                for (const QString& app : toRoute)
                 {
-                    alreadyListed = true;
-                    break;
+                    if (appIdMatches(app, lower))
+                    {
+                        alreadyListed = true;
+                        break;
+                    }
                 }
+                if (!alreadyListed) toRoute.append(alsoRouteApp);
             }
-            if (!alreadyListed) toRoute.append(alsoRouteApp);
+        }
+        else if (!alsoRouteApp.isEmpty())
+        {
+            // Same regex/shared profile, new focused app — route only that app.
+            toRoute.append(alsoRouteApp);
+        }
+        else
+        {
+            return;
         }
 
         for (const QString& app : toRoute)
@@ -659,7 +688,7 @@ class App : public QObject
         }
 
         m_autoActiveApp = ::resolveStickyAutoProfileTarget(binary, m_appCache, m_config->profiles(),
-                                                           m_autoActiveApp);
+                                                           m_autoActiveApp, m_config->appAliases());
         if (m_mpris) m_mpris->setPreferredApp(m_autoActiveApp);
         if (!m_autoActiveApp.isEmpty())
         {
@@ -703,9 +732,12 @@ class App : public QObject
     WindowTracker* m_windowTracker = nullptr;
     QList<AudioApp> m_appCache;
     QString m_autoActiveApp;
-    // Last profile id whose sink we routed — guards activateProfile() so the
-    // sink is moved once per profile transition, not on every hotkey press.
+    // Last profile id + routed app whose sink we applied — guards activateProfile()
+    // so the sink is moved once per (profile, focused-app) pair, not on every
+    // hotkey press, while still re-routing when Follow Focus changes app inside
+    // the same regex profile.
     QString m_lastActivatedProfileId;
+    QString m_lastActivatedRouteApp;
 };
 
 // ─── main() ───────────────────────────────────────────────────────────────────
