@@ -338,3 +338,19 @@ TEST(AppMatcher, StickyAutoProfileFollowsAliasSourceBinary)
                                              {alias}),
               QStringLiteral("youtube-music"));
 }
+
+TEST(AppMatcher, FindAutoSwitchProfileMatchesAliasSourceWhenTargetStored)
+{
+    // Profile lists only the alias source; sticky target is the remapped control
+    // name returned by resolveStickyAutoProfileTarget.
+    Profile profile = makeProfile(QStringLiteral("music"), {QStringLiteral("chromium")});
+    AppAlias alias;
+    alias.match = QStringLiteral("chromium");
+    alias.display = QStringLiteral("YouTube Music");
+    alias.target = QStringLiteral("youtube-music");
+
+    EXPECT_EQ(findAutoSwitchProfileForApp(QStringLiteral("youtube-music"), {profile}, {alias}).id,
+              QStringLiteral("music"));
+    EXPECT_TRUE(
+        findAutoSwitchProfileForApp(QStringLiteral("youtube-music"), {profile}, {}).id.isEmpty());
+}

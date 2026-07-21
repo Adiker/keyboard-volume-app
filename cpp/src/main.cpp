@@ -400,8 +400,8 @@ class App : public QObject
     {
         if (m_config->autoProfileSwitch())
         {
-            m_autoActiveApp =
-                ::validateStickyAutoProfileTarget(m_autoActiveApp, m_config->profiles());
+            m_autoActiveApp = ::validateStickyAutoProfileTarget(
+                m_autoActiveApp, m_config->profiles(), m_config->appAliases());
             if (m_mpris) m_mpris->setPreferredApp(m_autoActiveApp);
             startWindowTracker();
         }

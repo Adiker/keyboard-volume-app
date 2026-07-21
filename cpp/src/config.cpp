@@ -1255,7 +1255,7 @@ void Config::setSettingsDialogSize(const QSize& size)
 
 Profile Config::findProfileByApp(const QString& appName) const
 {
-    return ::findAutoSwitchProfileForApp(appName, profiles());
+    return ::findAutoSwitchProfileForApp(appName, profiles(), appAliases());
 }
 
 namespace

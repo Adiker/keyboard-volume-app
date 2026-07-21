@@ -162,6 +162,9 @@ void TrayApp::openSettings()
     dlg.exec();
     // Reload styles regardless of accepted/rejected so preview colors revert
     emit settingsChanged();
+    // Alias / filter edits change listApps() labels and targets — force a refresh
+    // so the tray does not keep the old 5s cache until a manual Refresh.
+    m_volumeCtrl->listApps(/*forceRefresh=*/true);
 }
 
 void TrayApp::openAppSelector()

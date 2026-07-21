@@ -151,24 +151,33 @@ inline QString matchBinaryToApp(const QString& binary, const QList<AudioApp>& ca
     return {};
 }
 
-inline Profile findAutoSwitchProfileForApp(const QString& appName, const QList<Profile>& profiles)
+inline Profile findAutoSwitchProfileForApp(const QString& appName, const QList<Profile>& profiles,
+                                           const QList<AppAlias>& aliases = {})
 {
     if (appName.isEmpty()) return {};
 
+    // Expand through aliases so a remapped control target (youtube-music) still
+    // finds a profile that lists/regex-matches only the source (chromium).
+    const QStringList candidates = appMatchCandidates(appName, aliases);
     for (const Profile& profile : profiles)
     {
         if (!profile.autoSwitch) continue;
-        if (profileListsApp(profile, appName)) return profile;
+        for (const QString& candidate : candidates)
+        {
+            if (profileListsApp(profile, candidate)) return profile;
+        }
     }
     return {};
 }
 
 inline QString validateStickyAutoProfileTarget(const QString& currentTarget,
-                                               const QList<Profile>& profiles)
+                                               const QList<Profile>& profiles,
+                                               const QList<AppAlias>& aliases = {})
 {
     if (currentTarget.isEmpty()) return {};
-    return findAutoSwitchProfileForApp(currentTarget, profiles).id.isEmpty() ? QString{}
-                                                                             : currentTarget;
+    return findAutoSwitchProfileForApp(currentTarget, profiles, aliases).id.isEmpty()
+               ? QString{}
+               : currentTarget;
 }
 
 inline QString resolveStickyAutoProfileTarget(const QString& focusedBinary,
@@ -202,7 +211,7 @@ inline QString resolveStickyAutoProfileTarget(const QString& focusedBinary,
 
     for (const QString& candidate : tryApps)
     {
-        const Profile matchedProfile = findAutoSwitchProfileForApp(candidate, profiles);
+        const Profile matchedProfile = findAutoSwitchProfileForApp(candidate, profiles, aliases);
         if (matchedProfile.id.isEmpty()) continue;
         return preferredTarget;
     }
