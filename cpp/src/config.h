@@ -151,6 +151,27 @@ struct DuckingConfig
     HotkeyBinding hotkey; // unassigned by default
 };
 
+// ─── App identity layer (aliases + configurable filters) ─────────────────────
+// Aliases remap a detected PipeWire/Pulse name or binary to a UI display label
+// and optional control target. Hot path volume ops still use `target` (or the
+// original binary when target is empty).
+struct AppAlias
+{
+    QString match;   // detected name/binary to match (case-insensitive)
+    QString display; // UI label shown in tray / pickers
+    QString target;  // control target; empty keeps the original binary/node
+};
+
+// Additive overrides on top of built-in SYSTEM_BINARIES / SKIP_APP_NAMES.
+// Use extra_* to hide more apps; remove_* to re-show a built-in exclusion.
+struct AudioAppFiltersConfig
+{
+    QStringList extraSystemBinaries;
+    QStringList removeSystemBinaries;
+    QStringList extraSkipAppNames;
+    QStringList removeSkipAppNames;
+};
+
 struct SceneTarget
 {
     QString match;               // Audio app name or binary name
@@ -210,6 +231,7 @@ struct Profile
     QString id;               // stable slug, unique within profiles list
     QString name;             // user-facing label
     QStringList apps;         // audio app names (first = primary/default)
+    QString appRegex;         // optional case-insensitive regex for app matching
     HotkeyConfig hotkeys;     // evdev codes for volume up/down/mute
     QSet<Modifier> modifiers; // required held modifiers (empty = bare key)
     DuckingConfig ducking;    // manual per-profile audio ducking
@@ -271,6 +293,27 @@ inline bool operator!=(const DuckingConfig& a, const DuckingConfig& b)
     return !(a == b);
 }
 
+inline bool operator==(const AppAlias& a, const AppAlias& b)
+{
+    return a.match == b.match && a.display == b.display && a.target == b.target;
+}
+inline bool operator!=(const AppAlias& a, const AppAlias& b)
+{
+    return !(a == b);
+}
+
+inline bool operator==(const AudioAppFiltersConfig& a, const AudioAppFiltersConfig& b)
+{
+    return a.extraSystemBinaries == b.extraSystemBinaries &&
+           a.removeSystemBinaries == b.removeSystemBinaries &&
+           a.extraSkipAppNames == b.extraSkipAppNames &&
+           a.removeSkipAppNames == b.removeSkipAppNames;
+}
+inline bool operator!=(const AudioAppFiltersConfig& a, const AudioAppFiltersConfig& b)
+{
+    return !(a == b);
+}
+
 inline bool operator==(const SceneTarget& a, const SceneTarget& b)
 {
     return a.match == b.match && a.volume == b.volume && a.muted == b.muted && a.sink == b.sink;
@@ -291,9 +334,10 @@ inline bool operator!=(const AudioScene& a, const AudioScene& b)
 
 inline bool operator==(const Profile& a, const Profile& b)
 {
-    return a.id == b.id && a.name == b.name && a.apps == b.apps && a.hotkeys == b.hotkeys &&
-           a.modifiers == b.modifiers && a.ducking == b.ducking && a.autoSwitch == b.autoSwitch &&
-           a.volMin == b.volMin && a.volMax == b.volMax && a.sink == b.sink;
+    return a.id == b.id && a.name == b.name && a.apps == b.apps && a.appRegex == b.appRegex &&
+           a.hotkeys == b.hotkeys && a.modifiers == b.modifiers && a.ducking == b.ducking &&
+           a.autoSwitch == b.autoSwitch && a.volMin == b.volMin && a.volMax == b.volMax &&
+           a.sink == b.sink;
 }
 inline bool operator!=(const Profile& a, const Profile& b)
 {
@@ -381,9 +425,20 @@ class Config
     void setSettingsDialogSize(const QSize& size);
 
     // Find the first profile whose app field matches `appName` (case-insensitive
-    // contains match) and has autoSwitch == true. Returns default-constructed
-    // Profile when nothing matches.
+    // contains match, or optional app_regex) and has autoSwitch == true.
+    // Returns default-constructed Profile when nothing matches.
     Profile findProfileByApp(const QString& appName) const;
+
+    // App aliases — UI display / optional target overrides for detected apps.
+    QList<AppAlias> appAliases() const;
+    void setAppAliases(const QList<AppAlias>& aliases);
+
+    // Configurable audio-app filters (additive on top of built-in defaults).
+    AudioAppFiltersConfig audioAppFilters() const;
+    void setAudioAppFilters(const AudioAppFiltersConfig& filters);
+    // Resolved filter sets used by pwutils / VolumeController listing.
+    QSet<QString> effectiveSystemBinaries() const;
+    QSet<QString> effectiveSkipAppNames() const;
 
     // Modifier serialization helpers (kanoniczne nazwy: "ctrl", "shift")
     static QString modifierToString(Modifier m);

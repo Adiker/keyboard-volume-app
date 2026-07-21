@@ -1806,3 +1806,116 @@ TEST(ConfigScenes, EmptySinkStringIsDropped)
     ASSERT_EQ(scenes.size(), 1);
     EXPECT_TRUE(scenes[0].targets.isEmpty());
 }
+
+TEST(ConfigIdentity, AppRegexRoundTrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Profile p;
+    p.id = "comms";
+    p.name = "Comms";
+    p.apps = {QStringLiteral("discord")};
+    p.appRegex = QStringLiteral(".*(discord|teams|slack).*");
+
+    Config config(tmp.path());
+    config.setProfiles({p});
+
+    const auto profs = config.profiles();
+    ASSERT_EQ(profs.size(), 1);
+    EXPECT_EQ(profs[0].appRegex.toStdString(), ".*(discord|teams|slack).*");
+
+    Config reloaded(tmp.path());
+    ASSERT_EQ(reloaded.profiles().size(), 1);
+    EXPECT_EQ(reloaded.profiles()[0].appRegex.toStdString(), ".*(discord|teams|slack).*");
+}
+
+TEST(ConfigIdentity, AppAliasesRoundTrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AppAlias alias;
+    alias.match = QStringLiteral("chromium");
+    alias.display = QStringLiteral("YouTube Music");
+    alias.target = QStringLiteral("youtube-music");
+
+    Config config(tmp.path());
+    config.setAppAliases({alias});
+
+    const auto aliases = config.appAliases();
+    ASSERT_EQ(aliases.size(), 1);
+    EXPECT_EQ(aliases[0].match.toStdString(), "chromium");
+    EXPECT_EQ(aliases[0].display.toStdString(), "YouTube Music");
+    EXPECT_EQ(aliases[0].target.toStdString(), "youtube-music");
+
+    Config reloaded(tmp.path());
+    ASSERT_EQ(reloaded.appAliases().size(), 1);
+    EXPECT_EQ(reloaded.appAliases()[0].target.toStdString(), "youtube-music");
+}
+
+TEST(ConfigIdentity, AppAliasesRejectEmptyMatch)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AppAlias bad;
+    bad.match = QString{};
+    bad.display = QStringLiteral("Nope");
+
+    AppAlias displayOnly;
+    displayOnly.match = QStringLiteral("mpv");
+    displayOnly.display = QStringLiteral("Harmonoid");
+
+    Config config(tmp.path());
+    config.setAppAliases({bad, displayOnly});
+    ASSERT_EQ(config.appAliases().size(), 1);
+    EXPECT_EQ(config.appAliases()[0].display.toStdString(), "Harmonoid");
+}
+
+TEST(ConfigIdentity, AudioAppFiltersEffectiveSets)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    AudioAppFiltersConfig filters;
+    filters.extraSystemBinaries = {QStringLiteral("my-helper")};
+    filters.removeSystemBinaries = {QStringLiteral("python3")};
+    filters.extraSkipAppNames = {QStringLiteral("Noise")};
+    filters.removeSkipAppNames = {QStringLiteral("ringrtc")};
+
+    Config config(tmp.path());
+    config.setAudioAppFilters(filters);
+
+    const QSet<QString> system = config.effectiveSystemBinaries();
+    EXPECT_TRUE(system.contains(QStringLiteral("my-helper")));
+    EXPECT_TRUE(system.contains(QStringLiteral("pipewire")));
+    EXPECT_FALSE(system.contains(QStringLiteral("python3")));
+
+    const QSet<QString> skip = config.effectiveSkipAppNames();
+    EXPECT_TRUE(skip.contains(QStringLiteral("Noise")));
+    EXPECT_TRUE(skip.contains(QStringLiteral("WEBRTC VoiceEngine")));
+    EXPECT_FALSE(skip.contains(QStringLiteral("ringrtc")));
+
+    Config reloaded(tmp.path());
+    EXPECT_EQ(reloaded.audioAppFilters(), filters);
+}
+
+TEST(ConfigIdentity, FindProfileByAppUsesRegex)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    Profile p;
+    p.id = "comms";
+    p.name = "Comms";
+    p.appRegex = QStringLiteral(".*(discord|teams).*");
+    p.autoSwitch = true;
+
+    Config config(tmp.path());
+    config.setProfiles({p});
+
+    EXPECT_EQ(config.findProfileByApp(QStringLiteral("Discord")).id.toStdString(), "comms");
+    EXPECT_EQ(config.findProfileByApp(QStringLiteral("teams-for-linux")).id.toStdString(), "comms");
+    EXPECT_TRUE(config.findProfileByApp(QStringLiteral("spotify")).id.isEmpty());
+}

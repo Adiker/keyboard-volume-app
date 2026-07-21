@@ -1,5 +1,6 @@
 #include "config.h"
 
+#include "appaudiofilters.h"
 #include "appmatcher.h"
 
 #include <QDir>
@@ -201,6 +202,7 @@ QJsonObject Config::defaultJson()
         {QStringLiteral("name"), QStringLiteral("Default")},
         {QStringLiteral("app"), QJsonValue::Null},
         {QStringLiteral("apps"), QJsonArray{}},
+        {QStringLiteral("app_regex"), QString{}},
         {QStringLiteral("modifiers"), QJsonArray{}},
         {QStringLiteral("hotkeys"),
          QJsonObject{
@@ -279,6 +281,14 @@ QJsonObject Config::defaultJson()
          }},
         {QStringLiteral("profiles"), QJsonArray{defaultProfile}},
         {QStringLiteral("scenes"), QJsonArray{}},
+        {QStringLiteral("app_aliases"), QJsonArray{}},
+        {QStringLiteral("audio_app_filters"),
+         QJsonObject{
+             {QStringLiteral("extra_system_binaries"), QJsonArray{}},
+             {QStringLiteral("remove_system_binaries"), QJsonArray{}},
+             {QStringLiteral("extra_skip_app_names"), QJsonArray{}},
+             {QStringLiteral("remove_skip_app_names"), QJsonArray{}},
+         }},
         {QStringLiteral("auto_profile_switch"), false},
         {QStringLiteral("ui"),
          QJsonObject{
@@ -343,6 +353,7 @@ QJsonObject Config::profileToJson(const Profile& p)
         {QStringLiteral("apps"), QJsonArray::fromStringList(p.apps)},
         {QStringLiteral("app"),
          p.primaryApp().isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(p.primaryApp())},
+        {QStringLiteral("app_regex"), p.appRegex},
         {QStringLiteral("modifiers"), mods},
         {QStringLiteral("hotkeys"),
          QJsonObject{
@@ -379,6 +390,7 @@ Profile Config::profileFromJson(const QJsonObject& o)
         QJsonValue av = o[QStringLiteral("app")];
         if (av.isString() && !av.toString().isEmpty()) p.apps.append(av.toString());
     }
+    p.appRegex = o[QStringLiteral("app_regex")].toString().trimmed();
 
     QJsonObject hk = o[QStringLiteral("hotkeys")].toObject();
     p.hotkeys.volumeUp = bindingFromJson(hk[QStringLiteral("volume_up")], 115);
@@ -1101,6 +1113,7 @@ void Config::setProfiles(const QList<Profile>& profiles)
         for (const QString& app : std::as_const(p.apps))
             if (!app.isEmpty()) apps.append(app);
         p.apps = apps;
+        p.appRegex = p.appRegex.trimmed();
         QString base = p.id;
         int suffix = 2;
         while (seen.contains(p.id)) p.id = base + QStringLiteral("-") + QString::number(suffix++);
@@ -1243,4 +1256,148 @@ void Config::setSettingsDialogSize(const QSize& size)
 Profile Config::findProfileByApp(const QString& appName) const
 {
     return ::findAutoSwitchProfileForApp(appName, profiles());
+}
+
+namespace
+{
+
+QStringList stringListFromJsonArray(const QJsonArray& arr)
+{
+    QStringList out;
+    out.reserve(arr.size());
+    for (const QJsonValue& v : arr)
+    {
+        if (!v.isString()) continue;
+        const QString s = v.toString().trimmed();
+        if (!s.isEmpty()) out.append(s);
+    }
+    return out;
+}
+
+QJsonArray stringListToJsonArray(const QStringList& list)
+{
+    QJsonArray arr;
+    for (const QString& s : list)
+    {
+        const QString trimmed = s.trimmed();
+        if (!trimmed.isEmpty()) arr.append(trimmed);
+    }
+    return arr;
+}
+
+AppAlias aliasFromJson(const QJsonObject& o)
+{
+    AppAlias alias;
+    alias.match = o[QStringLiteral("match")].toString().trimmed();
+    alias.display = o[QStringLiteral("display")].toString().trimmed();
+    alias.target = o[QStringLiteral("target")].toString().trimmed();
+    return alias;
+}
+
+QJsonObject aliasToJson(const AppAlias& alias)
+{
+    return QJsonObject{
+        {QStringLiteral("match"), alias.match},
+        {QStringLiteral("display"), alias.display},
+        {QStringLiteral("target"), alias.target},
+    };
+}
+
+AudioAppFiltersConfig filtersFromJson(const QJsonObject& o)
+{
+    AudioAppFiltersConfig filters;
+    filters.extraSystemBinaries =
+        stringListFromJsonArray(o[QStringLiteral("extra_system_binaries")].toArray());
+    filters.removeSystemBinaries =
+        stringListFromJsonArray(o[QStringLiteral("remove_system_binaries")].toArray());
+    filters.extraSkipAppNames =
+        stringListFromJsonArray(o[QStringLiteral("extra_skip_app_names")].toArray());
+    filters.removeSkipAppNames =
+        stringListFromJsonArray(o[QStringLiteral("remove_skip_app_names")].toArray());
+    return filters;
+}
+
+QJsonObject filtersToJson(const AudioAppFiltersConfig& filters)
+{
+    return QJsonObject{
+        {QStringLiteral("extra_system_binaries"),
+         stringListToJsonArray(filters.extraSystemBinaries)},
+        {QStringLiteral("remove_system_binaries"),
+         stringListToJsonArray(filters.removeSystemBinaries)},
+        {QStringLiteral("extra_skip_app_names"), stringListToJsonArray(filters.extraSkipAppNames)},
+        {QStringLiteral("remove_skip_app_names"),
+         stringListToJsonArray(filters.removeSkipAppNames)},
+    };
+}
+
+QSet<QString> applyFilterOverrides(const QSet<QString>& base, const QStringList& extra,
+                                   const QStringList& remove)
+{
+    QSet<QString> result = base;
+    for (const QString& s : extra) result.insert(s);
+    for (const QString& s : remove) result.remove(s);
+    return result;
+}
+
+} // namespace
+
+QList<AppAlias> Config::appAliases() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    QList<AppAlias> out;
+    for (const QJsonValue& v : m_data[QStringLiteral("app_aliases")].toArray())
+    {
+        if (!v.isObject()) continue;
+        AppAlias alias = aliasFromJson(v.toObject());
+        if (alias.match.isEmpty()) continue;
+        if (alias.display.isEmpty() && alias.target.isEmpty()) continue;
+        out.append(std::move(alias));
+    }
+    return out;
+}
+
+void Config::setAppAliases(const QList<AppAlias>& aliases)
+{
+    QJsonArray arr;
+    for (const AppAlias& alias : aliases)
+    {
+        AppAlias cleaned = alias;
+        cleaned.match = cleaned.match.trimmed();
+        cleaned.display = cleaned.display.trimmed();
+        cleaned.target = cleaned.target.trimmed();
+        if (cleaned.match.isEmpty()) continue;
+        if (cleaned.display.isEmpty() && cleaned.target.isEmpty()) continue;
+        arr.append(aliasToJson(cleaned));
+    }
+
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_data[QStringLiteral("app_aliases")] = arr;
+    saveUnlocked();
+}
+
+AudioAppFiltersConfig Config::audioAppFilters() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return filtersFromJson(m_data[QStringLiteral("audio_app_filters")].toObject());
+}
+
+void Config::setAudioAppFilters(const AudioAppFiltersConfig& filters)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_data[QStringLiteral("audio_app_filters")] = filtersToJson(filters);
+    saveUnlocked();
+}
+
+QSet<QString> Config::effectiveSystemBinaries() const
+{
+    const AudioAppFiltersConfig filters = audioAppFilters();
+    return applyFilterOverrides(SYSTEM_BINARIES, filters.extraSystemBinaries,
+                                filters.removeSystemBinaries);
+}
+
+QSet<QString> Config::effectiveSkipAppNames() const
+{
+    const AudioAppFiltersConfig filters = audioAppFilters();
+    return applyFilterOverrides(SKIP_APP_NAMES, filters.extraSkipAppNames,
+                                filters.removeSkipAppNames);
 }

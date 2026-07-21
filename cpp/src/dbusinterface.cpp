@@ -290,6 +290,8 @@ QVariantList DbusInterface::buildProfilesProp() const
         m[QStringLiteral("name")] = p.name;
         // TODO: expose full "apps" list; kept as legacy scalar for backward compat
         m[QStringLiteral("app")] = p.primaryApp();
+        m[QStringLiteral("apps")] = p.apps;
+        m[QStringLiteral("app_regex")] = p.appRegex;
         m[QStringLiteral("modifiers")] = mods;
         m[QStringLiteral("hotkeys")] = hk;
         m[QStringLiteral("ducking")] = ducking;

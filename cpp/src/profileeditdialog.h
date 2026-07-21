@@ -33,6 +33,7 @@ class ProfileEditDialog : public QDialog
 
     QLineEdit* m_name = nullptr;
     QListWidget* m_appsListWidget = nullptr;
+    QLineEdit* m_appRegex = nullptr;
     QComboBox* m_sink = nullptr;
     QCheckBox* m_modCtrl = nullptr;
     QCheckBox* m_modShift = nullptr;

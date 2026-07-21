@@ -116,6 +116,29 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("settings.profiles.vol_limits"), QStringLiteral("Volume limits:")},
              {QStringLiteral("settings.profiles.vol_min_label"), QStringLiteral("Min:")},
              {QStringLiteral("settings.profiles.vol_max_label"), QStringLiteral("Max:")},
+             {QStringLiteral("settings.profiles.app_regex_label"), QStringLiteral("App regex:")},
+             {QStringLiteral("settings.profiles.app_regex_placeholder"),
+              QStringLiteral(".*(discord|teams|slack).*")},
+             {QStringLiteral("settings.profiles.app_regex_tip"),
+              QStringLiteral(
+                  "Optional case-insensitive regex matched against audio app names/binaries "
+                  "for Follow Focus and profile matching. Leave empty to use the apps list only.")},
+             // app aliases
+             {QStringLiteral("settings.aliases.section"), QStringLiteral("App aliases")},
+             {QStringLiteral("settings.aliases.add"), QStringLiteral("Add")},
+             {QStringLiteral("settings.aliases.edit"), QStringLiteral("Edit")},
+             {QStringLiteral("settings.aliases.remove"), QStringLiteral("Remove")},
+             {QStringLiteral("settings.aliases.col_match"), QStringLiteral("Match")},
+             {QStringLiteral("settings.aliases.col_display"), QStringLiteral("Display")},
+             {QStringLiteral("settings.aliases.col_target"), QStringLiteral("Target")},
+             {QStringLiteral("settings.aliases.edit_title"), QStringLiteral("Edit alias")},
+             {QStringLiteral("settings.aliases.match_label"), QStringLiteral("Match:")},
+             {QStringLiteral("settings.aliases.display_label"), QStringLiteral("Display name:")},
+             {QStringLiteral("settings.aliases.target_label"), QStringLiteral("Control target:")},
+             {QStringLiteral("settings.aliases.match_tip"),
+              QStringLiteral("Detected application.name or binary to remap (case-insensitive).")},
+             {QStringLiteral("settings.aliases.target_tip"),
+              QStringLiteral("Optional volume-control target. Empty keeps the original binary.")},
              // scenes
              {QStringLiteral("settings.scenes.section"), QStringLiteral("Scenes")},
              {QStringLiteral("settings.scenes.add"), QStringLiteral("Add")},
@@ -387,6 +410,36 @@ static const QMap<QString, QMap<QString, QString>>& strings()
               QStringLiteral("Limity g\u0142o\u015bno\u015bci:")},
              {QStringLiteral("settings.profiles.vol_min_label"), QStringLiteral("Min:")},
              {QStringLiteral("settings.profiles.vol_max_label"), QStringLiteral("Maks:")},
+             {QStringLiteral("settings.profiles.app_regex_label"),
+              QStringLiteral("Regex aplikacji:")},
+             {QStringLiteral("settings.profiles.app_regex_placeholder"),
+              QStringLiteral(".*(discord|teams|slack).*")},
+             {QStringLiteral("settings.profiles.app_regex_tip"),
+              QStringLiteral(
+                  "Opcjonalne wyra\u017cenie regularne (bez rozr\u00f3\u017cniania wielko\u015bci "
+                  "liter) dopasowywane do nazw/binarek audio dla Follow Focus i profili. "
+                  "Puste = tylko lista aplikacji.")},
+             // app aliases
+             {QStringLiteral("settings.aliases.section"), QStringLiteral("Aliasy aplikacji")},
+             {QStringLiteral("settings.aliases.add"), QStringLiteral("Dodaj")},
+             {QStringLiteral("settings.aliases.edit"), QStringLiteral("Edytuj")},
+             {QStringLiteral("settings.aliases.remove"), QStringLiteral("Usu\u0144")},
+             {QStringLiteral("settings.aliases.col_match"), QStringLiteral("Dopasowanie")},
+             {QStringLiteral("settings.aliases.col_display"), QStringLiteral("Wy\u015bwietlana")},
+             {QStringLiteral("settings.aliases.col_target"), QStringLiteral("Cel")},
+             {QStringLiteral("settings.aliases.edit_title"), QStringLiteral("Edytuj alias")},
+             {QStringLiteral("settings.aliases.match_label"), QStringLiteral("Dopasowanie:")},
+             {QStringLiteral("settings.aliases.display_label"),
+              QStringLiteral("Nazwa wy\u015bwietlana:")},
+             {QStringLiteral("settings.aliases.target_label"), QStringLiteral("Cel sterowania:")},
+             {QStringLiteral("settings.aliases.match_tip"),
+              QStringLiteral(
+                  "Wykryte application.name lub binary do zmapowania (bez rozr\u00f3\u017cniania "
+                  "wielko\u015bci liter).")},
+             {QStringLiteral("settings.aliases.target_tip"),
+              QStringLiteral(
+                  "Opcjonalny cel sterowania g\u0142o\u015bno\u015bci\u0105. Puste = zachowaj "
+                  "oryginaln\u0105 binark\u0119.")},
              // scenes
              {QStringLiteral("settings.scenes.section"), QStringLiteral("Sceny")},
              {QStringLiteral("settings.scenes.add"), QStringLiteral("Dodaj")},

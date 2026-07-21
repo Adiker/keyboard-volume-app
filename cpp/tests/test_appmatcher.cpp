@@ -2,6 +2,7 @@
 
 #include "appmatcher.h"
 #include "audioapp.h"
+#include "pwutils.h"
 
 namespace
 {
@@ -212,4 +213,72 @@ TEST(AppMatcher, StickyAutoProfileValidationClearsRemovedOrDisabledTarget)
     EXPECT_EQ(validateStickyAutoProfileTarget(QStringLiteral("spotify"), disabledProfiles),
               QString());
     EXPECT_EQ(validateStickyAutoProfileTarget(QStringLiteral("spotify"), {}), QString());
+}
+
+TEST(AppMatcher, ProfileRegexMatchesApp)
+{
+    Profile profile;
+    profile.id = QStringLiteral("comms");
+    profile.appRegex = QStringLiteral(".*(discord|slack|zoom).*");
+    profile.autoSwitch = true;
+
+    EXPECT_TRUE(profileListsApp(profile, QStringLiteral("Discord")));
+    EXPECT_TRUE(profileListsApp(profile, QStringLiteral("slack")));
+    EXPECT_TRUE(appRegexMatches(QStringLiteral("zoom"), profile.appRegex));
+    EXPECT_FALSE(profileListsApp(profile, QStringLiteral("spotify")));
+}
+
+TEST(AppMatcher, ProfileRegexInvalidDoesNotMatch)
+{
+    Profile profile;
+    profile.id = QStringLiteral("bad");
+    profile.appRegex = QStringLiteral("*(unclosed");
+    profile.autoSwitch = true;
+
+    EXPECT_FALSE(profileListsApp(profile, QStringLiteral("discord")));
+}
+
+TEST(AppMatcher, FindAutoSwitchProfilePrefersAppsThenRegex)
+{
+    const QList<Profile> profiles{
+        makeProfile(QStringLiteral("music"), {QStringLiteral("spotify")}),
+        []
+        {
+            Profile p = makeProfile(QStringLiteral("comms"), {});
+            p.appRegex = QStringLiteral(".*discord.*");
+            return p;
+        }(),
+    };
+
+    EXPECT_EQ(findAutoSwitchProfileForApp(QStringLiteral("spotify"), profiles).id.toStdString(),
+              "music");
+    EXPECT_EQ(findAutoSwitchProfileForApp(QStringLiteral("Discord"), profiles).id.toStdString(),
+              "comms");
+}
+
+TEST(AppMatcher, ApplyAppAliasRemapsDisplayAndTarget)
+{
+    PipeWireClient client{QStringLiteral("Chromium"), QStringLiteral("chromium"),
+                          QStringLiteral("42")};
+    AppAlias alias;
+    alias.match = QStringLiteral("chromium");
+    alias.display = QStringLiteral("YouTube Music");
+    alias.target = QStringLiteral("youtube-music");
+
+    const auto remapped = applyAppAlias(client, {alias});
+    EXPECT_EQ(remapped.name.toStdString(), "YouTube Music");
+    EXPECT_EQ(remapped.binary.toStdString(), "youtube-music");
+    EXPECT_EQ(remapped.id.toStdString(), "42");
+}
+
+TEST(AppMatcher, ApplyAppAliasDisplayOnlyKeepsTarget)
+{
+    PipeWireClient client{QStringLiteral("mpv"), QStringLiteral("mpv"), QString{}};
+    AppAlias alias;
+    alias.match = QStringLiteral("mpv");
+    alias.display = QStringLiteral("Harmonoid");
+
+    const auto remapped = applyAppAlias(client, {alias});
+    EXPECT_EQ(remapped.name.toStdString(), "Harmonoid");
+    EXPECT_EQ(remapped.binary.toStdString(), "mpv");
 }

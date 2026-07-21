@@ -118,6 +118,12 @@ ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
     appsWidget->setLayout(appsLayout);
     form->addRow(::tr(QStringLiteral("app_selector.subtitle")), appsWidget);
 
+    // Optional regex for matching groups of apps (Wine/Electron/comms).
+    m_appRegex = new QLineEdit(initial.appRegex, this);
+    m_appRegex->setPlaceholderText(::tr(QStringLiteral("settings.profiles.app_regex_placeholder")));
+    m_appRegex->setToolTip(::tr(QStringLiteral("settings.profiles.app_regex_tip")));
+    form->addRow(::tr(QStringLiteral("settings.profiles.app_regex_label")), m_appRegex);
+
     // Output sink (PA device). First entry maps to empty string ("leave routing
     // unchanged"). If the stored sink name is not in the current enumeration —
     // e.g. the USB headset is unplugged — we still preserve the value so the
@@ -254,6 +260,7 @@ Profile ProfileEditDialog::result() const
     {
         p.apps.append(m_appsListWidget->item(i)->text());
     }
+    p.appRegex = m_appRegex ? m_appRegex->text().trimmed() : QString{};
 
     p.hotkeys.volumeUp = m_hkUp->binding();
     p.hotkeys.volumeDown = m_hkDown->binding();

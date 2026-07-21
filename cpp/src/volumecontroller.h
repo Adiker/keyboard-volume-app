@@ -27,6 +27,10 @@ class VolumeController : public QObject
     explicit VolumeController(QObject* parent = nullptr);
     ~VolumeController() override;
 
+    // Provide Config for app aliases / configurable audio-app filters.
+    // Call once after construction (and again is fine if Config is replaced).
+    void setConfig(Config* config);
+
     // Returns the cached app list immediately and posts an async refresh.
     // Connect to appsReady() to know when fresh data has arrived.
     QList<AudioApp> listApps(bool forceRefresh = false);

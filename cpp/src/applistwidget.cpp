@@ -1,4 +1,5 @@
 #include "applistwidget.h"
+#include "appmatcher.h"
 #include "config.h"
 #include "i18n.h"
 #include "pwutils.h"
@@ -43,7 +44,12 @@ void AppListWidget::populate(Config* config)
     emptyItem->setData(Qt::UserRole, QString{});
     m_list->addItem(emptyItem);
 
-    const auto clients = ::listPipeWireClients();
+    const QSet<QString> systemBinaries =
+        m_config ? m_config->effectiveSystemBinaries() : SYSTEM_BINARIES;
+    const QSet<QString> skipAppNames =
+        m_config ? m_config->effectiveSkipAppNames() : SKIP_APP_NAMES;
+    auto clients = ::listPipeWireClients(systemBinaries, skipAppNames);
+    if (m_config) clients = applyAppAliases(clients, m_config->appAliases());
     if (clients.isEmpty())
     {
         auto* noAppsItem = new QListWidgetItem(::tr(QStringLiteral("app_selector.no_apps")));

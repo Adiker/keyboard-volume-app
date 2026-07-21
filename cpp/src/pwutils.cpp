@@ -1,4 +1,5 @@
 #include "pwutils.h"
+#include "appaudiofilters.h"
 
 #include <QMap>
 #include <QDebug>
@@ -13,34 +14,6 @@
 #include <spa/param/props.h>
 #include <spa/pod/builder.h>
 #include <spa/pod/parser.h>
-
-// ─── Filter constants ─────────────────────────────────────────────────────────
-const QSet<QString> SYSTEM_BINARIES{
-    QStringLiteral("wireplumber"),
-    QStringLiteral("pipewire"),
-    QStringLiteral("kwin_wayland"),
-    QStringLiteral("plasmashell"),
-    QStringLiteral("kded5"),
-    QStringLiteral("kded6"),
-    QStringLiteral("xdg-desktop-portal"),
-    QStringLiteral("xdg-desktop-portal-kde"),
-    QStringLiteral("polkit-kde-authentication-agent-1"),
-    QStringLiteral("pactl"),
-    QStringLiteral("pw-cli"),
-    QStringLiteral("pw-dump"),
-    QStringLiteral("keyboard-volume-app"),
-    QStringLiteral("python3"),
-    QStringLiteral("python3.14"),
-    QStringLiteral("python"),
-    QStringLiteral("QtWebEngineProcess"),
-    QString{},
-};
-
-const QSet<QString> SKIP_APP_NAMES{
-    QStringLiteral("ringrtc"),
-    QStringLiteral("WEBRTC VoiceEngine"),
-    QStringLiteral("Chromium input"),
-};
 
 namespace
 {
@@ -476,7 +449,9 @@ bool setNodeProp(uint32_t nodeId, std::optional<double> volume, std::optional<bo
 } // namespace
 
 // ─── Pure client filtering ────────────────────────────────────────────────────
-QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps>& globals)
+QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps>& globals,
+                                                 const QSet<QString>& systemBinaries,
+                                                 const QSet<QString>& skipAppNames)
 {
     QMap<QString, PipeWireClient> seen;
     QSet<QString> clientNames;
@@ -488,11 +463,11 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
         if (!global.type.contains(QStringLiteral("Client"))) continue;
 
         QString binary = global.binary;
-        if (binary.isEmpty() || SYSTEM_BINARIES.contains(binary)) continue;
+        if (binary.isEmpty() || systemBinaries.contains(binary)) continue;
 
         QString name = global.name;
         if (name.isEmpty()) name = binary;
-        if (SKIP_APP_NAMES.contains(name) || name.toLower().contains(QStringLiteral("input")))
+        if (skipAppNames.contains(name) || name.toLower().contains(QStringLiteral("input")))
             name = binary;
         if (name.trimmed().isEmpty()) continue;
 
@@ -511,7 +486,7 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
         if (!isStreamNode) continue;
 
         const QString ownerBinary = global.binary;
-        if (ownerBinary.isEmpty() || SYSTEM_BINARIES.contains(ownerBinary)) continue;
+        if (ownerBinary.isEmpty() || systemBinaries.contains(ownerBinary)) continue;
 
         QString target = global.nodeName;
         if (target.isEmpty()) target = global.name;
@@ -519,7 +494,7 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
         if (target.compare(global.name, Qt::CaseInsensitive) == 0 &&
             isGenericAppName(global.name) && !ownerBinary.isEmpty())
             target = ownerBinary;
-        if (SKIP_APP_NAMES.contains(target) || target.toLower().contains(QStringLiteral("input")))
+        if (skipAppNames.contains(target) || target.toLower().contains(QStringLiteral("input")))
             target = ownerBinary;
         if (target.trimmed().isEmpty()) continue;
 
@@ -534,7 +509,7 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
 
         QString displayName = global.name;
         if (displayName.isEmpty()) displayName = target;
-        if (SKIP_APP_NAMES.contains(displayName) ||
+        if (skipAppNames.contains(displayName) ||
             displayName.toLower().contains(QStringLiteral("input")))
             displayName = target;
         if (displayName.trimmed().isEmpty()) continue;
@@ -549,7 +524,8 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
 }
 
 // ─── libpipewire public helpers ───────────────────────────────────────────────
-QList<PipeWireClient> listPipeWireClients()
+QList<PipeWireClient> listPipeWireClients(const QSet<QString>& systemBinaries,
+                                          const QSet<QString>& skipAppNames)
 {
     PipeWireSession session;
     if (!session.connect()) return {};
@@ -569,7 +545,7 @@ QList<PipeWireClient> listPipeWireClients()
             global.mediaName,
         });
     }
-    return clientsFromPipeWireGlobals(globals);
+    return clientsFromPipeWireGlobals(globals, systemBinaries, skipAppNames);
 }
 
 std::optional<PipeWireNode> findPipeWireNodeForApp(const QString& appName)

@@ -418,6 +418,7 @@ void SettingsDialog::buildUi()
 
     OsdConfig osd = m_config->osd();
     m_profiles = m_config->profiles();
+    m_aliases = m_config->appAliases();
     m_scenes = m_config->scenes();
 
     // Language
@@ -790,6 +791,51 @@ void SettingsDialog::buildUi()
 
     refreshProfilesTable();
 
+    // ── App aliases section ──────────────────────────────────────────────
+    QLabel* aliasesHeader = new QLabel(::tr(QStringLiteral("settings.aliases.section")), this);
+    aliasesHeader->setStyleSheet(QStringLiteral("font-weight: bold; margin-top: 8px;"));
+    layout->addWidget(aliasesHeader);
+
+    m_aliasesTable = new QTableWidget(this);
+    m_aliasesTable->setColumnCount(3);
+    m_aliasesTable->setHorizontalHeaderLabels(QStringList{
+        ::tr(QStringLiteral("settings.aliases.col_match")),
+        ::tr(QStringLiteral("settings.aliases.col_display")),
+        ::tr(QStringLiteral("settings.aliases.col_target")),
+    });
+    m_aliasesTable->verticalHeader()->setVisible(false);
+    m_aliasesTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_aliasesTable->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_aliasesTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_aliasesTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_aliasesTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    m_aliasesTable->setMinimumHeight(80);
+    layout->addWidget(m_aliasesTable);
+
+    auto* aliasBtns = new QHBoxLayout;
+    m_btnAliasAdd = new QPushButton(::tr(QStringLiteral("settings.aliases.add")), this);
+    m_btnAliasEdit = new QPushButton(::tr(QStringLiteral("settings.aliases.edit")), this);
+    m_btnAliasRemove = new QPushButton(::tr(QStringLiteral("settings.aliases.remove")), this);
+    aliasBtns->addWidget(m_btnAliasAdd);
+    aliasBtns->addWidget(m_btnAliasEdit);
+    aliasBtns->addWidget(m_btnAliasRemove);
+    aliasBtns->addStretch();
+    layout->addLayout(aliasBtns);
+
+    connect(m_btnAliasAdd, &QPushButton::clicked, this, &SettingsDialog::onAddAlias);
+    connect(m_btnAliasEdit, &QPushButton::clicked, this, &SettingsDialog::onEditAlias);
+    connect(m_btnAliasRemove, &QPushButton::clicked, this, &SettingsDialog::onRemoveAlias);
+    connect(m_aliasesTable, &QTableWidget::doubleClicked, this,
+            [this](const QModelIndex&) { onEditAlias(); });
+    connect(m_aliasesTable->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+            [this](const QItemSelection&, const QItemSelection&)
+            {
+                const bool hasSel = selectedAliasRow() >= 0;
+                m_btnAliasEdit->setEnabled(hasSel);
+                m_btnAliasRemove->setEnabled(hasSel);
+            });
+    refreshAliasesTable();
+
     // ── Scenes section ───────────────────────────────────────────────────
     QLabel* scenesHeader = new QLabel(::tr(QStringLiteral("settings.scenes.section")), this);
     scenesHeader->setStyleSheet(QStringLiteral("font-weight: bold; margin-top: 8px;"));
@@ -1076,26 +1122,16 @@ void SettingsDialog::saveAndAccept()
     if (m_volumeCtrl) previousProfiles = m_config->profiles();
 
     if (!m_profiles.isEmpty()) m_config->setProfiles(m_profiles);
+    m_config->setAppAliases(m_aliases);
 
     if (m_volumeCtrl && !previousProfiles.isEmpty())
     {
-        const auto profileListsApp = [](const QStringList& apps, const QString& app)
-        {
-            if (app.isEmpty()) return false;
-            const QString lower = app.toLower();
-            for (const QString& candidate : apps)
-            {
-                if (appIdMatches(candidate, lower)) return true;
-            }
-            return false;
-        };
-
         const auto appStillRouted = [&](const QString& app)
         {
             for (const Profile& p : m_profiles)
             {
                 if (p.sink.isEmpty()) continue;
-                if (profileListsApp(p.apps, app)) return true;
+                if (profileListsApp(p, app)) return true;
             }
             return false;
         };
@@ -1125,7 +1161,7 @@ void SettingsDialog::saveAndAccept()
             {
                 for (const QString& app : old.apps)
                 {
-                    if (!app.isEmpty() && !profileListsApp(neu.apps, app)) toClear.append(app);
+                    if (!app.isEmpty() && !profileListsApp(neu, app)) toClear.append(app);
                 }
             }
 
@@ -1193,7 +1229,13 @@ void SettingsDialog::refreshProfilesTable()
             m_profilesTable->setItem(row, col, item);
         };
         setCell(0, nameDisplay);
-        setCell(1, p.apps.join(", "));
+        QString appsDisplay = p.apps.join(", ");
+        if (!p.appRegex.isEmpty())
+        {
+            if (!appsDisplay.isEmpty()) appsDisplay += QStringLiteral(" · ");
+            appsDisplay += QStringLiteral("/") + p.appRegex + QStringLiteral("/");
+        }
+        setCell(1, appsDisplay);
         setCell(2, modsDisplay);
         setCell(3, HotkeyCapture::keyDisplayName(p.hotkeys.volumeUp));
         setCell(4, HotkeyCapture::keyDisplayName(p.hotkeys.volumeDown));
@@ -1310,6 +1352,98 @@ void SettingsDialog::onSetDefaultProfile()
     m_profiles.move(row, 0);
     refreshProfilesTable();
     m_profilesTable->selectRow(0);
+}
+
+// ─── App aliases section ──────────────────────────────────────────────────────
+int SettingsDialog::selectedAliasRow() const
+{
+    if (!m_aliasesTable) return -1;
+    auto sel = m_aliasesTable->selectionModel()->selectedRows();
+    return sel.isEmpty() ? -1 : sel.first().row();
+}
+
+void SettingsDialog::refreshAliasesTable()
+{
+    if (!m_aliasesTable) return;
+    m_aliasesTable->setRowCount(static_cast<int>(m_aliases.size()));
+    for (int row = 0; row < m_aliases.size(); ++row)
+    {
+        const AppAlias& a = m_aliases[row];
+        auto setCell = [&](int col, const QString& text)
+        {
+            auto* item = new QTableWidgetItem(text);
+            item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+            m_aliasesTable->setItem(row, col, item);
+        };
+        setCell(0, a.match);
+        setCell(1, a.display);
+        setCell(2, a.target);
+    }
+    const bool hasSel = selectedAliasRow() >= 0;
+    if (m_btnAliasEdit) m_btnAliasEdit->setEnabled(hasSel);
+    if (m_btnAliasRemove) m_btnAliasRemove->setEnabled(hasSel);
+}
+
+bool SettingsDialog::editAliasDialog(AppAlias& alias)
+{
+    QDialog dlg(this);
+    dlg.setWindowTitle(::tr(QStringLiteral("settings.aliases.edit_title")));
+    dlg.setMinimumWidth(360);
+    auto* form = new QFormLayout;
+    auto* matchEdit = new QLineEdit(alias.match, &dlg);
+    matchEdit->setToolTip(::tr(QStringLiteral("settings.aliases.match_tip")));
+    auto* displayEdit = new QLineEdit(alias.display, &dlg);
+    auto* targetEdit = new QLineEdit(alias.target, &dlg);
+    targetEdit->setToolTip(::tr(QStringLiteral("settings.aliases.target_tip")));
+    form->addRow(::tr(QStringLiteral("settings.aliases.match_label")), matchEdit);
+    form->addRow(::tr(QStringLiteral("settings.aliases.display_label")), displayEdit);
+    form->addRow(::tr(QStringLiteral("settings.aliases.target_label")), targetEdit);
+
+    auto* lay = new QVBoxLayout(&dlg);
+    lay->addLayout(form);
+    auto* btns = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    lay->addWidget(btns);
+    connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    if (dlg.exec() != QDialog::Accepted) return false;
+
+    alias.match = matchEdit->text().trimmed();
+    alias.display = displayEdit->text().trimmed();
+    alias.target = targetEdit->text().trimmed();
+    if (alias.match.isEmpty()) return false;
+    if (alias.display.isEmpty() && alias.target.isEmpty()) return false;
+    return true;
+}
+
+void SettingsDialog::onAddAlias()
+{
+    AppAlias alias;
+    if (!editAliasDialog(alias)) return;
+    m_aliases.append(alias);
+    refreshAliasesTable();
+    m_aliasesTable->selectRow(static_cast<int>(m_aliases.size()) - 1);
+}
+
+void SettingsDialog::onEditAlias()
+{
+    const int row = selectedAliasRow();
+    if (row < 0 || row >= m_aliases.size()) return;
+    AppAlias alias = m_aliases[row];
+    if (!editAliasDialog(alias)) return;
+    m_aliases[row] = alias;
+    refreshAliasesTable();
+    m_aliasesTable->selectRow(row);
+}
+
+void SettingsDialog::onRemoveAlias()
+{
+    const int row = selectedAliasRow();
+    if (row < 0 || row >= m_aliases.size()) return;
+    m_aliases.removeAt(row);
+    refreshAliasesTable();
+    if (!m_aliases.isEmpty())
+        m_aliasesTable->selectRow(qMin(row, static_cast<int>(m_aliases.size()) - 1));
 }
 
 // ─── Scenes section ─────────────────────────────────────────────────────────

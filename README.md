@@ -32,7 +32,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; can optionally expand with MPRIS playback progress, track label and elapsed/total time; drag any visible OSD edge or corner to resize it persistently; optional reposition controls (on-OSD arrow buttons, interior mouse drag, configurable keyboard shortcuts while visible); click or drag the progress bar to seek when the player allows it; live streams show `LIVE`; auto-hides after a configurable timeout
 - **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
 - **Idle app detection** — lists non-system PipeWire audio clients, including apps that are connected but not currently playing
-- **Friendly audio app names** — normalizes PipeWire/PulseAudio streams where the visible app and controllable stream differ, so wrappers such as Harmonoid can appear as the real app while still controlling the underlying stream
+- **Friendly audio app names** — normalizes PipeWire/PulseAudio streams where the visible app and controllable stream differ, so wrappers such as Harmonoid can appear as the real app while still controlling the underlying stream; configurable **app aliases**, profile **app_regex**, and **audio_app_filters** refine identity further
 - **Audio backend recovery** — reconnects to PulseAudio/pipewire-pulse after daemon restarts while keeping the configured selected app
 - **Mute toggle** — press the mute key to toggle mute on the selected app only; OSD shows current level with a 🔇 indicator
 - **Persistent config** — all settings saved atomically to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
@@ -195,7 +195,8 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
    - Volume step per keypress (%)
    - OSD colors (background, text, progress bar)
    - **Playback progress** — enable the MPRIS progress row, allow/disable interactive seeking, choose poll interval, choose app/track/both label mode, edit the comma-separated tracked-player priority list, choose whether media hotkeys show no OSD / only the pressed action / the full volume OSD, and optionally expose a fake MPRIS v2 endpoint for desktop widgets (disabled by default)
-   - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app(s), optional **output sink** (PulseAudio device name; empty = system default), and optional Focus audio ducking hotkey; right-click any hotkey field to **Unassign** it; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls); hotkeys are shown as `"Volume Up (115)"` — human-readable name first, evdev code in parentheses
+   - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app(s), optional **app regex** for Follow Focus groups, optional **output sink** (PulseAudio device name; empty = system default), and optional Focus audio ducking hotkey; right-click any hotkey field to **Unassign** it; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls); hotkeys are shown as `"Volume Up (115)"` — human-readable name first, evdev code in parentheses
+   - **App aliases** — remap detected PipeWire names to a friendly display label and optional control target (e.g. `chromium` → display `YouTube Music`, target `youtube-music`)
    - **Media hotkeys** — global play-pause / next / previous / stop bindings that dispatch to the active MPRIS player chosen by the built-in MPRIS consumer. With auto-switch by window focus enabled, the focused audio app's MPRIS player is preferred; otherwise selection falls back to priority order from *Tracked players*. Independent of profiles — when an active profile claims the same key the profile binding wins, otherwise the media binding fires. Defaults are unassigned so the app does not silently capture your existing media keys.
 
 7. **CLI / D-Bus remote control** — use `kv-ctl` to drive the running tray app from scripts, custom keybinds, or external tools without calling the external `qdbus` program:
@@ -376,11 +377,26 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
     "stop": 0
   },
   "auto_profile_switch": false,
+  "app_aliases": [
+    { "match": "chromium", "display": "YouTube Music", "target": "youtube-music" }
+  ],
+  "audio_app_filters": {
+    "extra_system_binaries": [],
+    "remove_system_binaries": [],
+    "extra_skip_app_names": [],
+    "remove_skip_app_names": []
+  },
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
       "modifiers": [],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
       "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
+      "auto_switch": true },
+    { "id": "comms", "name": "Comms", "apps": ["discord"],
+      "app_regex": ".*(discord|teams|slack|zoom).*",
+      "modifiers": ["ctrl"],
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
+      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
       "auto_switch": true },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
@@ -401,6 +417,8 @@ Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/
 ```
 
 Hotkey values are evdev bindings: legacy integers are `EV_KEY` codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), while scroll bindings use objects such as `{ "type": "rel", "code": 8, "direction": 1 }` for `REL_WHEEL` up and `"direction": -1` for down. `show` defaults to `0` (unassigned) and supports the same key/scroll binding formats. The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch. Scene target `match` values use the same app/binary names as `kv-ctl get apps`; `volume` is a `0..100` percent value, and omitted `volume` or `muted` fields leave that part unchanged. A scene's optional `hotkey` (same key/scroll format as profile hotkeys; missing in older configs) applies the scene globally — resolution priority is profile > scene > media, and when two scenes share a binding the first one in the list wins.
+
+`app_aliases` remaps detected PipeWire/Pulse names for the tray and pickers: `match` is compared case-insensitively against `application.name` / binary, `display` is the UI label, and optional `target` is the volume-control binary (empty keeps the original). `audio_app_filters` adds or removes entries on top of the built-in system-binary / skip-name lists (`extra_*` / `remove_*`) without replacing the whole defaults. Profile `app_regex` is an optional case-insensitive regex matched against audio app names for Follow Focus and profile lookup, in addition to the explicit `apps` list.
 
 `media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, and `stop`, each accepting the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Bound keys dispatch to whichever MPRIS player is currently active. When `auto_profile_switch` has selected a focused audio app, matching tracked MPRIS players are preferred; otherwise the active player is resolved by the `tracked_players` priority list, then by playback state. When the same key is also claimed by an active profile binding the profile wins; the media binding only fires when no profile is matched.
 
@@ -673,7 +691,8 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
    - Krok zmiany głośności na jedno naciśnięcie klawisza (%)
    - Kolory OSD (tło, tekst, pasek)
     - **Postęp odtwarzania** — włączenie wiersza MPRIS, włączenie/wyłączenie interaktywnego seekowania, interwał odpytywania, tryb etykiety app/track/both, rozdzielona przecinkami lista priorytetów odtwarzaczy oraz opcjonalne eksponowanie fałszywego endpointu MPRIS v2 (domyślnie wyłączone)
-    - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift`, docelową aplikacją i opcjonalnym skrótem trybu skupienia; prawy klik na polu hotkeya = **Wyczyść**; pierwszy wiersz jest profilem domyślnym (używanym przez zasobnik oraz przez metody D-Bus / MPRIS bez wskazania profilu); hotkeye wyświetlane są jako `"Volume Up (115)"` — czytelna nazwa i kod evdev w nawiasie
+    - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift`, docelową aplikacją, opcjonalnym **regexem aplikacji** dla Follow Focus i opcjonalnym skrótem trybu skupienia; prawy klik na polu hotkeya = **Wyczyść**; pierwszy wiersz jest profilem domyślnym (używanym przez zasobnik oraz przez metody D-Bus / MPRIS bez wskazania profilu); hotkeye wyświetlane są jako `"Volume Up (115)"` — czytelna nazwa i kod evdev w nawiasie
+    - **Aliasy aplikacji** — mapuj wykryte nazwy PipeWire na przyjazną etykietę i opcjonalny cel sterowania (np. `chromium` → wyświetlane `YouTube Music`, cel `youtube-music`)
     - **Skróty multimedialne** — globalne powiązania play-pause / next / previous / stop, które są przekazywane do aktywnego odtwarzacza MPRIS wybranego przez wbudowany konsument MPRIS. Przy włączonym auto-przełączaniu wg focusu preferowany jest odtwarzacz MPRIS aktywnej aplikacji audio; w pozostałych przypadkach wybór wraca do kolejności z listy *Obserwowane odtwarzacze*. Niezależne od profili — gdy aktywny profil przejmie ten sam klawisz, wygrywa powiązanie profilu, w przeciwnym razie uruchamia się powiązanie multimedialne. Domyślnie nieprzypisane, więc aplikacja nie przechwytuje po cichu istniejących klawiszy multimedialnych.
 
 7. **Zdalne sterowanie CLI / D-Bus** — użyj `kv-ctl` do kontrolowania działającej aplikacji ze skryptów, własnych skrótów lub zewnętrznych narzędzi bez uruchamiania zewnętrznego programu `qdbus`:
@@ -850,11 +869,26 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
     "stop": 0
   },
   "auto_profile_switch": false,
+  "app_aliases": [
+    { "match": "chromium", "display": "YouTube Music", "target": "youtube-music" }
+  ],
+  "audio_app_filters": {
+    "extra_system_binaries": [],
+    "remove_system_binaries": [],
+    "extra_skip_app_names": [],
+    "remove_skip_app_names": []
+  },
   "profiles": [
     { "id": "default", "name": "Default", "app": "youtube-music",
       "modifiers": [],
       "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
       "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
+      "auto_switch": true },
+    { "id": "comms", "name": "Comms", "apps": ["discord"],
+      "app_regex": ".*(discord|teams|slack|zoom).*",
+      "modifiers": ["ctrl"],
+      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
+      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
       "auto_switch": true },
     { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
       "modifiers": ["ctrl"],
@@ -875,6 +909,8 @@ Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyśl
 ```
 
 Wartości skrótów to bindingi evdev: starsze liczby oznaczają kody `EV_KEY` (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), a scroll używa obiektów takich jak `{ "type": "rel", "code": 8, "direction": 1 }` dla `REL_WHEEL` w górę i `"direction": -1` w dół. `show` domyślnie ma `0` (nieprzypisany) i obsługuje te same formaty klawiszy oraz scrolla. Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu. `match` w targetach scen używa tych samych nazw aplikacji/binarek co `kv-ctl get apps`; `volume` to procent `0..100`, a pominięte pola `volume` lub `muted` pozostawiają daną część stanu bez zmian. Opcjonalny `hotkey` sceny (ten sam format klawiszy/scrolla co skróty profilu; brak w starszych konfiguracjach) stosuje scenę globalnie — kolejność rozwiązywania to profil > scena > media, a gdy dwie sceny współdzielą binding, wygrywa pierwsza na liście.
+
+`app_aliases` mapuje wykryte nazwy PipeWire/Pulse na etykietę UI (`display`) i opcjonalny cel sterowania (`target`). `audio_app_filters` dodaje lub usuwa wpisy względem wbudowanych list systemowych binarek / pomijanych nazw (`extra_*` / `remove_*`). `app_regex` w profilu to opcjonalne wyrażenie regularne (bez rozróżniania wielkości liter) dopasowywane do nazw aplikacji audio przy Follow Focus, obok listy `apps`.
 
 `media_hotkeys` to obiekt na najwyższym poziomie z polami `play_pause`, `next`, `previous` i `stop`. Każde pole akceptuje ten sam format co skróty profilu (kod `EV_KEY` jako liczba albo obiekt scrolla). Wszystkie cztery domyślnie są `0` (nieprzypisane). Naciśnięcie powiązanego klawisza wysyła komendę do aktywnego odtwarzacza MPRIS. Gdy `auto_profile_switch` wybrał aplikację audio na podstawie focusu, preferowane są pasujące obserwowane odtwarzacze MPRIS; w przeciwnym razie aktywny odtwarzacz jest wybierany wg listy `tracked_players`, a następnie wg stanu odtwarzania. Jeśli ten sam klawisz jest też zajęty przez aktywny profil, wygrywa profil — powiązanie multimedialne uruchamia się tylko wtedy, gdy żaden profil nie pasuje.
 

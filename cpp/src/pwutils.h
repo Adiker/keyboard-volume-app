@@ -30,16 +30,21 @@ struct PipeWireNode
     bool muted;
 };
 
-// Filter sets shared between pwutils and VolumeController
-extern const QSet<QString> SYSTEM_BINARIES;
-extern const QSet<QString> SKIP_APP_NAMES;
+// Filter sets — defined in appaudiofilters.cpp; re-exported here for callers
+// that include pwutils.h.
+#include "appaudiofilters.h"
 
 // Pure helper used by tests and the live PipeWire snapshot path.
-QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps>& globals);
+// Optional filter sets default to the built-in constants.
+QList<PipeWireClient>
+clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps>& globals,
+                           const QSet<QString>& systemBinaries = SYSTEM_BINARIES,
+                           const QSet<QString>& skipAppNames = SKIP_APP_NAMES);
 
 // Uses libpipewire to return idle PipeWire clients.
 // Returns empty list on connection failure, timeout, or parse error.
-QList<PipeWireClient> listPipeWireClients();
+QList<PipeWireClient> listPipeWireClients(const QSet<QString>& systemBinaries = SYSTEM_BINARIES,
+                                          const QSet<QString>& skipAppNames = SKIP_APP_NAMES);
 
 // Uses libpipewire to inspect and update PipeWire stream node Props.
 std::optional<PipeWireNode> findPipeWireNodeForApp(const QString& appName);

@@ -160,6 +160,7 @@ class App : public QObject
         setLanguage(m_config->language());
 
         m_volumeCtrl = new VolumeController(this);
+        m_volumeCtrl->setConfig(m_config.get());
         m_osd = new OSDWindow(m_config.get());
         m_osd->initLayerShell(); // no-op unless g_nativeWayland && HAVE_LAYER_SHELL_QT
         m_input = new InputHandler(this);

@@ -234,6 +234,13 @@ class PaWorker : public QObject
         cleanup();
     }
 
+    // Direct call from any thread — Config* is only stored, never owned.
+    // Config getters take their own mutex, so PA-thread reads are safe.
+    void setConfig(Config* config)
+    {
+        m_config.store(config, std::memory_order_release);
+    }
+
   public slots:
     // Called once from the PA thread after moveToThread + start.
     void init()
@@ -738,7 +745,13 @@ class PaWorker : public QObject
         if (!forceRefresh && (now - m_listCacheTs) < LIST_CACHE_TTL_MS)
             return; // cache still fresh — caller already has it
 
-        const auto pwClients = ::listPipeWireClients();
+        Config* cfg = m_config.load(std::memory_order_acquire);
+        const auto pwClientsRaw = cfg ? ::listPipeWireClients(cfg->effectiveSystemBinaries(),
+                                                              cfg->effectiveSkipAppNames())
+                                      : ::listPipeWireClients();
+        const QList<AppAlias> aliases = cfg ? cfg->appAliases() : QList<AppAlias>{};
+        const auto pwClients = applyAppAliases(pwClientsRaw, aliases);
+        const QSet<QString> skipAppNames = cfg ? cfg->effectiveSkipAppNames() : SKIP_APP_NAMES;
         QMap<QString, QString> displayByTarget;
         QMap<QString, QString> displayByClientId;
         QMap<QString, QString> targetByClientId;
@@ -762,12 +775,12 @@ class PaWorker : public QObject
 
             for (const auto& si : inputs)
             {
-                const QString displayName = si.displayName();
-                const QString targetName = si.targetName();
                 QString mappedDisplay = displayByClientId.value(si.clientId);
                 if (mappedDisplay.isEmpty())
-                    mappedDisplay = displayByTarget.value(targetName.toLower(), displayName);
-                const QString mappedTarget = targetByClientId.value(si.clientId, targetName);
+                    mappedDisplay =
+                        displayByTarget.value(si.targetName().toLower(), si.displayName());
+                QString mappedTarget = targetByClientId.value(si.clientId, si.targetName());
+                applyAppAliasToNames(mappedDisplay, mappedTarget, aliases);
 
                 AudioApp app;
                 app.sinkInputIndex = si.index;
@@ -784,7 +797,7 @@ class PaWorker : public QObject
         // 2. Idle PW clients (libpipewire — runs here in PA thread, not main thread)
         for (const PipeWireClient& client : pwClients)
         {
-            if (SKIP_APP_NAMES.contains(client.name)) continue;
+            if (skipAppNames.contains(client.name)) continue;
             if (activeBinaries.contains(client.binary)) continue;
             if (containsAppKey(apps, client.name)) continue;
             if (containsAppKey(apps, client.binary)) continue;
@@ -1090,6 +1103,7 @@ class PaWorker : public QObject
     pa_threaded_mainloop* m_mainloop = nullptr;
     pa_context* m_ctx = nullptr;
     PaWatcherThread* m_watcher = nullptr;
+    std::atomic<Config*> m_config{nullptr};
     std::atomic<bool> m_stopping{false};
     bool m_cleanedUp = false;
 
@@ -1790,6 +1804,12 @@ VolumeController::VolumeController(QObject* parent) : QObject(parent)
 VolumeController::~VolumeController()
 {
     close();
+}
+
+void VolumeController::setConfig(Config* config)
+{
+    if (!m_worker) return;
+    m_worker->setConfig(config);
 }
 
 void VolumeController::close()

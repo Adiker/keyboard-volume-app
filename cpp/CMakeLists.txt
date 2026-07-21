@@ -36,6 +36,7 @@ set(SOURCES
     src/mprisinterface.cpp
     src/mprisclient.cpp
     src/evdevdevice.cpp
+    src/appaudiofilters.cpp
     src/pwutils.cpp
     src/applistwidget.cpp
     src/appselectordialog.cpp
