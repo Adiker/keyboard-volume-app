@@ -213,3 +213,37 @@ TEST(PwUtils, StreamNodeIgnoresNodeNameSameAsAppName)
     EXPECT_EQ(clients[0].name, QStringLiteral("mpv"));
     EXPECT_EQ(clients[0].binary, QStringLiteral("mpv"));
 }
+
+TEST(PwUtils, CustomSystemBinaryFilter)
+{
+    QList<PipeWireGlobalProps> globals{
+        {QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("Firefox"),
+         QStringLiteral("firefox")},
+        {QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("Helper"),
+         QStringLiteral("my-helper")},
+    };
+
+    QSet<QString> system = SYSTEM_BINARIES;
+    system.insert(QStringLiteral("my-helper"));
+
+    const auto clients = clientsFromPipeWireGlobals(globals, system, SKIP_APP_NAMES);
+    ASSERT_EQ(clients.size(), 1);
+    EXPECT_EQ(clients[0].binary, QStringLiteral("firefox"));
+}
+
+TEST(PwUtils, RemoveDefaultSystemBinaryShowsClient)
+{
+    QList<PipeWireGlobalProps> globals{
+        {QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("Python"),
+         QStringLiteral("python3")},
+        {QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("Firefox"),
+         QStringLiteral("firefox")},
+    };
+
+    QSet<QString> system = SYSTEM_BINARIES;
+    system.remove(QStringLiteral("python3"));
+
+    const auto clients = clientsFromPipeWireGlobals(globals, system, SKIP_APP_NAMES);
+    EXPECT_TRUE(containsClient(clients, QStringLiteral("Python"), QStringLiteral("python3")));
+    EXPECT_TRUE(containsClient(clients, QStringLiteral("Firefox"), QStringLiteral("firefox")));
+}

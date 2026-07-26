@@ -18,6 +18,7 @@ set(CMAKE_AUTOMOC ON)
 add_executable(test_config
     test_config.cpp
     ../src/config.cpp
+    ../src/appaudiofilters.cpp
 )
 target_include_directories(test_config PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -56,10 +57,27 @@ target_link_libraries(test_kvctlcommand PRIVATE
 )
 add_test(NAME test_kvctlcommand COMMAND test_kvctlcommand)
 
+# ─── test_kvctloutput ─────────────────────────────────────────────────────────
+add_executable(test_kvctloutput
+    test_kvctloutput.cpp
+    ../src/kvctloutput.cpp
+)
+target_include_directories(test_kvctloutput PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(test_kvctloutput PRIVATE
+    GTest::gtest_main
+    Qt6::Core
+    Qt6::DBus
+)
+add_test(NAME test_kvctloutput COMMAND test_kvctloutput)
+
 # ─── test_volumecontroller (smoke) ──────────────────────────────────────────────
 add_executable(test_volumecontroller
     test_volumecontroller.cpp
     ../src/volumecontroller.cpp
+    ../src/config.cpp
+    ../src/appaudiofilters.cpp
     ../src/pwutils.cpp
 )
 target_include_directories(test_volumecontroller PRIVATE
@@ -90,6 +108,7 @@ add_test(NAME test_appmatcher COMMAND test_appmatcher)
 # ─── test_pwutils ──────────────────────────────────────────────────────────────
 add_executable(test_pwutils
     test_pwutils.cpp
+    ../src/appaudiofilters.cpp
     ../src/pwutils.cpp
 )
 target_include_directories(test_pwutils PRIVATE
@@ -125,6 +144,7 @@ add_executable(test_osdwindow
     ../src/osdwindow.cpp
     ../src/osdlabelformat.cpp
     ../src/config.cpp
+    ../src/appaudiofilters.cpp
     ../src/i18n.cpp
 )
 target_include_directories(test_osdwindow PRIVATE
@@ -156,6 +176,7 @@ add_executable(test_dbusinterface
     test_dbusinterface.cpp
     ../src/dbusinterface.cpp
     ../src/config.cpp
+    ../src/appaudiofilters.cpp
     ../src/volumecontroller.cpp
     ../src/pwutils.cpp
 )
@@ -179,6 +200,7 @@ if(Qt6DBus_FOUND)
         test_mprisclient.cpp
         ../src/mprisclient.cpp
         ../src/config.cpp
+        ../src/appaudiofilters.cpp
     )
     target_include_directories(test_mprisclient PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../src

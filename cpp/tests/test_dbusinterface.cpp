@@ -213,6 +213,34 @@ TEST(DbusInterface, MediaMethodsAreScriptable)
     EXPECT_TRUE(isScriptableSlot("MediaStop"));
 }
 
+// ─── Profiles property ────────────────────────────────────────────────────────
+// The identity layer extends Profiles without removing the legacy scalar app.
+TEST(DbusInterface, ProfilesPropertyIncludesAppsAndRegex)
+{
+    QTemporaryDir tmp;
+    Config config(tmp.path());
+
+    Profile profile;
+    profile.id = QStringLiteral("comms");
+    profile.name = QStringLiteral("Comms");
+    profile.apps = {QStringLiteral("discord"), QStringLiteral("slack")};
+    profile.appRegex = QStringLiteral(".*(discord|slack|teams).*");
+    config.setProfiles({profile});
+
+    MockVolumeController vc;
+    DbusInterface dbus(&config, &vc);
+
+    const QVariantList profiles = dbus.profilesProp();
+    ASSERT_EQ(profiles.size(), 1);
+
+    const QVariantMap map = profiles.first().toMap();
+    EXPECT_EQ(map.value(QStringLiteral("app")).toString(), QStringLiteral("discord"));
+    EXPECT_EQ(map.value(QStringLiteral("apps")).toStringList(),
+              (QStringList{QStringLiteral("discord"), QStringLiteral("slack")}));
+    EXPECT_EQ(map.value(QStringLiteral("app_regex")).toString(),
+              QStringLiteral(".*(discord|slack|teams).*"));
+}
+
 // ─── Scenes property ──────────────────────────────────────────────────────────
 // The Scenes property must expose each scene's hotkey alongside id/name/targets.
 TEST(DbusInterface, ScenesPropertyIncludesHotkey)

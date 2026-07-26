@@ -151,6 +151,11 @@ class SettingsDialog : public QDialog
     void onRemoveProfile();
     void onSetDefaultProfile();
 
+    // App aliases section
+    void onAddAlias();
+    void onEditAlias();
+    void onRemoveAlias();
+
     // Scenes section
     void onAddScene();
     void onEditScene();
@@ -166,6 +171,9 @@ class SettingsDialog : public QDialog
     void buildUi();
     void refreshProfilesTable();
     int selectedProfileRow() const;
+    void refreshAliasesTable();
+    int selectedAliasRow() const;
+    bool editAliasDialog(AppAlias& alias);
     void refreshScenesTable();
     int selectedSceneRow() const;
 
@@ -231,6 +239,13 @@ class SettingsDialog : public QDialog
     QPushButton* m_btnRemove = nullptr;
     QPushButton* m_btnSetDefault = nullptr;
     QList<Profile> m_profiles; // working copy until saveAndAccept()
+
+    // App aliases section
+    QTableWidget* m_aliasesTable = nullptr;
+    QPushButton* m_btnAliasAdd = nullptr;
+    QPushButton* m_btnAliasEdit = nullptr;
+    QPushButton* m_btnAliasRemove = nullptr;
+    QList<AppAlias> m_aliases; // working copy until saveAndAccept()
 
     // Scenes section
     QTableWidget* m_scenesTable = nullptr;

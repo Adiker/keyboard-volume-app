@@ -160,6 +160,7 @@ class App : public QObject
         setLanguage(m_config->language());
 
         m_volumeCtrl = new VolumeController(this);
+        m_volumeCtrl->setConfig(m_config.get());
         m_osd = new OSDWindow(m_config.get());
         m_osd->initLayerShell(); // no-op unless g_nativeWayland && HAVE_LAYER_SHELL_QT
         m_input = new InputHandler(this);
@@ -270,7 +271,11 @@ class App : public QObject
         connect(m_tray, &TrayApp::settingsChanged, this, &App::onHotkeysMaybeChanged);
         connect(m_tray, &TrayApp::settingsChanged, this, &App::onAutoSwitchMaybeChanged);
         connect(m_tray, &TrayApp::settingsChanged, this,
-                [this]() { m_lastActivatedProfileId.clear(); });
+                [this]()
+                {
+                    m_lastActivatedProfileId.clear();
+                    m_lastActivatedRouteApp.clear();
+                });
         connect(m_tray, &TrayApp::osdPreviewRequested, m_osd,
                 [this](int s, int x, int y) { m_osd->showPreview(s, x, y); });
         connect(m_tray, &TrayApp::osdPreviewFinished, m_osd, &OSDWindow::hidePreview);
@@ -288,7 +293,11 @@ class App : public QObject
         // re-applies the configured sink — addresses the "device appeared after
         // a failed first attempt" case without rerouting on every press.
         connect(m_volumeCtrl, &VolumeController::sinksReady, this,
-                [this](const QList<SinkInfo>&) { m_lastActivatedProfileId.clear(); });
+                [this](const QList<SinkInfo>&)
+                {
+                    m_lastActivatedProfileId.clear();
+                    m_lastActivatedRouteApp.clear();
+                });
 
         // MprisClient → OSDWindow progress row
         connect(m_mpris, &MprisClient::trackChanged, m_osd,
@@ -391,8 +400,8 @@ class App : public QObject
     {
         if (m_config->autoProfileSwitch())
         {
-            m_autoActiveApp =
-                ::validateStickyAutoProfileTarget(m_autoActiveApp, m_config->profiles());
+            m_autoActiveApp = ::validateStickyAutoProfileTarget(
+                m_autoActiveApp, m_config->profiles(), m_config->appAliases());
             if (m_mpris) m_mpris->setPreferredApp(m_autoActiveApp);
             startWindowTracker();
         }
@@ -413,20 +422,60 @@ class App : public QObject
         return Profile{};
     }
 
-    // Route a profile's apps to its configured sink — runs once per profile-id
-    // transition so repeated hotkey presses don't spam PA. The guard is cleared
-    // on settingsChanged and on sinksReady so a freshly plugged USB device or a
-    // sink edit in Settings triggers an automatic re-route on the next press.
-    void activateProfile(const Profile& p)
+    // Route a profile's apps to its configured sink. Guarded by (profile id,
+    // alsoRouteApp) so Follow Focus can re-route when focus moves between apps
+    // that share one regex profile (e.g. discord → slack) without spamming PA
+    // on repeated hotkeys for the same pair. The guard is cleared on
+    // settingsChanged and on sinksReady.
+    // `alsoRouteApp` covers regex-only profiles (empty apps list) and Follow
+    // Focus targets that matched via app_regex rather than an explicit apps entry.
+    void activateProfile(const Profile& p, const QString& alsoRouteApp = {})
     {
         if (p.id.isEmpty() || !m_volumeCtrl) return;
-        if (p.id == m_lastActivatedProfileId) return;
+
+        const bool sameProfile = (p.id == m_lastActivatedProfileId);
+        const bool sameRoutedApp =
+            alsoRouteApp.compare(m_lastActivatedRouteApp, Qt::CaseInsensitive) == 0;
+        if (sameProfile && sameRoutedApp) return;
+
+        const bool profileChanged = !sameProfile;
         m_lastActivatedProfileId = p.id;
+        m_lastActivatedRouteApp = alsoRouteApp;
         if (p.sink.isEmpty()) return;
-        for (const QString& app : p.apps)
+
+        QStringList toRoute;
+        if (profileChanged)
+        {
+            toRoute = p.apps;
+            if (!alsoRouteApp.isEmpty())
+            {
+                bool alreadyListed = false;
+                const QString lower = alsoRouteApp.toLower();
+                for (const QString& app : toRoute)
+                {
+                    if (appIdMatches(app, lower))
+                    {
+                        alreadyListed = true;
+                        break;
+                    }
+                }
+                if (!alreadyListed) toRoute.append(alsoRouteApp);
+            }
+        }
+        else if (!alsoRouteApp.isEmpty())
+        {
+            // Same regex/shared profile, new focused app — route only that app.
+            toRoute.append(alsoRouteApp);
+        }
+        else
+        {
+            return;
+        }
+
+        for (const QString& app : toRoute)
         {
             if (app.isEmpty()) continue;
-            m_volumeCtrl->setAppSink(app, p.sink);
+            m_volumeCtrl->setProfileAppSink(p.id, app, p.sink);
         }
     }
 
@@ -439,7 +488,7 @@ class App : public QObject
         // hotkey to a focused app belonging to a different profile, we must use
         // that profile's vol_min/vol_max, not the hotkey-emitting profile's.
         const Profile p = effectiveProfile(profileId);
-        activateProfile(p);
+        activateProfile(p, app);
         // async → volumeChanged signal; clamped to per-profile [vol_min, vol_max].
         m_volumeCtrl->changeVolume(app, direction * step, p.volMin / 100.0, p.volMax / 100.0);
     }
@@ -448,7 +497,7 @@ class App : public QObject
     {
         const QString app = effectiveApp(profileId);
         if (app.isEmpty()) return;
-        activateProfile(effectiveProfile(profileId));
+        activateProfile(effectiveProfile(profileId), app);
         m_volumeCtrl->toggleMute(app); // async → volumeChanged signal
     }
 
@@ -458,7 +507,7 @@ class App : public QObject
         if (app.isEmpty()) return;
         const Profile p = findProfile(profileId);
         if (!p.ducking.enabled || !p.ducking.hotkey.isAssigned()) return;
-        activateProfile(effectiveProfile(profileId));
+        activateProfile(effectiveProfile(profileId), app);
         m_volumeCtrl->toggleDucking(app, p.ducking.volume / 100.0);
     }
 
@@ -466,7 +515,7 @@ class App : public QObject
     {
         const QString app = effectiveApp(profileId);
         if (app.isEmpty()) return;
-        activateProfile(effectiveProfile(profileId));
+        activateProfile(effectiveProfile(profileId), app);
         m_volumeCtrl->queryVolume(app); // async → volumeChanged → OSD
     }
 
@@ -639,12 +688,12 @@ class App : public QObject
         }
 
         m_autoActiveApp = ::resolveStickyAutoProfileTarget(binary, m_appCache, m_config->profiles(),
-                                                           m_autoActiveApp);
+                                                           m_autoActiveApp, m_config->appAliases());
         if (m_mpris) m_mpris->setPreferredApp(m_autoActiveApp);
         if (!m_autoActiveApp.isEmpty())
         {
             const Profile matched = m_config->findProfileByApp(m_autoActiveApp);
-            if (!matched.id.isEmpty()) activateProfile(matched);
+            if (!matched.id.isEmpty()) activateProfile(matched, m_autoActiveApp);
         }
     }
 
@@ -683,9 +732,12 @@ class App : public QObject
     WindowTracker* m_windowTracker = nullptr;
     QList<AudioApp> m_appCache;
     QString m_autoActiveApp;
-    // Last profile id whose sink we routed — guards activateProfile() so the
-    // sink is moved once per profile transition, not on every hotkey press.
+    // Last profile id + routed app whose sink we applied — guards activateProfile()
+    // so the sink is moved once per (profile, focused-app) pair, not on every
+    // hotkey press, while still re-routing when Follow Focus changes app inside
+    // the same regex profile.
     QString m_lastActivatedProfileId;
+    QString m_lastActivatedRouteApp;
 };
 
 // ─── main() ───────────────────────────────────────────────────────────────────

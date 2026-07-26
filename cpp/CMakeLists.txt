@@ -36,6 +36,7 @@ set(SOURCES
     src/mprisinterface.cpp
     src/mprisclient.cpp
     src/evdevdevice.cpp
+    src/appaudiofilters.cpp
     src/pwutils.cpp
     src/applistwidget.cpp
     src/appselectordialog.cpp
@@ -127,6 +128,7 @@ endif()
 add_executable(kv-ctl
     src/kvctl.cpp
     src/kvctlcommand.cpp
+    src/kvctloutput.cpp
 )
 
 target_compile_definitions(kv-ctl PRIVATE

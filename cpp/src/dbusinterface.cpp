@@ -288,8 +288,10 @@ QVariantList DbusInterface::buildProfilesProp() const
         QVariantMap m;
         m[QStringLiteral("id")] = p.id;
         m[QStringLiteral("name")] = p.name;
-        // TODO: expose full "apps" list; kept as legacy scalar for backward compat
+        // Keep the legacy scalar alongside the full identity fields.
         m[QStringLiteral("app")] = p.primaryApp();
+        m[QStringLiteral("apps")] = p.apps;
+        m[QStringLiteral("app_regex")] = p.appRegex;
         m[QStringLiteral("modifiers")] = mods;
         m[QStringLiteral("hotkeys")] = hk;
         m[QStringLiteral("ducking")] = ducking;

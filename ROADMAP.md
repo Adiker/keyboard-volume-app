@@ -104,7 +104,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Problem:** Heurystyki PipeWire/PulseAudio pokrywają znane przypadki, ale power user może chcieć nadać własne nazwy lub wymusić mapowanie dla nietypowych aplikacji, gier, wrapperów Electron/Chromium albo Wine/Proton.
 **Rekomendacja:** Dodać opcjonalną sekcję aliasów w configu, np. mapowanie `{ "display": "YouTube Music", "target": "youtube-music" }` albo override dla wykrytego `client.id`/binary/node name. UI powinno pokazywać alias, a hot path nadal używać targetu.
 **Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/pwutils.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/settingsdialog.cpp`
-**Status:** Planowane.
+**Status:** Zrealizowane. Dodano opcjonalną sekcję `app_aliases` w `config.json` (`match` / `display` / `target`): UI pokazuje `display`, hot path steruje `target` (lub oryginalną binarką gdy `target` jest puste). Aliasy są aplikowane w `listApps()`, `AppListWidget` i po heurystykach PipeWire. Settings ma tabelę aliasów (Add/Edit/Remove).
 
 ### 22. clang-tidy w CI
 
@@ -247,7 +247,7 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Problem:** Niektóre aplikacje (szczególnie gry uruchamiane przez Wine/Proton lub aplikacje oparte na Electronie) zmieniają nazwy procesów lub generują wiele podprocesów, co psuje sztywne dopasowywanie po nazwie binarki.
 **Rekomendacja:** Dodanie obsługi wyrażeń regularnych (`app_regex`) w definicji profili `config.json`. Możliwość zdefiniowania jednego profilu do obsługi całej grupy komunikatorów (np. `.*(discord|teams|slack|zoom).*`).
 **Pliki:** `cpp/src/config.cpp`, `cpp/src/pwutils.cpp`, `cpp/src/volumecontroller.cpp`.
-**Status:** Planowane.
+**Status:** Zrealizowane. Pole `app_regex` w profilu (case-insensitive `QRegularExpression`) rozszerza dopasowanie Follow Focus / `findProfileByApp` obok listy `apps`. UI: pole w `ProfileEditDialog`; D-Bus `Profiles` eksponuje `app_regex` i `apps`.
 
 ### 18. Tryb "Audio Ducking" (Izolacja dźwiękowa / Focus Mode) ✓
 
@@ -337,7 +337,7 @@ Pozycje pochodzące z lokalnej notatki `CODE_REVIEW.md`. Część punktów jest 
 **Problem:** `SYSTEM_BINARIES` i `SKIP_APP_NAMES` są stałymi w kodzie, współdzielonymi przez `pwutils` i `VolumeController`. Power user nie może dodać własnych wykluczeń, usunąć domyślnego ani sterować nietypową aplikacją działającą pod generycznym binary name.
 **Rekomendacja:** Dodać opcjonalną sekcję `audio_app_filters` w configu z deep-merge wartości domyślnych. UI w późniejszym etapie. Zachować kanoniczne nazwy (matching po `binary` zgodnie z #7a).
 **Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/pwutils.{h,cpp}`, `cpp/src/volumecontroller.cpp`, `cpp/tests/test_config.cpp`, `cpp/tests/test_pwutils.cpp`.
-**Status:** Planowane.
+**Status:** Zrealizowane. Sekcja `audio_app_filters` z kluczami `extra_system_binaries` / `remove_system_binaries` / `extra_skip_app_names` / `remove_skip_app_names` nakłada się na wbudowane stałe z `appaudiofilters`. `Config::effectiveSystemBinaries()` / `effectiveSkipAppNames()` zasilają `listPipeWireClients` i `VolumeController`. UI filtrów odłożone (edycja przez config JSON).
 
 ### 37. D-Bus `setActiveApp()` → tray refresh
 
@@ -392,7 +392,7 @@ Pozycje pochodzące z lokalnej notatki `CODE_REVIEW.md`. Część punktów jest 
 | 2 | #33 Wydzielenie `App` z `main.cpp` | testowalność | średni | planowane |
 | 3 | #34 Podział `volumecontroller.cpp` | maintainability | średni/duży | planowane |
 | 4 | #22 clang-tidy w CI | jakość | średni | planowane |
-| 5 | #36 Konfigurowalne filtry aplikacji | power user | średni | planowane |
+| 5 | #36 Konfigurowalne filtry aplikacji | power user | średni | zrealizowane |
 | 6 | #38 Testy edge case Config + reconnect VolumeController | regresje | średni | planowane |
 
 Punkty zamknięte przed datą notatki (volatile→atomic, Config thread-safety, OSDWindow leak, key repeat, singleton, PA reconnect, PipeWire bez subprocess, auto-refresh listy aplikacji, profile wieloaplikacyjne, PKGBUILD, atomic save) udokumentowane są w odpowiednich pozycjach #14, #5d, #7, #5c, #1 oraz w `ARCHITECTURE.md` (Key Conventions) — nie powielamy ich w tej sekcji.
