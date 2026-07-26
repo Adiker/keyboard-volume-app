@@ -128,6 +128,7 @@ endif()
 add_executable(kv-ctl
     src/kvctl.cpp
     src/kvctlcommand.cpp
+    src/kvctloutput.cpp
 )
 
 target_compile_definitions(kv-ctl PRIVATE

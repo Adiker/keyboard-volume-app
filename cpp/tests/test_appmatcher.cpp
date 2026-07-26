@@ -354,3 +354,56 @@ TEST(AppMatcher, FindAutoSwitchProfileMatchesAliasSourceWhenTargetStored)
     EXPECT_TRUE(
         findAutoSwitchProfileForApp(QStringLiteral("youtube-music"), {profile}, {}).id.isEmpty());
 }
+
+TEST(AppMatcher, SinkCleanupIncludesRegexOnlyTargetWhenSinkReturnsToDefault)
+{
+    Profile oldProfile = makeProfile(QStringLiteral("comms"), {});
+    oldProfile.appRegex = QStringLiteral(".*(discord|slack).*");
+    oldProfile.sink = QStringLiteral("alsa_output.headset");
+
+    Profile currentProfile = oldProfile;
+    currentProfile.sink.clear();
+
+    const QHash<QString, QStringList> routed{
+        {QStringLiteral("comms"), {QStringLiteral("discord")}},
+    };
+
+    EXPECT_EQ(profileSinkCleanupTargets({oldProfile}, {currentProfile}, routed),
+              QStringList{QStringLiteral("discord")});
+}
+
+TEST(AppMatcher, SinkCleanupIncludesRegexOnlyTargetAfterRegexChangeOrRemoval)
+{
+    Profile oldProfile = makeProfile(QStringLiteral("comms"), {});
+    oldProfile.appRegex = QStringLiteral(".*(discord|slack).*");
+    oldProfile.sink = QStringLiteral("alsa_output.headset");
+
+    Profile currentProfile = oldProfile;
+    currentProfile.appRegex = QStringLiteral(".*teams.*");
+
+    const QHash<QString, QStringList> routed{
+        {QStringLiteral("comms"), {QStringLiteral("discord")}},
+    };
+
+    EXPECT_EQ(profileSinkCleanupTargets({oldProfile}, {currentProfile}, routed),
+              QStringList{QStringLiteral("discord")});
+    EXPECT_EQ(profileSinkCleanupTargets({oldProfile}, {}, routed),
+              QStringList{QStringLiteral("discord")});
+}
+
+TEST(AppMatcher, SinkCleanupKeepsTargetRoutedByAnotherProfile)
+{
+    Profile oldProfile = makeProfile(QStringLiteral("comms"), {});
+    oldProfile.appRegex = QStringLiteral(".*discord.*");
+    oldProfile.sink = QStringLiteral("alsa_output.headset");
+
+    Profile replacement = makeProfile(QStringLiteral("replacement"), {});
+    replacement.appRegex = QStringLiteral(".*discord.*");
+    replacement.sink = QStringLiteral("alsa_output.speakers");
+
+    const QHash<QString, QStringList> routed{
+        {QStringLiteral("comms"), {QStringLiteral("discord")}},
+    };
+
+    EXPECT_TRUE(profileSinkCleanupTargets({oldProfile}, {replacement}, routed).isEmpty());
+}

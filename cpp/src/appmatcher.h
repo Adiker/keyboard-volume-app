@@ -3,6 +3,7 @@
 #include "audioapp.h"
 #include "config.h"
 
+#include <QHash>
 #include <QList>
 #include <QRegularExpression>
 #include <QString>
@@ -110,6 +111,16 @@ inline bool appNameMatchesFields(const QString& appName, const QString& name, co
     return false;
 }
 
+inline bool profileMatchesApp(const Profile& profile, const QString& appName,
+                              const QList<AppAlias>& aliases = {})
+{
+    for (const QString& candidate : appMatchCandidates(appName, aliases))
+    {
+        if (profileListsApp(profile, candidate)) return true;
+    }
+    return false;
+}
+
 inline QString matchBinaryToApp(const QString& binary, const QList<AudioApp>& cache,
                                 const QList<AppAlias>& aliases = {})
 {
@@ -158,16 +169,72 @@ inline Profile findAutoSwitchProfileForApp(const QString& appName, const QList<P
 
     // Expand through aliases so a remapped control target (youtube-music) still
     // finds a profile that lists/regex-matches only the source (chromium).
-    const QStringList candidates = appMatchCandidates(appName, aliases);
     for (const Profile& profile : profiles)
     {
         if (!profile.autoSwitch) continue;
-        for (const QString& candidate : candidates)
-        {
-            if (profileListsApp(profile, candidate)) return profile;
-        }
+        if (profileMatchesApp(profile, appName, aliases)) return profile;
     }
     return {};
+}
+
+// Return app targets whose old profile sink override must be cleared after a
+// Settings save. `routedAppsByProfile` includes dynamic targets routed through
+// app_regex, which are not present in Profile::apps.
+inline QStringList profileSinkCleanupTargets(const QList<Profile>& previousProfiles,
+                                             const QList<Profile>& currentProfiles,
+                                             const QHash<QString, QStringList>& routedAppsByProfile,
+                                             const QList<AppAlias>& aliases = {})
+{
+    QStringList result;
+    auto addUnique = [](QStringList& list, const QString& value)
+    {
+        const QString trimmed = value.trimmed();
+        if (trimmed.isEmpty()) return;
+        for (const QString& existing : std::as_const(list))
+        {
+            if (existing.compare(trimmed, Qt::CaseInsensitive) == 0) return;
+        }
+        list.append(trimmed);
+    };
+
+    const auto currentProfileById = [&](const QString& id) -> const Profile*
+    {
+        for (const Profile& profile : currentProfiles)
+        {
+            if (profile.id == id) return &profile;
+        }
+        return nullptr;
+    };
+
+    const auto stillRouted = [&](const QString& app)
+    {
+        for (const Profile& profile : currentProfiles)
+        {
+            if (profile.sink.isEmpty()) continue;
+            if (profileMatchesApp(profile, app, aliases)) return true;
+        }
+        return false;
+    };
+
+    for (const Profile& oldProfile : previousProfiles)
+    {
+        if (oldProfile.sink.isEmpty()) continue;
+
+        QStringList oldTargets = oldProfile.apps;
+        for (const QString& app : routedAppsByProfile.value(oldProfile.id))
+            addUnique(oldTargets, app);
+
+        const Profile* currentProfile = currentProfileById(oldProfile.id);
+        for (const QString& app : oldTargets)
+        {
+            const bool staysInSameProfile = currentProfile && !currentProfile->sink.isEmpty() &&
+                                            profileMatchesApp(*currentProfile, app, aliases);
+            if (staysInSameProfile || stillRouted(app)) continue;
+            addUnique(result, app);
+        }
+    }
+
+    return result;
 }
 
 inline QString validateStickyAutoProfileTarget(const QString& currentTarget,

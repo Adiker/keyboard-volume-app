@@ -258,6 +258,7 @@ Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` comman
 
    `kv-ctl` still uses the app's existing session D-Bus API under the hood, so `keyboard-volume-app` must already be running.
    App names are case-sensitive; use `kv-ctl get apps` to list the exact names known by the daemon.
+   `kv-ctl get profiles` keeps its original first six tab-separated columns and appends `apps=` and `regex=` fields for the complete identity configuration.
 
 8. **Direct D-Bus access (advanced)** — when `kv-ctl` is not available (e.g. on a remote machine or from a tool that already speaks D-Bus), the same API is reachable through `qdbus`. The daemon registers two services on the session bus:
 
@@ -750,6 +751,7 @@ Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire,
 
    `kv-ctl` nadal używa istniejącego API D-Bus aplikacji, więc `keyboard-volume-app` musi już działać.
    Nazwy aplikacji rozróżniają wielkość liter; użyj `kv-ctl get apps`, żeby sprawdzić dokładne nazwy znane daemonowi.
+   `kv-ctl get profiles` zachowuje dotychczasowe pierwsze sześć kolumn rozdzielonych tabulatorami i dodaje pola `apps=` oraz `regex=` z pełną konfiguracją tożsamości.
 
 8. **Bezpośredni dostęp przez D-Bus (zaawansowane)** — gdy `kv-ctl` nie jest dostępne (np. zdalna maszyna albo narzędzie, które już mówi po D-Bus), to samo API jest osiągalne przez `qdbus`. Daemon rejestruje dwie usługi na sesyjnej szynie:
 

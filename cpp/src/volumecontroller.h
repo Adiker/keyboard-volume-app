@@ -2,6 +2,7 @@
 #include "audioapp.h"
 #include "config.h"
 
+#include <QHash>
 #include <QObject>
 #include <QThread>
 #include <QString>
@@ -59,6 +60,13 @@ class VolumeController : public QObject
     // logged but do not raise.
     virtual void setAppSink(const QString& appName, const QString& sinkName);
 
+    // Profile-aware routing used by App::activateProfile(). Besides applying
+    // the sink, records dynamic app_regex targets so Settings can later clear
+    // stale stream-restore overrides when a profile changes or is removed.
+    void setProfileAppSink(const QString& profileId, const QString& appName,
+                           const QString& sinkName);
+    QStringList profileRoutedApps(const QString& profileId) const;
+
     // Drop the persisted stream-restore device override for an app so the next
     // sink-input created by that app falls back to the system default sink.
     // Called from Settings when a profile's sink is changed back to "(system
@@ -96,6 +104,7 @@ class VolumeController : public QObject
     class PaWorker* m_worker = nullptr;
     QList<AudioApp> m_listCache;
     QList<SinkInfo> m_sinkCache;
+    QHash<QString, QStringList> m_profileRoutedApps;
     bool m_closing = false;
 };
 

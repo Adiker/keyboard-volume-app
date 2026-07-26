@@ -358,6 +358,7 @@ class PaWorker : public QObject
         minVol = std::clamp(minVol, 0.0, 1.0);
         maxVol = std::clamp(maxVol, 0.0, 1.0);
         if (minVol > maxVol) std::swap(minVol, maxVol);
+        const QList<AppAlias> aliases = currentAliases();
 
         // 1. Active sink input (fast path)
         if (contextReady())
@@ -366,7 +367,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, currentAliases())) continue;
+                if (!si.matches(appName, aliases)) continue;
 
                 double newVol = std::clamp(si.volume + delta, minVol, maxVol);
                 pa_cvolume cv;
@@ -427,6 +428,7 @@ class PaWorker : public QObject
     void doToggleMute(const QString& appName)
     {
         if (m_stopping) return;
+        const QList<AppAlias> aliases = currentAliases();
 
         // 1. Active sink input
         if (contextReady())
@@ -435,7 +437,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, currentAliases())) continue;
+                if (!si.matches(appName, aliases)) continue;
 
                 int newMute = si.muted ? 0 : 1;
                 pa_operation* op = pa_context_set_sink_input_mute(m_ctx, si.index, newMute,
@@ -501,6 +503,7 @@ class PaWorker : public QObject
     void setAppMute(const QString& appName, bool targetMuted)
     {
         if (m_stopping) return;
+        const QList<AppAlias> aliases = currentAliases();
 
         // 1. Active sink input
         if (contextReady())
@@ -509,7 +512,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, currentAliases())) continue;
+                if (!si.matches(appName, aliases)) continue;
 
                 if (si.muted == targetMuted)
                 {
@@ -591,6 +594,7 @@ class PaWorker : public QObject
         maxVol = std::clamp(maxVol, 0.0, 1.0);
         if (minVol > maxVol) std::swap(minVol, maxVol);
         targetVolume = std::clamp(targetVolume, minVol, maxVol);
+        const QList<AppAlias> aliases = currentAliases();
 
         // 1. Active sink input (absolute target, not relative delta)
         if (contextReady())
@@ -599,7 +603,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, currentAliases())) continue;
+                if (!si.matches(appName, aliases)) continue;
 
                 pa_cvolume cv;
                 pa_cvolume_set(&cv, 2, static_cast<pa_volume_t>(targetVolume * PA_VOLUME_NORM));
@@ -704,6 +708,7 @@ class PaWorker : public QObject
     void doQueryVolume(const QString& appName)
     {
         if (m_stopping) return;
+        const QList<AppAlias> aliases = currentAliases();
 
         // 1. Active sink input — live read, no write
         if (contextReady())
@@ -712,7 +717,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, currentAliases())) continue;
+                if (!si.matches(appName, aliases)) continue;
 
                 pa_threaded_mainloop_unlock(m_mainloop);
                 m_appVolumes[appName] = si.volume;
@@ -757,12 +762,11 @@ class PaWorker : public QObject
             return; // cache still fresh — caller already has it
 
         Config* cfg = m_config.load(std::memory_order_acquire);
-        const auto pwClientsRaw = cfg ? ::listPipeWireClients(cfg->effectiveSystemBinaries(),
-                                                              cfg->effectiveSkipAppNames())
-                                      : ::listPipeWireClients();
+        const QSet<QString> systemBinaries = cfg ? cfg->effectiveSystemBinaries() : SYSTEM_BINARIES;
+        const QSet<QString> skipAppNames = cfg ? cfg->effectiveSkipAppNames() : SKIP_APP_NAMES;
+        const auto pwClientsRaw = ::listPipeWireClients(systemBinaries, skipAppNames);
         const QList<AppAlias> aliases = cfg ? cfg->appAliases() : QList<AppAlias>{};
         const auto pwClients = applyAppAliases(pwClientsRaw, aliases);
-        const QSet<QString> skipAppNames = cfg ? cfg->effectiveSkipAppNames() : SKIP_APP_NAMES;
         QMap<QString, QString> displayByTarget;
         QMap<QString, QString> displayByClientId;
         QMap<QString, QString> targetByClientId;
@@ -786,11 +790,17 @@ class PaWorker : public QObject
 
             for (const auto& si : inputs)
             {
+                if (systemBinaries.contains(si.binary)) continue;
+
                 QString mappedDisplay = displayByClientId.value(si.clientId);
                 if (mappedDisplay.isEmpty())
                     mappedDisplay =
                         displayByTarget.value(si.targetName().toLower(), si.displayName());
                 QString mappedTarget = targetByClientId.value(si.clientId, si.targetName());
+                if (skipAppNames.contains(mappedDisplay) ||
+                    mappedDisplay.toLower().contains(QStringLiteral("input")))
+                    mappedDisplay = mappedTarget;
+                if (mappedDisplay.trimmed().isEmpty()) continue;
                 applyAppAliasToNames(mappedDisplay, mappedTarget, aliases);
 
                 AudioApp app;
@@ -852,6 +862,7 @@ class PaWorker : public QObject
             pendSinks = m_pendingSinks;
         }
 
+        const QList<AppAlias> aliases = currentAliases();
         pa_threaded_mainloop_lock(m_mainloop);
         const auto inputs = getSinkInputs();
         QSet<QString> applied;
@@ -867,7 +878,7 @@ class PaWorker : public QObject
             for (auto it = pendSinks.begin(); it != pendSinks.end(); ++it)
             {
                 const QString& app = it.key();
-                if (!si.matches(app, currentAliases())) continue;
+                if (!si.matches(app, aliases)) continue;
 
                 const QByteArray sinkBytes = it.value().toUtf8();
                 OperationOutcome outcome;
@@ -887,7 +898,7 @@ class PaWorker : public QObject
             for (auto it = pendVols.begin(); it != pendVols.end(); ++it)
             {
                 const QString& app = it.key();
-                if (!si.matches(app, currentAliases())) continue;
+                if (!si.matches(app, aliases)) continue;
 
                 pa_cvolume cv;
                 pa_cvolume_set(&cv, 2, static_cast<pa_volume_t>(it.value() * PA_VOLUME_NORM));
@@ -916,7 +927,7 @@ class PaWorker : public QObject
             {
                 const QString& app = it.key();
                 if (pendVols.contains(app)) continue; // already handled above
-                if (!si.matches(app, currentAliases())) continue;
+                if (!si.matches(app, aliases)) continue;
 
                 bool muteApplied = waitForOperation(
                     pa_context_set_sink_input_mute(m_ctx, si.index, it.value() ? 1 : 0,
@@ -1054,6 +1065,7 @@ class PaWorker : public QObject
         }
 
         bool routedAny = false;
+        const QList<AppAlias> aliases = currentAliases();
 
         // 1. Active sink inputs — move every matching stream (browser-tab case).
         if (contextReady())
@@ -1063,7 +1075,7 @@ class PaWorker : public QObject
             const auto inputs = getSinkInputs();
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, currentAliases())) continue;
+                if (!si.matches(appName, aliases)) continue;
 
                 OperationOutcome outcome;
                 pa_operation* op = pa_context_move_sink_input_by_name(
@@ -1898,9 +1910,45 @@ void VolumeController::setAppSink(const QString& appName, const QString& sinkNam
                               Q_ARG(QString, appName), Q_ARG(QString, sinkName));
 }
 
+void VolumeController::setProfileAppSink(const QString& profileId, const QString& appName,
+                                         const QString& sinkName)
+{
+    if (profileId.isEmpty() || appName.isEmpty() || sinkName.isEmpty()) return;
+
+    QStringList& routedApps = m_profileRoutedApps[profileId];
+    bool alreadyTracked = false;
+    for (const QString& tracked : std::as_const(routedApps))
+    {
+        if (tracked.compare(appName, Qt::CaseInsensitive) == 0)
+        {
+            alreadyTracked = true;
+            break;
+        }
+    }
+    if (!alreadyTracked) routedApps.append(appName);
+
+    setAppSink(appName, sinkName);
+}
+
+QStringList VolumeController::profileRoutedApps(const QString& profileId) const
+{
+    return m_profileRoutedApps.value(profileId);
+}
+
 void VolumeController::clearAppSinkOverride(const QString& appName)
 {
     if (m_closing || !m_worker || appName.isEmpty()) return;
+
+    for (auto it = m_profileRoutedApps.begin(); it != m_profileRoutedApps.end();)
+    {
+        QStringList& routedApps = it.value();
+        routedApps.removeIf([&](const QString& tracked)
+                            { return tracked.compare(appName, Qt::CaseInsensitive) == 0; });
+        if (routedApps.isEmpty())
+            it = m_profileRoutedApps.erase(it);
+        else
+            ++it;
+    }
 
     QMetaObject::invokeMethod(m_worker, "doClearAppSinkOverride", Qt::QueuedConnection,
                               Q_ARG(QString, appName));

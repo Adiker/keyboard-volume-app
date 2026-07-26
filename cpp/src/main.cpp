@@ -475,7 +475,7 @@ class App : public QObject
         for (const QString& app : toRoute)
         {
             if (app.isEmpty()) continue;
-            m_volumeCtrl->setAppSink(app, p.sink);
+            m_volumeCtrl->setProfileAppSink(p.id, app, p.sink);
         }
     }
 

@@ -86,6 +86,21 @@ TEST(VolumeController, SetAppSinkDoesNotCrashOnInvalidInput)
     SUCCEED();
 }
 
+TEST(VolumeController, TracksProfileRoutedAppsForSettingsCleanup)
+{
+    VolumeController vc;
+
+    vc.setProfileAppSink("comms", "discord", "alsa_output.totally-not-real");
+    vc.setProfileAppSink("comms", "Discord", "alsa_output.totally-not-real");
+    vc.setProfileAppSink("comms", "slack", "alsa_output.totally-not-real");
+
+    EXPECT_EQ(vc.profileRoutedApps("comms"),
+              (QStringList{QStringLiteral("discord"), QStringLiteral("slack")}));
+
+    vc.clearAppSinkOverride("discord");
+    EXPECT_EQ(vc.profileRoutedApps("comms"), QStringList{QStringLiteral("slack")});
+}
+
 TEST(VolumeController, UnavailablePulseAudioDoesNotBlockOperations)
 {
     const bool hadPulseServer = qEnvironmentVariableIsSet("PULSE_SERVER");

@@ -57,6 +57,21 @@ target_link_libraries(test_kvctlcommand PRIVATE
 )
 add_test(NAME test_kvctlcommand COMMAND test_kvctlcommand)
 
+# ─── test_kvctloutput ─────────────────────────────────────────────────────────
+add_executable(test_kvctloutput
+    test_kvctloutput.cpp
+    ../src/kvctloutput.cpp
+)
+target_include_directories(test_kvctloutput PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(test_kvctloutput PRIVATE
+    GTest::gtest_main
+    Qt6::Core
+    Qt6::DBus
+)
+add_test(NAME test_kvctloutput COMMAND test_kvctloutput)
+
 # ─── test_volumecontroller (smoke) ──────────────────────────────────────────────
 add_executable(test_volumecontroller
     test_volumecontroller.cpp
