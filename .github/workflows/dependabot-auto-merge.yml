@@ -1,0 +1,180 @@
+name: Dependabot auto-merge
+
+"on":
+  workflow_run:
+    workflows: ["Security checks"]
+    types: [completed]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: dependabot-auto-merge
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  merge:
+    name: Merge eligible Dependabot PRs
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      checks: read
+      contents: write
+      pull-requests: write
+      statuses: read
+
+    steps:
+      - name: Merge current, conflict-free Dependabot updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t pull_requests < <(
+            gh pr list \
+              --repo "${REPO}" \
+              --state open \
+              --author app/dependabot \
+              --limit 100 \
+              --json number \
+              --jq 'sort_by(.number)[] | .number'
+          )
+
+          if [[ "${#pull_requests[@]}" -eq 0 ]]; then
+            echo "No open Dependabot pull requests."
+            exit 0
+          fi
+
+          for pr_number in "${pull_requests[@]}"; do
+            echo "Evaluating Dependabot pull request #${pr_number}."
+
+            pr_json="$(gh api "repos/${REPO}/pulls/${pr_number}")"
+            if ! jq -e \
+              --arg repo "${REPO}" \
+              --arg base "${DEFAULT_BRANCH}" \
+              '(.state == "open") and
+               (.draft == false) and
+               (.user.login == "dependabot[bot]") and
+               (.head.repo.full_name == $repo) and
+               (.base.ref == $base)' \
+              <<< "${pr_json}" >/dev/null; then
+              echo "Skipping #${pr_number}: source, state, or target does not match policy."
+              continue
+            fi
+
+            head_sha="$(jq -r '.head.sha' <<< "${pr_json}")"
+            head_ref="$(jq -r '.head.ref' <<< "${pr_json}")"
+            base_sha="$(jq -r '.base.sha' <<< "${pr_json}")"
+
+            runs_json="$(
+              gh api --method GET \
+                "repos/${REPO}/actions/workflows/security.yml/runs" \
+                -f event=pull_request \
+                -f branch="${head_ref}" \
+                -f status=completed \
+                -F per_page=100
+            )"
+            security_run="$(
+              jq -c \
+                --arg head "${head_sha}" \
+                --argjson pr "${pr_number}" \
+                'first(
+                   .workflow_runs[] |
+                   select(
+                     .head_sha == $head and
+                     .conclusion == "success" and
+                     any(.pull_requests[]?; .number == $pr)
+                   )
+                 ) // empty' \
+                <<< "${runs_json}"
+            )"
+
+            if [[ -z "${security_run}" ]]; then
+              echo "Skipping #${pr_number}: no successful Security checks run for ${head_sha}."
+              continue
+            fi
+
+            checked_base_sha="$(
+              jq -r \
+                --argjson pr "${pr_number}" \
+                'first(.pull_requests[] | select(.number == $pr) | .base.sha) // empty' \
+                <<< "${security_run}"
+            )"
+            if [[ "${checked_base_sha}" != "${base_sha}" ]]; then
+              echo "Skipping #${pr_number}: Security checks did not run against the current base."
+              continue
+            fi
+
+            checks_json="$(
+              gh api --paginate --slurp \
+                "repos/${REPO}/commits/${head_sha}/check-runs?per_page=100"
+            )"
+            latest_checks="$(
+              jq -c '
+                [.[].check_runs[]] |
+                sort_by([.name, .app.slug]) |
+                group_by([.name, .app.slug]) |
+                map(max_by(.id))
+              ' <<< "${checks_json}"
+            )"
+
+            if ! jq -e '
+              all(.[];
+                .status == "completed" and
+                (.conclusion == "success" or
+                 .conclusion == "neutral" or
+                 .conclusion == "skipped")) and
+              any(.[]; .name == "dependency-review" and .conclusion == "success") and
+              any(.[]; .name == "secret-scan" and .conclusion == "success")
+            ' <<< "${latest_checks}" >/dev/null; then
+              echo "Skipping #${pr_number}: checks are pending, failing, or incomplete."
+              continue
+            fi
+
+            statuses_json="$(gh api "repos/${REPO}/commits/${head_sha}/status")"
+            if ! jq -e '(.statuses | length) == 0 or .state == "success"' \
+              <<< "${statuses_json}" >/dev/null; then
+              echo "Skipping #${pr_number}: a commit status is pending or failing."
+              continue
+            fi
+
+            # Re-read mergeability immediately before the exact-head merge. GitHub can
+            # temporarily return null while recalculating the merge commit.
+            for _ in {1..6}; do
+              pr_json="$(gh api "repos/${REPO}/pulls/${pr_number}")"
+              if [[ "$(jq -r '.mergeable' <<< "${pr_json}")" != "null" ]]; then
+                break
+              fi
+              sleep 5
+            done
+
+            if ! jq -e \
+              --arg head "${head_sha}" \
+              --arg base "${base_sha}" \
+              '(.state == "open") and
+               (.head.sha == $head) and
+               (.base.sha == $base) and
+               (.mergeable == true) and
+               (.mergeable_state == "clean")' \
+              <<< "${pr_json}" >/dev/null; then
+              echo "Skipping #${pr_number}: the PR changed or is not conflict-free."
+              continue
+            fi
+
+            merge_json="$(
+              gh api --method PUT \
+                "repos/${REPO}/pulls/${pr_number}/merge" \
+                -f merge_method=squash \
+                -f sha="${head_sha}"
+            )"
+            jq -e '.merged == true' <<< "${merge_json}" >/dev/null
+            echo "Squash-merged Dependabot pull request #${pr_number} at ${head_sha}."
+          done
