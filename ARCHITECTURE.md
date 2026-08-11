@@ -862,6 +862,15 @@ requests from repository owners, members, or collaborators.
 pull requests against `main`. Dependabot recognizes the full-SHA action pins
 and their same-line version comments, so update pull requests preserve both.
 
+`.github/workflows/dependabot-auto-merge.yml` squash-merges eligible Dependabot
+pull requests after `Security checks` succeeds. Before merging, it verifies the
+Dependabot author and same-repository head, the exact head and current base SHAs,
+successful dependency-review and secret-scan jobs, every other registered check
+or commit status, and GitHub's conflict-free `clean` merge state. A daily sweep
+and manual dispatch recover pull requests whose completion event was missed; a
+stale security run never authorizes a merge after `main` advances. The workflow
+does not check out or execute pull-request code.
+
 ---
 
 ## Key Conventions
