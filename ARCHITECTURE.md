@@ -868,8 +868,11 @@ Dependabot author and same-repository head, the exact head and current base SHAs
 successful dependency-review and secret-scan jobs, every other registered check
 or commit status, and GitHub's conflict-free `clean` merge state. A daily sweep
 and manual dispatch recover pull requests whose completion event was missed; a
-stale security run never authorizes a merge after `main` advances. The workflow
-does not check out or execute pull-request code.
+stale security run never authorizes a merge after `main` advances. The current
+base SHA comes directly from the `main` Git ref rather than eventually-consistent
+pull-request metadata, is checked again immediately before merge, and only one PR
+is merged per workflow run. The workflow does not check out or execute
+pull-request code.
 
 ---
 

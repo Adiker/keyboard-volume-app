@@ -72,7 +72,13 @@ jobs:
 
             head_sha="$(jq -r '.head.sha' <<< "${pr_json}")"
             head_ref="$(jq -r '.head.ref' <<< "${pr_json}")"
-            base_sha="$(jq -r '.base.sha' <<< "${pr_json}")"
+            # Pull-request metadata can briefly retain the previous base SHA after
+            # the default branch advances. Read the branch ref directly instead.
+            base_sha="$(
+              gh api \
+                "repos/${REPO}/git/ref/heads/${DEFAULT_BRANCH}" \
+                --jq '.object.sha'
+            )"
 
             runs_json="$(
               gh api --method GET \
@@ -156,12 +162,22 @@ jobs:
               sleep 5
             done
 
+            latest_base_sha="$(
+              gh api \
+                "repos/${REPO}/git/ref/heads/${DEFAULT_BRANCH}" \
+                --jq '.object.sha'
+            )"
+            if [[ "${latest_base_sha}" != "${base_sha}" ]]; then
+              echo "Skipping #${pr_number}: the default branch advanced during evaluation."
+              continue
+            fi
+
             if ! jq -e \
               --arg head "${head_sha}" \
-              --arg base "${base_sha}" \
+              --arg base "${DEFAULT_BRANCH}" \
               '(.state == "open") and
                (.head.sha == $head) and
-               (.base.sha == $base) and
+               (.base.ref == $base) and
                (.mergeable == true) and
                (.mergeable_state == "clean")' \
               <<< "${pr_json}" >/dev/null; then
@@ -177,4 +193,7 @@ jobs:
             )"
             jq -e '.merged == true' <<< "${merge_json}" >/dev/null
             echo "Squash-merged Dependabot pull request #${pr_number} at ${head_sha}."
+            # A merge advances the default branch. Let a later run revalidate every
+            # remaining PR against that new base instead of continuing this sweep.
+            break
           done
