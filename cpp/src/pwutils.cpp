@@ -6,10 +6,14 @@
 #include <QElapsedTimer>
 
 #include <algorithm>
+#include <cmath>
 #include <mutex>
+#include <numeric>
+#include <vector>
 
 #include <pipewire/client.h>
 #include <pipewire/pipewire.h>
+#include <spa/param/audio/raw.h>
 #include <spa/param/param.h>
 #include <spa/param/props.h>
 #include <spa/pod/builder.h>
@@ -57,6 +61,7 @@ struct RegistryGlobal
     QString binary;
     QString mediaClass;
     QString nodeName;
+    QString objectSerial;
     QString clientId;
     QString mediaName;
 };
@@ -232,6 +237,7 @@ struct PipeWireSession
         global.name = dictValue(props, "application.name");
         global.binary = dictValue(props, "application.process.binary");
         global.mediaClass = dictValue(props, "media.class");
+        global.objectSerial = dictValue(props, "object.serial");
         global.clientId = dictValue(props, "client.id");
         global.mediaName = dictValue(props, "media.name");
         self->globals.append(global);
@@ -241,7 +247,8 @@ struct PipeWireSession
 struct NodeParamReader
 {
     PipeWireSession* session = nullptr;
-    double volume = 1.0;
+    double rawVolume = 1.0;
+    QList<double> channelVolumes;
     bool muted = false;
     bool hasProps = false;
 
@@ -254,14 +261,28 @@ struct NodeParamReader
         auto* self = static_cast<NodeParamReader*>(data);
         float volume = 1.0f;
         bool muted = false;
+        uint32_t channelValueSize = 0;
+        uint32_t channelValueType = SPA_TYPE_None;
+        uint32_t channelCount = 0;
+        const void* channelData = nullptr;
         uint32_t objectId = SPA_ID_INVALID;
-        const int res = spa_pod_parse_object(param, SPA_TYPE_OBJECT_Props, &objectId,
-                                             SPA_PROP_volume, SPA_POD_OPT_Float(&volume),
-                                             SPA_PROP_mute, SPA_POD_OPT_Bool(&muted));
+        const int res = spa_pod_parse_object(
+            param, SPA_TYPE_OBJECT_Props, &objectId, SPA_PROP_volume, SPA_POD_OPT_Float(&volume),
+            SPA_PROP_mute, SPA_POD_OPT_Bool(&muted), SPA_PROP_channelVolumes,
+            SPA_POD_OPT_Array(&channelValueSize, &channelValueType, &channelCount, &channelData));
         if (res >= 0)
         {
-            self->volume = volume;
+            self->rawVolume = volume;
             self->muted = muted;
+            self->channelVolumes.clear();
+            if (channelData && channelValueSize == sizeof(float) &&
+                channelValueType == SPA_TYPE_Float)
+            {
+                const auto* channels = static_cast<const float*>(channelData);
+                self->channelVolumes.reserve(static_cast<qsizetype>(channelCount));
+                for (uint32_t i = 0; i < channelCount; ++i)
+                    self->channelVolumes.append(channels[i]);
+            }
             self->hasProps = true;
         }
     }
@@ -296,6 +317,7 @@ struct NodeInfoReader
         self->global->binary = dictValue(info->props, "application.process.binary");
         self->global->mediaClass = dictValue(info->props, "media.class");
         self->global->nodeName = dictValue(info->props, "node.name");
+        self->global->objectSerial = dictValue(info->props, "object.serial");
         self->global->clientId = dictValue(info->props, "client.id");
         self->global->mediaName = dictValue(info->props, "media.name");
     }
@@ -373,8 +395,9 @@ bool nodeMatchesApp(const RegistryGlobal& global, const QStringList& candidates)
     return false;
 }
 
-bool readNodeProps(PipeWireSession& session, uint32_t nodeId, double* volume, bool* muted)
+bool readNodeProps(PipeWireSession& session, uint32_t nodeId, PipeWireNode* state)
 {
+    if (!state) return false;
     auto* node = static_cast<pw_node*>(
         pw_registry_bind(session.registry, nodeId, PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, 0));
     if (!node) return false;
@@ -394,8 +417,10 @@ bool readNodeProps(PipeWireSession& session, uint32_t nodeId, double* volume, bo
 
     if (ok)
     {
-        *volume = reader.volume;
-        *muted = reader.muted;
+        state->id = nodeId;
+        state->rawVolume = reader.rawVolume;
+        state->channelVolumes = reader.channelVolumes;
+        state->muted = reader.muted;
     }
 
     spa_hook_remove(&nodeListener);
@@ -403,7 +428,8 @@ bool readNodeProps(PipeWireSession& session, uint32_t nodeId, double* volume, bo
     return ok;
 }
 
-bool setNodeProp(uint32_t nodeId, std::optional<double> volume, std::optional<bool> muted)
+bool setNodeProps(uint32_t nodeId, std::optional<double> rawVolume,
+                  const QList<double>& channelVolumes, std::optional<bool> muted)
 {
     // This fallback is for paused/idle apps, so a short-lived session keeps the
     // implementation simple. Promote this to a persistent worker-owned session
@@ -420,29 +446,29 @@ bool setNodeProp(uint32_t nodeId, std::optional<double> volume, std::optional<bo
         return false;
     }
 
-    uint8_t buffer[256];
-    spa_pod_builder builder;
+    uint8_t buffer[4096];
+    spa_pod_builder builder{};
     spa_pod_builder_init(&builder, buffer, sizeof(buffer));
 
-    const spa_pod* param = nullptr;
-    if (volume && muted)
+    spa_pod_frame frame{};
+    spa_pod_builder_push_object(&builder, &frame, SPA_TYPE_OBJECT_Props, SPA_PARAM_Props);
+    if (rawVolume)
     {
-        const float vol = static_cast<float>(*volume);
-        param = static_cast<const spa_pod*>(spa_pod_builder_add_object(
-            &builder, SPA_TYPE_OBJECT_Props, SPA_PARAM_Props, SPA_PROP_volume, SPA_POD_Float(vol),
-            SPA_PROP_mute, SPA_POD_Bool(*muted)));
+        const float value = static_cast<float>(*rawVolume);
+        spa_pod_builder_add(&builder, SPA_PROP_volume, SPA_POD_Float(value), 0);
     }
-    else if (volume)
+    std::vector<float> channels;
+    channels.reserve(static_cast<size_t>(channelVolumes.size()));
+    for (double value : channelVolumes) channels.push_back(static_cast<float>(value));
+    if (!channels.empty())
     {
-        const float vol = static_cast<float>(*volume);
-        param = static_cast<const spa_pod*>(spa_pod_builder_add_object(
-            &builder, SPA_TYPE_OBJECT_Props, SPA_PARAM_Props, SPA_PROP_volume, SPA_POD_Float(vol)));
+        spa_pod_builder_add(&builder, SPA_PROP_channelVolumes,
+                            SPA_POD_Array(sizeof(float), SPA_TYPE_Float,
+                                          static_cast<uint32_t>(channels.size()), channels.data()),
+                            0);
     }
-    else if (muted)
-    {
-        param = static_cast<const spa_pod*>(spa_pod_builder_add_object(
-            &builder, SPA_TYPE_OBJECT_Props, SPA_PARAM_Props, SPA_PROP_mute, SPA_POD_Bool(*muted)));
-    }
+    if (muted) spa_pod_builder_add(&builder, SPA_PROP_mute, SPA_POD_Bool(*muted), 0);
+    const spa_pod* param = static_cast<const spa_pod*>(spa_pod_builder_pop(&builder, &frame));
 
     bool ok = false;
     if (param && pw_node_set_param(node, SPA_PARAM_Props, 0, param) >= 0)
@@ -453,6 +479,27 @@ bool setNodeProp(uint32_t nodeId, std::optional<double> volume, std::optional<bo
     return ok;
 }
 } // namespace
+
+double PipeWireNode::visibleVolume() const
+{
+    if (channelVolumes.isEmpty()) return std::cbrt(std::max(0.0, rawVolume));
+    double total = 0.0;
+    for (double value : channelVolumes) total += std::cbrt(std::max(0.0, value));
+    return total / static_cast<double>(channelVolumes.size());
+}
+
+double PipeWireNode::effectiveVolume() const
+{
+    if (channelVolumes.isEmpty()) return std::cbrt(std::max(0.0, rawVolume));
+    double total = 0.0;
+    for (double value : channelVolumes) total += std::cbrt(std::max(0.0, rawVolume * value));
+    return total / static_cast<double>(channelVolumes.size());
+}
+
+bool PipeWireNode::hasHiddenVolumeMultiplier() const
+{
+    return !channelVolumes.isEmpty() && std::abs(rawVolume - 1.0) > 0.0001;
+}
 
 // ─── Pure client filtering ────────────────────────────────────────────────────
 QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps>& globals,
@@ -530,11 +577,12 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
 }
 
 // ─── libpipewire public helpers ───────────────────────────────────────────────
-QList<PipeWireClient> listPipeWireClients(const QSet<QString>& systemBinaries,
-                                          const QSet<QString>& skipAppNames)
+PipeWireSnapshot inspectPipeWire(const QSet<QString>& systemBinaries,
+                                 const QSet<QString>& skipAppNames)
 {
+    PipeWireSnapshot snapshot;
     PipeWireSession session;
-    if (!session.connect()) return {};
+    if (!session.connect()) return snapshot;
     refreshObjectInfo(session);
 
     QList<PipeWireGlobalProps> globals;
@@ -551,54 +599,123 @@ QList<PipeWireClient> listPipeWireClients(const QSet<QString>& systemBinaries,
             global.mediaName,
         });
     }
-    return clientsFromPipeWireGlobals(globals, systemBinaries, skipAppNames);
+    snapshot.clients = clientsFromPipeWireGlobals(globals, systemBinaries, skipAppNames);
+
+    pw_thread_loop_lock(session.loop);
+    for (const RegistryGlobal& global : std::as_const(session.globals))
+    {
+        if (global.type != QString::fromUtf8(PW_TYPE_INTERFACE_Node) ||
+            !global.mediaClass.startsWith(QStringLiteral("Stream/")))
+            continue;
+
+        PipeWireNode node;
+        node.id = global.id;
+        node.name = global.name;
+        node.binary = global.binary;
+        node.mediaClass = global.mediaClass;
+        node.nodeName = global.nodeName;
+        node.objectSerial = global.objectSerial;
+        node.clientId = global.clientId;
+        node.mediaName = global.mediaName;
+        if (readNodeProps(session, global.id, &node)) snapshot.nodes.append(std::move(node));
+    }
+    pw_thread_loop_unlock(session.loop);
+    return snapshot;
+}
+
+QList<PipeWireClient> listPipeWireClients(const QSet<QString>& systemBinaries,
+                                          const QSet<QString>& skipAppNames)
+{
+    return inspectPipeWire(systemBinaries, skipAppNames).clients;
+}
+
+QList<PipeWireNode> findPipeWireNodesForApp(const QString& appName,
+                                            const QStringList& matchCandidates)
+{
+    QStringList candidates = matchCandidates;
+    if (candidates.isEmpty() && !appName.isEmpty()) candidates.append(appName);
+
+    QList<PipeWireNode> result;
+    const PipeWireSnapshot snapshot = inspectPipeWire();
+    for (const PipeWireNode& node : snapshot.nodes)
+    {
+        RegistryGlobal global;
+        global.id = node.id;
+        global.type = QString::fromUtf8(PW_TYPE_INTERFACE_Node);
+        global.name = node.name;
+        global.binary = node.binary;
+        global.mediaClass = node.mediaClass;
+        global.nodeName = node.nodeName;
+        global.objectSerial = node.objectSerial;
+        global.clientId = node.clientId;
+        global.mediaName = node.mediaName;
+        if (node.mediaClass.contains(QStringLiteral("Output")) &&
+            nodeMatchesApp(global, candidates))
+            result.append(node);
+    }
+    return result;
 }
 
 std::optional<PipeWireNode> findPipeWireNodeForApp(const QString& appName,
                                                    const QStringList& matchCandidates)
 {
-    QStringList candidates = matchCandidates;
-    if (candidates.isEmpty() && !appName.isEmpty()) candidates.append(appName);
+    const QList<PipeWireNode> nodes = findPipeWireNodesForApp(appName, matchCandidates);
+    if (nodes.isEmpty()) return std::nullopt;
+    return nodes.first();
+}
 
+std::optional<PipeWireNode> readPipeWireNode(uint32_t nodeId)
+{
     PipeWireSession session;
     if (!session.connect()) return std::nullopt;
-    refreshObjectInfo(session);
-
-    std::optional<RegistryGlobal> best;
-    for (const RegistryGlobal& global : session.globals)
-    {
-        if (!nodeMatchesApp(global, candidates)) continue;
-
-        if (global.mediaClass.contains(QStringLiteral("Output")))
-        {
-            best = global;
-            break;
-        }
-        best = global;
-    }
-    if (!best) return std::nullopt;
-
-    double volume = 1.0;
-    bool muted = false;
-
+    PipeWireNode state;
     pw_thread_loop_lock(session.loop);
-    const bool ok = readNodeProps(session, best->id, &volume, &muted);
+    const bool ok = readNodeProps(session, nodeId, &state);
     pw_thread_loop_unlock(session.loop);
     if (!ok) return std::nullopt;
+    return state;
+}
 
-    return PipeWireNode{best->id, volume, muted};
+bool setPipeWireNodeVisibleVolume(uint32_t nodeId, double volume, uint32_t channelCount)
+{
+    volume = std::clamp(volume, 0.0, 1.0);
+    channelCount = std::clamp(channelCount, 1U, static_cast<uint32_t>(SPA_AUDIO_MAX_CHANNELS));
+    QList<double> channels(static_cast<qsizetype>(channelCount), volume);
+    return setPipeWireNodeVisibleChannelVolumes(nodeId, channels);
+}
+
+bool setPipeWireNodeVisibleChannelVolumes(uint32_t nodeId, const QList<double>& channelVolumes)
+{
+    if (channelVolumes.isEmpty() ||
+        channelVolumes.size() > static_cast<qsizetype>(SPA_AUDIO_MAX_CHANNELS))
+        return false;
+    QList<double> sanitized = channelVolumes;
+    for (double& value : sanitized)
+    {
+        value = std::max(0.0, value);
+        value = value * value * value;
+    }
+    return setNodeProps(nodeId, 1.0, sanitized, std::nullopt);
 }
 
 bool setPipeWireNodeVolume(uint32_t nodeId, double volume)
 {
-    // The node id came from an earlier snapshot. If it disappeared before this
-    // write, bind fails and VolumeController falls through to pending state.
-    return setNodeProp(nodeId, volume, std::nullopt);
+    const std::optional<PipeWireNode> node = readPipeWireNode(nodeId);
+    const uint32_t channels =
+        node ? static_cast<uint32_t>(std::max(1, static_cast<int>(node->channelVolumes.size())))
+             : 2U;
+    return setPipeWireNodeVisibleVolume(nodeId, volume, channels);
+}
+
+bool restorePipeWireNodeVolumeState(uint32_t nodeId, double rawVolume,
+                                    const QList<double>& channelVolumes)
+{
+    return setNodeProps(nodeId, rawVolume, channelVolumes, std::nullopt);
 }
 
 bool setPipeWireNodeMute(uint32_t nodeId, bool muted)
 {
     // The node id came from an earlier snapshot. If it disappeared before this
     // write, bind fails and VolumeController falls through to pending state.
-    return setNodeProp(nodeId, std::nullopt, muted);
+    return setNodeProps(nodeId, std::nullopt, {}, muted);
 }

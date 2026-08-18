@@ -43,6 +43,8 @@ class TrayApp : public QObject
     void openSettings();
     void openAppSelector();
     void onApplyScene(const QString& sceneId);
+    void onHiddenVolumeDetected(const QString& app, double rawVolume, double visibleVolume,
+                                double effectiveVolume);
 
   private:
     void buildMenu();

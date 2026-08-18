@@ -271,6 +271,13 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("wizard.app_no_apps"), QStringLiteral("No audio applications found")},
              {QStringLiteral("wizard.app_refresh"), QStringLiteral("Refresh")},
              // warnings
+             {QStringLiteral("warn.hidden_volume.title"),
+              QStringLiteral("Hidden PipeWire volume detected")},
+             {QStringLiteral("warn.hidden_volume.text"),
+              QStringLiteral(
+                  "%1 has a hidden raw multiplier (%2%) while system mixers show %3% "
+                  "(effective volume %4%). No value was changed. The next explicit volume "
+                  "action will normalize it safely.")},
              {QStringLiteral("warn.no_device.title"), QStringLiteral("No device selected")},
              {QStringLiteral("warn.no_device.text"),
               QStringLiteral(
@@ -593,6 +600,15 @@ static const QMap<QString, QMap<QString, QString>>& strings()
               QStringLiteral("Nie znaleziono aplikacji audio")},
              {QStringLiteral("wizard.app_refresh"), QStringLiteral("Od\u015bwie\u017c")},
              // warnings
+             {QStringLiteral("warn.hidden_volume.title"),
+              QStringLiteral("Wykryto ukryt\u0105 g\u0142o\u015bno\u015b\u0107 PipeWire")},
+             {QStringLiteral("warn.hidden_volume.text"),
+              QStringLiteral(
+                  "%1 ma ukryty surowy mno\u017cnik (%2%), podczas gdy miksery systemowe "
+                  "pokazuj\u0105 %3% (g\u0142o\u015bno\u015b\u0107 efektywna: %4%). Niczego nie "
+                  "zmieniono. "
+                  "Nast\u0119pna jawna zmiana g\u0142o\u015bno\u015bci bezpiecznie znormalizuje "
+                  "stan.")},
              {QStringLiteral("warn.no_device.title"), QStringLiteral("Brak urz\u0105dzenia")},
              {QStringLiteral("warn.no_device.text"),
               QStringLiteral("Nie wybrano urz\u0105dzenia wej\u015bciowego.\n"

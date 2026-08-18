@@ -12,6 +12,7 @@
 #include <QStringList>
 #include <algorithm>
 #include <atomic>
+#include <numeric>
 #include <utility>
 
 #include <pulse/thread-mainloop.h>
@@ -48,6 +49,29 @@ bool containsAppKey(const QMap<QString, AudioApp>& apps, const QString& name)
             return true;
     }
     return false;
+}
+
+QList<double> channelVolumesFromPulse(const pa_cvolume& volume)
+{
+    QList<double> result;
+    result.reserve(volume.channels);
+    for (uint8_t i = 0; i < volume.channels; ++i)
+        result.append(static_cast<double>(volume.values[i]) / PA_VOLUME_NORM);
+    return result;
+}
+
+pa_cvolume pulseVolumeFromChannels(const QList<double>& channels)
+{
+    pa_cvolume result;
+    result.channels =
+        static_cast<uint8_t>(std::clamp<qsizetype>(channels.size(), 1, PA_CHANNELS_MAX));
+    for (uint8_t i = 0; i < result.channels; ++i)
+    {
+        const double value = std::max(0.0, channels[static_cast<qsizetype>(i)]);
+        result.values[i] = static_cast<pa_volume_t>(
+            std::min(value * PA_VOLUME_NORM, static_cast<double>(PA_VOLUME_MAX)));
+    }
+    return result;
 }
 } // namespace
 
@@ -322,7 +346,6 @@ class PaWorker : public QObject
     {
         if (m_stopping || contextReady()) return;
 
-        clearDuckingState();
         disconnectContext();
         if (connectContext())
         {
@@ -343,7 +366,11 @@ class PaWorker : public QObject
     void handleContextLost()
     {
         if (m_stopping) return;
-        clearDuckingState();
+        for (DuckingSnapshot& snapshot : m_duckingSnapshot)
+        {
+            snapshot.pipeWireNodeId.reset();
+            snapshot.pulseSinkInputIndex = PA_INVALID_INDEX;
+        }
         disconnectContext();
         scheduleReconnect();
         doListApps(/*forceRefresh=*/true);
@@ -360,68 +387,85 @@ class PaWorker : public QObject
         if (minVol > maxVol) std::swap(minVol, maxVol);
         const QList<AppAlias> aliases = currentAliases();
 
-        // 1. Active sink input (fast path)
+        // 1. Active sink inputs. On pipewire-pulse, object.id identifies the
+        // exact PipeWire node; write channelVolumes there so no hidden scalar
+        // multiplier can survive an explicit operation.
         if (contextReady())
         {
             pa_threaded_mainloop_lock(m_mainloop);
             const auto inputs = getSinkInputs();
+            pa_threaded_mainloop_unlock(m_mainloop);
+            std::optional<double> reportedVolume;
+            bool reportedMute = false;
             for (const auto& si : inputs)
             {
                 if (!si.matches(appName, aliases)) continue;
 
-                double newVol = std::clamp(si.volume + delta, minVol, maxVol);
-                pa_cvolume cv;
-                pa_cvolume_set(&cv, 2, static_cast<pa_volume_t>(newVol * PA_VOLUME_NORM));
-                pa_operation* op = pa_context_set_sink_input_volume(m_ctx, si.index, &cv,
-                                                                    operationDoneCallback, this);
-                if (!waitForOperation(op, "set sink input volume"))
+                double baseVolume = si.volume;
+                if (const auto node = pipeWireStateFor(si))
                 {
-                    pa_threaded_mainloop_unlock(m_mainloop);
-                    return;
+                    reportHiddenVolume(si.displayName(), *node);
+                    baseVolume = node->effectiveVolume();
                 }
-                pa_threaded_mainloop_unlock(m_mainloop);
-
-                m_appVolumes[appName] = newVol;
-                m_appMutes[appName] = si.muted;
-                removePending(appName);
-                emit volumeChanged(appName, newVol, si.muted);
+                const double newVol = std::clamp(baseVolume + delta, minVol, maxVol);
+                if (!setActiveStreamVisibleVolume(si, newVol)) continue;
+                if (!reportedVolume) reportedVolume = newVol;
+                reportedMute = si.muted;
+            }
+            if (reportedVolume)
+            {
+                m_appVolumes[appName] = *reportedVolume;
+                m_appMutes[appName] = reportedMute;
+                removePendingVolume(appName);
+                emit volumeChanged(appName, *reportedVolume, reportedMute);
                 return;
             }
-            pa_threaded_mainloop_unlock(m_mainloop);
         }
 
-        // 2. Stream restore DB
+        // 2. Paused/idle PipeWire nodes. Normalize an existing hidden
+        // multiplier while preserving its former effective level as the base
+        // for this relative user action.
+        const QList<PipeWireNode> nodes =
+            ::findPipeWireNodesForApp(appName, matchCandidatesFor(appName));
+        std::optional<double> pipeWireVolume;
+        bool pipeWireMuted = false;
+        for (const PipeWireNode& node : nodes)
+        {
+            reportHiddenVolume(appName, node);
+            const double newVol = std::clamp(node.effectiveVolume() + delta, minVol, maxVol);
+            const uint32_t channels =
+                static_cast<uint32_t>(std::max(1, static_cast<int>(node.channelVolumes.size())));
+            if (!::setPipeWireNodeVisibleVolume(node.id, newVol, channels)) continue;
+            if (!pipeWireVolume) pipeWireVolume = newVol;
+            pipeWireMuted = node.muted;
+        }
+        if (pipeWireVolume)
+        {
+            m_appVolumes[appName] = *pipeWireVolume;
+            m_appMutes[appName] = pipeWireMuted;
+            removePendingVolume(appName);
+            emit volumeChanged(appName, *pipeWireVolume, pipeWireMuted);
+            return;
+        }
+
+        // 3. Stream restore DB (pure PulseAudio, or no live PipeWire node).
         auto vol = streamRestoreChangeVolume(appName, delta, minVol, maxVol);
         if (vol)
         {
             m_appVolumes[appName] = *vol;
-            removePending(appName);
+            if (m_isPipeWirePulse)
+                parkPendingVolume(appName, *vol);
+            else
+                removePendingVolume(appName);
             emit volumeChanged(appName, *vol, m_appMutes.value(appName, false));
             return;
-        }
-
-        // 3. PipeWire node (libpipewire)
-        auto node = ::findPipeWireNodeForApp(appName, matchCandidatesFor(appName));
-        if (node)
-        {
-            double newVol = std::clamp(node->volume + delta, minVol, maxVol);
-            if (::setPipeWireNodeVolume(node->id, newVol))
-            {
-                m_appVolumes[appName] = newVol;
-                removePending(appName);
-                emit volumeChanged(appName, newVol, m_appMutes.value(appName, false));
-                return;
-            }
         }
 
         // 4. App disconnected — park and show desired volume on OSD anyway
         double base = m_appVolumes.value(appName, 1.0);
         double newVol = std::clamp(base + delta, minVol, maxVol);
         m_appVolumes[appName] = newVol;
-        {
-            QMutexLocker lk(&m_pendingMutex);
-            m_pendingVolumes[appName] = newVol;
-        }
+        parkPendingVolume(appName, newVol);
         emit volumeChanged(appName, newVol, m_appMutes.value(appName, false));
     }
 
@@ -451,7 +495,7 @@ class PaWorker : public QObject
 
                 m_appVolumes[appName] = si.volume;
                 m_appMutes[appName] = static_cast<bool>(newMute);
-                removePending(appName);
+                removePendingMute(appName);
                 emit volumeChanged(appName, si.volume, static_cast<bool>(newMute));
                 return;
             }
@@ -479,11 +523,8 @@ class PaWorker : public QObject
             if (::setPipeWireNodeMute(node->id, newMuted))
             {
                 m_appMutes[appName] = newMuted;
-                {
-                    QMutexLocker lk(&m_pendingMutex);
-                    m_pendingMutes.remove(appName);
-                }
-                emit volumeChanged(appName, node->volume, newMuted);
+                removePendingMute(appName);
+                emit volumeChanged(appName, node->visibleVolume(), newMuted);
                 return;
             }
         }
@@ -570,7 +611,7 @@ class PaWorker : public QObject
                 QMutexLocker lk(&m_pendingMutex);
                 m_pendingMutes.remove(appName);
             }
-            emit volumeChanged(appName, node->volume, targetMuted);
+            emit volumeChanged(appName, node->visibleVolume(), targetMuted);
             return;
         }
 
@@ -596,60 +637,69 @@ class PaWorker : public QObject
         targetVolume = std::clamp(targetVolume, minVol, maxVol);
         const QList<AppAlias> aliases = currentAliases();
 
-        // 1. Active sink input (absolute target, not relative delta)
+        // 1. Active sink inputs (absolute target, not relative delta).
         if (contextReady())
         {
             pa_threaded_mainloop_lock(m_mainloop);
             const auto inputs = getSinkInputs();
+            pa_threaded_mainloop_unlock(m_mainloop);
+            bool applied = false;
+            bool muted = false;
             for (const auto& si : inputs)
             {
                 if (!si.matches(appName, aliases)) continue;
 
-                pa_cvolume cv;
-                pa_cvolume_set(&cv, 2, static_cast<pa_volume_t>(targetVolume * PA_VOLUME_NORM));
-                pa_operation* op = pa_context_set_sink_input_volume(m_ctx, si.index, &cv,
-                                                                    operationDoneCallback, this);
-                if (!waitForOperation(op, "set sink input absolute volume"))
-                {
-                    pa_threaded_mainloop_unlock(m_mainloop);
-                    return;
-                }
-                pa_threaded_mainloop_unlock(m_mainloop);
-
+                if (!setActiveStreamVisibleVolume(si, targetVolume)) continue;
+                applied = true;
+                muted = si.muted;
+            }
+            if (applied)
+            {
                 m_appVolumes[appName] = targetVolume;
-                m_appMutes[appName] = si.muted;
-                removePending(appName);
-                emit volumeChanged(appName, targetVolume, si.muted);
+                m_appMutes[appName] = muted;
+                removePendingVolume(appName);
+                emit volumeChanged(appName, targetVolume, muted);
                 return;
             }
-            pa_threaded_mainloop_unlock(m_mainloop);
         }
 
-        // 2. Stream restore DB
-        if (streamRestoreSetVolume(appName, targetVolume, minVol, maxVol))
+        // 2. Paused/idle PipeWire nodes.
+        bool pipeWireApplied = false;
+        bool pipeWireMuted = false;
+        for (const PipeWireNode& node :
+             ::findPipeWireNodesForApp(appName, matchCandidatesFor(appName)))
+        {
+            reportHiddenVolume(appName, node);
+            const uint32_t channels =
+                static_cast<uint32_t>(std::max(1, static_cast<int>(node.channelVolumes.size())));
+            if (!::setPipeWireNodeVisibleVolume(node.id, targetVolume, channels)) continue;
+            pipeWireApplied = true;
+            pipeWireMuted = node.muted;
+        }
+        if (pipeWireApplied)
         {
             m_appVolumes[appName] = targetVolume;
-            removePending(appName);
-            emit volumeChanged(appName, targetVolume, m_appMutes.value(appName, false));
+            m_appMutes[appName] = pipeWireMuted;
+            removePendingVolume(appName);
+            emit volumeChanged(appName, targetVolume, pipeWireMuted);
             return;
         }
 
-        // 3. PipeWire node (libpipewire)
-        auto node = ::findPipeWireNodeForApp(appName, matchCandidatesFor(appName));
-        if (node && ::setPipeWireNodeVolume(node->id, targetVolume))
+        // 3. Stream restore DB.
+        if (streamRestoreSetVolume(appName, targetVolume, minVol, maxVol))
         {
             m_appVolumes[appName] = targetVolume;
-            removePending(appName);
+            if (m_isPipeWirePulse)
+                parkPendingVolume(appName, targetVolume);
+            else
+                removePendingVolume(appName);
             emit volumeChanged(appName, targetVolume, m_appMutes.value(appName, false));
             return;
         }
 
         // 4. Disconnected — park desired absolute volume.
         m_appVolumes[appName] = targetVolume;
-        {
-            QMutexLocker lk(&m_pendingMutex);
-            m_pendingVolumes[appName] = targetVolume;
-        }
+        parkPendingVolume(appName, targetVolume);
         emit volumeChanged(appName, targetVolume, m_appMutes.value(appName, false));
     }
 
@@ -658,39 +708,204 @@ class PaWorker : public QObject
         if (m_stopping || keepApp.isEmpty()) return;
 
         duckVolume = std::clamp(duckVolume, 0.0, 1.0);
+        const QList<AppAlias> aliases = currentAliases();
 
         if (m_duckingActive)
         {
-            const QMap<QString, DuckingSnapshot> restore = m_duckingSnapshot;
+            const QList<DuckingSnapshot> restore = m_duckingSnapshot;
             clearDuckingState();
 
-            for (auto it = restore.begin(); it != restore.end(); ++it)
+            QList<SinkInputInfo> currentInputs;
+            if (contextReady())
             {
-                setAppVolume(it.key(), it.value().volume);
+                pa_threaded_mainloop_lock(m_mainloop);
+                currentInputs = getSinkInputs();
+                pa_threaded_mainloop_unlock(m_mainloop);
+            }
+            QSet<uint32_t> restoredInputIndexes;
+            QSet<uint32_t> restoredPipeWireNodes;
+
+            for (const DuckingSnapshot& snapshot : restore)
+            {
+                bool restored = false;
+                for (const SinkInputInfo& input : std::as_const(currentInputs))
+                {
+                    if (restoredInputIndexes.contains(input.index) ||
+                        !input.matches(snapshot.app, aliases) ||
+                        (snapshot.pulseSinkInputIndex != PA_INVALID_INDEX &&
+                         input.index != snapshot.pulseSinkInputIndex))
+                        continue;
+                    if (input.pipeWireNodeId && !snapshot.visibleChannelVolumes.isEmpty())
+                    {
+                        restored = ::setPipeWireNodeVisibleChannelVolumes(
+                            *input.pipeWireNodeId, snapshot.visibleChannelVolumes);
+                    }
+                    if (!restored && snapshot.pulseChannelVolume.channels > 0)
+                    {
+                        restored = setPulseSinkInputChannelVolumes(
+                            input.index, snapshot.pulseChannelVolume,
+                            "restore exact ducked sink input volume");
+                    }
+                    if (restored)
+                    {
+                        restoredInputIndexes.insert(input.index);
+                        if (input.pipeWireNodeId)
+                            restoredPipeWireNodes.insert(*input.pipeWireNodeId);
+                    }
+                    break;
+                }
+
+                if (!restored && !snapshot.visibleChannelVolumes.isEmpty())
+                {
+                    const QList<PipeWireNode> nodes =
+                        ::findPipeWireNodesForApp(snapshot.app, matchCandidatesFor(snapshot.app));
+                    for (const PipeWireNode& node : nodes)
+                    {
+                        const uint32_t expectedNodeId = snapshot.pipeWireNodeId.value_or(node.id);
+                        if (restoredPipeWireNodes.contains(node.id) || node.id != expectedNodeId)
+                            continue;
+                        restored = ::setPipeWireNodeVisibleChannelVolumes(
+                            node.id, snapshot.visibleChannelVolumes);
+                        if (restored) restoredPipeWireNodes.insert(node.id);
+                        break;
+                    }
+                }
+
+                if (!restored && snapshot.pulseChannelVolume.channels > 0 &&
+                    streamRestoreSetChannelVolumes(snapshot.app, snapshot.pulseChannelVolume))
+                {
+                    restored = true;
+                    if (m_isPipeWirePulse)
+                    {
+                        const QList<double> channels =
+                            !snapshot.visibleChannelVolumes.isEmpty()
+                                ? snapshot.visibleChannelVolumes
+                                : channelVolumesFromPulse(snapshot.pulseChannelVolume);
+                        parkPendingChannelVolumes(snapshot.app, channels);
+                    }
+                }
+
+                if (!restored) setAppVolume(snapshot.app, snapshot.volume);
             }
             return;
         }
 
         doListApps(/*forceRefresh=*/true);
 
-        QMap<QString, DuckingSnapshot> snapshot;
+        QList<DuckingSnapshot> snapshot;
+        QSet<uint32_t> handledPipeWireNodes;
+        QSet<QString> handledApps;
+
+        // Snapshot and duck every active stream separately. Hidden scalar
+        // multipliers are folded into the visible per-channel values here, so
+        // this explicit action preserves the pre-duck effective level while
+        // normalizing the representation.
+        if (contextReady())
+        {
+            pa_threaded_mainloop_lock(m_mainloop);
+            const QList<SinkInputInfo> inputs = getSinkInputs();
+            pa_threaded_mainloop_unlock(m_mainloop);
+            for (const SinkInputInfo& input : inputs)
+            {
+                if (input.matches(keepApp, aliases)) continue;
+
+                DuckingSnapshot entry;
+                entry.app = input.targetName();
+                entry.pulseSinkInputIndex = input.index;
+                entry.pulseChannelVolume = input.channelVolume;
+                entry.volume = input.volume;
+
+                const std::optional<PipeWireNode> node = pipeWireStateFor(input);
+                if (node)
+                {
+                    entry.pipeWireNodeId = node->id;
+                    handledPipeWireNodes.insert(node->id);
+                    reportHiddenVolume(input.displayName(), *node);
+                    if (node->channelVolumes.isEmpty())
+                    {
+                        const int count = std::max<int>(1, input.channelVolume.channels);
+                        entry.visibleChannelVolumes = QList<double>(count, node->effectiveVolume());
+                    }
+                    else
+                    {
+                        entry.visibleChannelVolumes = node->channelVolumes;
+                        for (double& value : entry.visibleChannelVolumes)
+                            value = std::cbrt(std::max(0.0, value * node->rawVolume));
+                    }
+                    entry.volume = std::accumulate(entry.visibleChannelVolumes.cbegin(),
+                                                   entry.visibleChannelVolumes.cend(), 0.0) /
+                                   static_cast<double>(entry.visibleChannelVolumes.size());
+                }
+
+                handledApps.insert(entry.app.toLower());
+                const bool needsWrite = qAbs(entry.volume - duckVolume) > 0.0001 ||
+                                        (node && node->hasHiddenVolumeMultiplier());
+                if (needsWrite && setActiveStreamVisibleVolume(input, duckVolume))
+                    snapshot.append(std::move(entry));
+            }
+        }
+
+        // Idle/paused PipeWire nodes do not appear as PA sink inputs. Snapshot
+        // their exact channels too, then normalize and duck them directly.
         for (const AudioApp& app : std::as_const(m_listCache))
         {
             if (app.name.isEmpty()) continue;
             if (app.name == keepApp || app.binary == keepApp) continue;
+            if (app.active || handledApps.contains(app.binary.toLower()) ||
+                handledApps.contains(app.name.toLower()))
+                continue;
 
-            double currentVolume = app.volume;
-            if (!app.active)
+            bool handledNode = false;
+            for (const PipeWireNode& node :
+                 ::findPipeWireNodesForApp(app.name, matchCandidatesFor(app.name)))
             {
-                if (auto node = ::findPipeWireNodeForApp(app.name, matchCandidatesFor(app.name)))
+                if (handledPipeWireNodes.contains(node.id)) continue;
+                handledPipeWireNodes.insert(node.id);
+                handledNode = true;
+                reportHiddenVolume(app.name, node);
+
+                DuckingSnapshot entry;
+                entry.app = app.binary.isEmpty() ? app.name : app.binary;
+                entry.pipeWireNodeId = node.id;
+                if (node.channelVolumes.isEmpty())
+                    entry.visibleChannelVolumes = {node.effectiveVolume()};
+                else
                 {
-                    currentVolume = node->volume;
+                    entry.visibleChannelVolumes = node.channelVolumes;
+                    for (double& value : entry.visibleChannelVolumes)
+                        value = std::cbrt(std::max(0.0, value * node.rawVolume));
                 }
+                entry.volume = std::accumulate(entry.visibleChannelVolumes.cbegin(),
+                                               entry.visibleChannelVolumes.cend(), 0.0) /
+                               static_cast<double>(entry.visibleChannelVolumes.size());
+                const bool needsWrite =
+                    qAbs(entry.volume - duckVolume) > 0.0001 || node.hasHiddenVolumeMultiplier();
+                if (needsWrite && ::setPipeWireNodeVisibleVolume(
+                                      node.id, duckVolume,
+                                      std::max(1, static_cast<int>(node.channelVolumes.size()))))
+                    snapshot.append(std::move(entry));
             }
 
-            if (qAbs(currentVolume - duckVolume) <= 0.0001) continue;
-
-            snapshot[app.name] = DuckingSnapshot{currentVolume};
+            if (!handledNode)
+            {
+                DuckingSnapshot entry;
+                entry.app = app.binary.isEmpty() ? app.name : app.binary;
+                if (const auto restored = streamRestoreQueryState(entry.app))
+                {
+                    entry.pulseChannelVolume = restored->volume;
+                    entry.visibleChannelVolumes = channelVolumesFromPulse(restored->volume);
+                    entry.volume = restored->averageVolume();
+                }
+                else
+                {
+                    entry.volume = app.volume;
+                }
+                if (qAbs(entry.volume - duckVolume) > 0.0001)
+                {
+                    snapshot.append(entry);
+                    setAppVolume(entry.app, duckVolume);
+                }
+            }
         }
 
         if (snapshot.isEmpty()) return;
@@ -698,11 +913,6 @@ class PaWorker : public QObject
         m_duckingActive = true;
         m_duckingKeepApp = keepApp;
         m_duckingSnapshot = snapshot;
-
-        for (auto it = snapshot.begin(); it != snapshot.end(); ++it)
-        {
-            setAppVolume(it.key(), duckVolume);
-        }
     }
 
     void doQueryVolume(const QString& appName)
@@ -742,9 +952,9 @@ class PaWorker : public QObject
         auto node = ::findPipeWireNodeForApp(appName, matchCandidatesFor(appName));
         if (node)
         {
-            m_appVolumes[appName] = node->volume;
+            m_appVolumes[appName] = node->visibleVolume();
             m_appMutes[appName] = node->muted;
-            emit volumeChanged(appName, node->volume, node->muted);
+            emit volumeChanged(appName, node->visibleVolume(), node->muted);
             return;
         }
 
@@ -764,9 +974,24 @@ class PaWorker : public QObject
         Config* cfg = m_config.load(std::memory_order_acquire);
         const QSet<QString> systemBinaries = cfg ? cfg->effectiveSystemBinaries() : SYSTEM_BINARIES;
         const QSet<QString> skipAppNames = cfg ? cfg->effectiveSkipAppNames() : SKIP_APP_NAMES;
-        const auto pwClientsRaw = ::listPipeWireClients(systemBinaries, skipAppNames);
+        const PipeWireSnapshot pwSnapshot = ::inspectPipeWire(systemBinaries, skipAppNames);
+        const auto& pwClientsRaw = pwSnapshot.clients;
         const QList<AppAlias> aliases = cfg ? cfg->appAliases() : QList<AppAlias>{};
         const auto pwClients = applyAppAliases(pwClientsRaw, aliases);
+        QMap<uint32_t, PipeWireNode> pwNodeById;
+        QSet<QString> currentlyHiddenNodes;
+        for (const PipeWireNode& node : pwSnapshot.nodes)
+        {
+            if (!node.mediaClass.contains(QStringLiteral("Output"))) continue;
+            pwNodeById[node.id] = node;
+            if (!node.hasHiddenVolumeMultiplier()) continue;
+            currentlyHiddenNodes.insert(hiddenNodeKey(node));
+            const QString label = !node.name.isEmpty()     ? node.name
+                                  : !node.binary.isEmpty() ? node.binary
+                                                           : node.nodeName;
+            reportHiddenVolume(label, node);
+        }
+        m_reportedHiddenNodes.intersect(currentlyHiddenNodes);
         QMap<QString, QString> displayByTarget;
         QMap<QString, QString> displayByClientId;
         QMap<QString, QString> targetByClientId;
@@ -807,8 +1032,9 @@ class PaWorker : public QObject
                 app.sinkInputIndex = si.index;
                 app.name = mappedDisplay;
                 app.binary = mappedTarget;
-                app.volume = si.volume;
-                app.muted = si.muted;
+                const auto nodeIt = pwNodeById.constFind(si.pipeWireNodeId.value_or(0));
+                app.volume = nodeIt != pwNodeById.cend() ? nodeIt->visibleVolume() : si.volume;
+                app.muted = nodeIt != pwNodeById.cend() ? nodeIt->muted : si.muted;
                 app.active = true;
                 apps[mappedDisplay] = app;
                 if (!mappedTarget.isEmpty()) activeBinaries.insert(mappedTarget);
@@ -829,6 +1055,18 @@ class PaWorker : public QObject
             app.volume = 1.0;
             app.muted = false;
             app.active = false;
+            for (const PipeWireNode& node : pwSnapshot.nodes)
+            {
+                if (!node.mediaClass.contains(QStringLiteral("Output"))) continue;
+                const QStringList candidates = appMatchCandidates(client.binary, aliases);
+                if (!appNameMatchesFields(client.binary, node.name, node.binary, node.mediaName,
+                                          aliases) &&
+                    !candidates.contains(node.nodeName, Qt::CaseInsensitive))
+                    continue;
+                app.volume = node.visibleVolume();
+                app.muted = node.muted;
+                break;
+            }
             apps[client.name] = app;
         }
 
@@ -851,13 +1089,16 @@ class PaWorker : public QObject
         if (m_stopping || !contextReady()) return;
 
         QMap<QString, double> pendVols;
+        QMap<QString, QList<double>> pendChannelVols;
         QMap<QString, bool> pendMutes;
         QMap<QString, QString> pendSinks;
         {
             QMutexLocker lk(&m_pendingMutex);
-            if (m_pendingVolumes.isEmpty() && m_pendingMutes.isEmpty() && m_pendingSinks.isEmpty())
+            if (m_pendingVolumes.isEmpty() && m_pendingChannelVolumes.isEmpty() &&
+                m_pendingMutes.isEmpty() && m_pendingSinks.isEmpty())
                 return;
             pendVols = m_pendingVolumes;
+            pendChannelVols = m_pendingChannelVolumes;
             pendMutes = m_pendingMutes;
             pendSinks = m_pendingSinks;
         }
@@ -865,6 +1106,7 @@ class PaWorker : public QObject
         const QList<AppAlias> aliases = currentAliases();
         pa_threaded_mainloop_lock(m_mainloop);
         const auto inputs = getSinkInputs();
+        pa_threaded_mainloop_unlock(m_mainloop);
         QSet<QString> applied;
         QSet<QString> appliedSinks;
 
@@ -880,16 +1122,70 @@ class PaWorker : public QObject
                 const QString& app = it.key();
                 if (!si.matches(app, aliases)) continue;
 
+                const std::optional<PipeWireNode> beforeMove = pipeWireStateFor(si);
+                if (beforeMove) reportHiddenVolume(si.displayName(), *beforeMove);
                 const QByteArray sinkBytes = it.value().toUtf8();
                 OperationOutcome outcome;
+                pa_threaded_mainloop_lock(m_mainloop);
                 pa_operation* op = pa_context_move_sink_input_by_name(
                     m_ctx, si.index, sinkBytes.constData(), operationOutcomeCallback, &outcome);
                 const bool completed = waitForOperation(op, "apply pending sink move");
+                pa_threaded_mainloop_unlock(m_mainloop);
                 if (completed && outcome.success)
-                    appliedSinks.insert(app);
+                {
+                    if (restoreActiveStreamVolume(sinkInputAfterMove(si), beforeMove))
+                        appliedSinks.insert(app);
+                    else
+                        qWarning() << "[PaWorker] pending sink move succeeded but exact volume "
+                                      "restore failed for"
+                                   << app << "stream" << si.index;
+                }
                 else if (completed)
                     qWarning() << "[PaWorker] pending sink move for" << app << "→" << it.value()
                                << "rejected by PA";
+            }
+        }
+
+        for (const auto& si : inputs)
+        {
+            for (auto it = pendChannelVols.begin(); it != pendChannelVols.end(); ++it)
+            {
+                const QString& app = it.key();
+                if (!si.matches(app, aliases)) continue;
+
+                QList<double> channels = it.value();
+                const int streamChannels = std::max<int>(1, si.channelVolume.channels);
+                if (channels.size() != streamChannels)
+                {
+                    const double average =
+                        std::accumulate(channels.cbegin(), channels.cend(), 0.0) /
+                        static_cast<double>(channels.size());
+                    channels = QList<double>(streamChannels, average);
+                }
+
+                bool volumeApplied = false;
+                const uint32_t pipeWireNodeId = si.pipeWireNodeId.value_or(0);
+                if (m_isPipeWirePulse && pipeWireNodeId != 0)
+                    volumeApplied =
+                        ::setPipeWireNodeVisibleChannelVolumes(pipeWireNodeId, channels);
+                else
+                {
+                    volumeApplied = setPulseSinkInputChannelVolumes(
+                        si.index, pulseVolumeFromChannels(channels),
+                        "apply pending exact sink input channel volumes");
+                }
+
+                bool muteApplied = true;
+                if (pendMutes.contains(app))
+                {
+                    pa_threaded_mainloop_lock(m_mainloop);
+                    muteApplied = waitForOperation(
+                        pa_context_set_sink_input_mute(m_ctx, si.index, pendMutes[app] ? 1 : 0,
+                                                       operationDoneCallback, this),
+                        "apply pending exact-volume sink input mute");
+                    pa_threaded_mainloop_unlock(m_mainloop);
+                }
+                if (volumeApplied && muteApplied) applied.insert(app);
             }
         }
 
@@ -900,20 +1196,17 @@ class PaWorker : public QObject
                 const QString& app = it.key();
                 if (!si.matches(app, aliases)) continue;
 
-                pa_cvolume cv;
-                pa_cvolume_set(&cv, 2, static_cast<pa_volume_t>(it.value() * PA_VOLUME_NORM));
-                bool volumeApplied =
-                    waitForOperation(pa_context_set_sink_input_volume(m_ctx, si.index, &cv,
-                                                                      operationDoneCallback, this),
-                                     "apply pending sink input volume");
+                const bool volumeApplied = setActiveStreamVisibleVolume(si, it.value());
 
                 bool muteApplied = true;
                 if (pendMutes.contains(app))
                 {
+                    pa_threaded_mainloop_lock(m_mainloop);
                     muteApplied = waitForOperation(
                         pa_context_set_sink_input_mute(m_ctx, si.index, pendMutes[app] ? 1 : 0,
                                                        operationDoneCallback, this),
                         "apply pending sink input mute");
+                    pa_threaded_mainloop_unlock(m_mainloop);
                 }
 
                 if (volumeApplied && muteApplied) applied.insert(app);
@@ -926,19 +1219,20 @@ class PaWorker : public QObject
             for (auto it = pendMutes.begin(); it != pendMutes.end(); ++it)
             {
                 const QString& app = it.key();
-                if (pendVols.contains(app)) continue; // already handled above
+                if (pendVols.contains(app) || pendChannelVols.contains(app))
+                    continue; // already handled above
                 if (!si.matches(app, aliases)) continue;
 
-                bool muteApplied = waitForOperation(
+                pa_threaded_mainloop_lock(m_mainloop);
+                const bool muteApplied = waitForOperation(
                     pa_context_set_sink_input_mute(m_ctx, si.index, it.value() ? 1 : 0,
                                                    operationDoneCallback, this),
                     "apply pending sink input mute only");
+                pa_threaded_mainloop_unlock(m_mainloop);
 
                 if (muteApplied) applied.insert(app);
             }
         }
-        pa_threaded_mainloop_unlock(m_mainloop);
-
         // Persist sink routing in stream-restore so it survives app restarts.
         // doSetAppSink() already attempted this, but if the app had no existing
         // stream-restore entry at that time (idle app, cleared restore DB) the
@@ -960,6 +1254,7 @@ class PaWorker : public QObject
             for (const auto& app : applied)
             {
                 m_pendingVolumes.remove(app);
+                m_pendingChannelVolumes.remove(app);
                 m_pendingMutes.remove(app);
             }
             for (const auto& app : persistedSinks) m_pendingSinks.remove(app);
@@ -1073,17 +1368,27 @@ class PaWorker : public QObject
             const QByteArray sinkBytes = sinkName.toUtf8();
             pa_threaded_mainloop_lock(m_mainloop);
             const auto inputs = getSinkInputs();
+            pa_threaded_mainloop_unlock(m_mainloop);
             for (const auto& si : inputs)
             {
                 if (!si.matches(appName, aliases)) continue;
 
+                const std::optional<PipeWireNode> beforeMove = pipeWireStateFor(si);
+                if (beforeMove) reportHiddenVolume(si.displayName(), *beforeMove);
                 OperationOutcome outcome;
+                pa_threaded_mainloop_lock(m_mainloop);
                 pa_operation* op = pa_context_move_sink_input_by_name(
                     m_ctx, si.index, sinkBytes.constData(), operationOutcomeCallback, &outcome);
                 const bool completed = waitForOperation(op, "move sink input to sink");
+                pa_threaded_mainloop_unlock(m_mainloop);
                 if (completed && outcome.success)
                 {
-                    routedAny = true;
+                    if (restoreActiveStreamVolume(sinkInputAfterMove(si), beforeMove))
+                        routedAny = true;
+                    else
+                        qWarning()
+                            << "[PaWorker] sink move succeeded but exact volume restore failed for"
+                            << appName << "stream" << si.index;
                 }
                 else
                 {
@@ -1091,7 +1396,6 @@ class PaWorker : public QObject
                                << (completed ? "rejected by PA (stale sink name?)" : "timed out");
                 }
             }
-            pa_threaded_mainloop_unlock(m_mainloop);
         }
 
         // 2. Persist via stream-restore so the routing survives app restart.
@@ -1115,11 +1419,18 @@ class PaWorker : public QObject
     void appsReady(QList<AudioApp> apps);
     void sinksReady(QList<SinkInfo> sinks);
     void sinkChanged(const QString& app, const QString& sinkName);
+    void hiddenVolumeDetected(const QString& app, double rawVolume, double visibleVolume,
+                              double effectiveVolume);
     void cleanupFinished();
 
   private:
     struct DuckingSnapshot
     {
+        QString app;
+        std::optional<uint32_t> pipeWireNodeId;
+        uint32_t pulseSinkInputIndex = PA_INVALID_INDEX;
+        QList<double> visibleChannelVolumes;
+        pa_cvolume pulseChannelVolume{};
         double volume = 1.0;
     };
 
@@ -1129,6 +1440,7 @@ class PaWorker : public QObject
     std::atomic<Config*> m_config{nullptr};
     std::atomic<bool> m_stopping{false};
     bool m_cleanedUp = false;
+    bool m_isPipeWirePulse = false;
 
     QTimer* m_refreshTimer = nullptr;
     QTimer* m_sinkRefreshTimer = nullptr;
@@ -1136,15 +1448,17 @@ class PaWorker : public QObject
     int m_reconnectBackoffMs = 0;
     QMutex m_pendingMutex;
     QMap<QString, double> m_pendingVolumes;
+    QMap<QString, QList<double>> m_pendingChannelVolumes;
     QMap<QString, bool> m_pendingMutes;
     QMap<QString, QString> m_pendingSinks;
     QSet<QString> m_pendingSinkClears; // SR device=nullptr writes deferred while PA is down
     QMap<QString, double> m_appVolumes;
     QMap<QString, bool> m_appMutes;
     QMap<QString, QString> m_appSinks; // last-known sink name per app
+    QSet<QString> m_reportedHiddenNodes;
     bool m_duckingActive = false;
     QString m_duckingKeepApp;
-    QMap<QString, DuckingSnapshot> m_duckingSnapshot;
+    QList<DuckingSnapshot> m_duckingSnapshot;
     QList<AudioApp> m_listCache;
     qint64 m_listCacheTs = 0;
     QList<SinkInfo> m_sinkCache;
@@ -1202,11 +1516,13 @@ class PaWorker : public QObject
             disconnectContext();
             return false;
         }
+        detectPulseServerBackend();
         return true;
     }
 
     void disconnectContext()
     {
+        m_isPipeWirePulse = false;
         if (!m_mainloop) return;
 
         if (m_ctx)
@@ -1350,10 +1666,12 @@ class PaWorker : public QObject
     // ── Sink input helpers ────────────────────────────────────────────────────
     struct SinkInputInfo
     {
-        uint32_t index;
+        uint32_t index = PA_INVALID_INDEX;
         QString name, binary, mediaName, clientId;
-        double volume;
-        bool muted;
+        std::optional<uint32_t> pipeWireNodeId;
+        pa_cvolume channelVolume{};
+        double volume = 1.0;
+        bool muted = false;
 
         bool matches(const QString& appName, const QList<AppAlias>& aliases = {}) const
         {
@@ -1393,11 +1711,19 @@ class PaWorker : public QObject
         const char* processBinary =
             pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_PROCESS_BINARY);
         const char* clientId = pa_proplist_gets(info->proplist, "client.id");
+        const char* objectId = pa_proplist_gets(info->proplist, "object.id");
 
         si.name = QString::fromUtf8(appName ? appName : (mediaName ? mediaName : "Unknown"));
         si.binary = QString::fromUtf8(processBinary ? processBinary : "");
         si.mediaName = QString::fromUtf8(mediaName ? mediaName : "");
         si.clientId = QString::fromUtf8(clientId ? clientId : "");
+        if (objectId)
+        {
+            bool ok = false;
+            const uint32_t id = QString::fromUtf8(objectId).toUInt(&ok);
+            if (ok) si.pipeWireNodeId = id;
+        }
+        si.channelVolume = info->volume;
         si.volume = static_cast<double>(pa_cvolume_avg(&info->volume)) / PA_VOLUME_NORM;
         si.muted = info->mute != 0;
         d->result->append(si);
@@ -1411,6 +1737,83 @@ class PaWorker : public QObject
         SinkInputListCbData d{this, &result};
         waitForOperation(pa_context_get_sink_input_info_list(m_ctx, sinkInputListCallback, &d),
                          "list sink inputs");
+        return result;
+    }
+
+    std::optional<PipeWireNode> pipeWireStateFor(const SinkInputInfo& input)
+    {
+        if (!m_isPipeWirePulse || !input.pipeWireNodeId) return std::nullopt;
+        return ::readPipeWireNode(*input.pipeWireNodeId);
+    }
+
+    bool setPulseSinkInputVolume(const SinkInputInfo& input, double targetVolume)
+    {
+        if (!contextReady()) return false;
+        pa_cvolume volume;
+        const uint8_t channels = std::max<uint8_t>(1, input.channelVolume.channels);
+        pa_cvolume_set(&volume, channels, static_cast<pa_volume_t>(targetVolume * PA_VOLUME_NORM));
+        pa_threaded_mainloop_lock(m_mainloop);
+        const bool ok =
+            waitForOperation(pa_context_set_sink_input_volume(m_ctx, input.index, &volume,
+                                                              operationDoneCallback, this),
+                             "set sink input visible volume");
+        pa_threaded_mainloop_unlock(m_mainloop);
+        return ok;
+    }
+
+    bool setPulseSinkInputChannelVolumes(uint32_t sinkInputIndex, const pa_cvolume& channelVolume,
+                                         const char* operationName)
+    {
+        if (!contextReady()) return false;
+        pa_cvolume volume = channelVolume;
+        pa_threaded_mainloop_lock(m_mainloop);
+        const bool ok =
+            waitForOperation(pa_context_set_sink_input_volume(m_ctx, sinkInputIndex, &volume,
+                                                              operationDoneCallback, this),
+                             operationName);
+        pa_threaded_mainloop_unlock(m_mainloop);
+        return ok;
+    }
+
+    bool setActiveStreamVisibleVolume(const SinkInputInfo& input, double targetVolume)
+    {
+        if (m_isPipeWirePulse && input.pipeWireNodeId)
+        {
+            const uint32_t channels = std::max<uint8_t>(1, input.channelVolume.channels);
+            return ::setPipeWireNodeVisibleVolume(*input.pipeWireNodeId, targetVolume, channels);
+        }
+        return setPulseSinkInputVolume(input, targetVolume);
+    }
+
+    bool restoreActiveStreamVolume(const SinkInputInfo& input,
+                                   const std::optional<PipeWireNode>& pipeWireState)
+    {
+        if (m_isPipeWirePulse && pipeWireState)
+        {
+            if (!input.pipeWireNodeId) return false;
+            return ::restorePipeWireNodeVolumeState(*input.pipeWireNodeId, pipeWireState->rawVolume,
+                                                    pipeWireState->channelVolumes);
+        }
+
+        if (!contextReady()) return false;
+        return setPulseSinkInputChannelVolumes(input.index, input.channelVolume,
+                                               "restore exact sink input volume");
+    }
+
+    SinkInputInfo sinkInputAfterMove(const SinkInputInfo& beforeMove)
+    {
+        SinkInputInfo result = beforeMove;
+        if (!contextReady()) return result;
+
+        pa_threaded_mainloop_lock(m_mainloop);
+        const QList<SinkInputInfo> currentInputs = getSinkInputs();
+        pa_threaded_mainloop_unlock(m_mainloop);
+        for (const SinkInputInfo& current : currentInputs)
+        {
+            if (current.index != beforeMove.index) continue;
+            result.pipeWireNodeId = current.pipeWireNodeId;
+            break;
+        }
         return result;
     }
 
@@ -1443,7 +1846,8 @@ class PaWorker : public QObject
             double newVol = d->absoluteVolume ? std::clamp(d->targetVolume, d->minVol, d->maxVol)
                                               : std::clamp(vol + d->delta, d->minVol, d->maxVol);
             pa_ext_stream_restore_info out = *info;
-            pa_cvolume_set(const_cast<pa_cvolume*>(&out.volume), 2,
+            const uint8_t channels = std::max<uint8_t>(1, info->volume.channels);
+            pa_cvolume_set(const_cast<pa_cvolume*>(&out.volume), channels,
                            static_cast<pa_volume_t>(newVol * PA_VOLUME_NORM));
             pa_operation* op = pa_ext_stream_restore_write(ctx, PA_UPDATE_REPLACE, &out, 1, 1,
                                                            operationDoneCallback, d->self);
@@ -1462,10 +1866,21 @@ class PaWorker : public QObject
         }
     }
 
+    struct StreamRestoreState
+    {
+        bool muted = false;
+        pa_cvolume volume{};
+
+        double averageVolume() const
+        {
+            return static_cast<double>(pa_cvolume_avg(&volume)) / PA_VOLUME_NORM;
+        }
+    };
+
     struct StreamRestoreQueryCbData
     {
         QString target;
-        std::optional<std::pair<bool, double>>* out;
+        std::optional<StreamRestoreState>* out;
     };
 
     static void streamRestoreQueryCallback(pa_context*, const pa_ext_stream_restore_info* info,
@@ -1475,8 +1890,7 @@ class PaWorker : public QObject
         if (eol) return;
         if (!info || QString::fromUtf8(info->name) != d->target) return;
 
-        const double vol = static_cast<double>(pa_cvolume_avg(&info->volume)) / PA_VOLUME_NORM;
-        *d->out = std::make_pair(info->mute != 0, vol);
+        *d->out = StreamRestoreState{info->mute != 0, info->volume};
     }
 
     QStringList streamRestoreAppCandidates(const QString& app) const
@@ -1578,12 +1992,12 @@ class PaWorker : public QObject
         return std::nullopt;
     }
 
-    std::optional<std::pair<bool, double>> streamRestoreQueryVolume(const QString& app)
+    std::optional<StreamRestoreState> streamRestoreQueryState(const QString& app)
     {
         if (!contextReady()) return std::nullopt;
         for (const QString& candidate : streamRestoreAppCandidates(app))
         {
-            std::optional<std::pair<bool, double>> result;
+            std::optional<StreamRestoreState> result;
             StreamRestoreQueryCbData d{
                 QStringLiteral("sink-input-by-application-name:") + candidate, &result};
             pa_threaded_mainloop_lock(m_mainloop);
@@ -1593,6 +2007,54 @@ class PaWorker : public QObject
             if (result) return result;
         }
         return std::nullopt;
+    }
+
+    std::optional<std::pair<bool, double>> streamRestoreQueryVolume(const QString& app)
+    {
+        const auto state = streamRestoreQueryState(app);
+        if (!state) return std::nullopt;
+        return std::make_pair(state->muted, state->averageVolume());
+    }
+
+    bool streamRestoreSetChannelVolumes(const QString& app, const pa_cvolume& channelVolume)
+    {
+        if (!contextReady() || !pa_cvolume_valid(&channelVolume)) return false;
+
+        struct ExactVolumeData
+        {
+            PaWorker* self;
+            QString target;
+            pa_cvolume volume;
+            bool wrote = false;
+        };
+        auto callback =
+            [](pa_context* ctx, const pa_ext_stream_restore_info* info, int eol, void* ud)
+        {
+            auto* data = static_cast<ExactVolumeData*>(ud);
+            if (eol || !info || QString::fromUtf8(info->name) != data->target) return;
+            pa_ext_stream_restore_info out = *info;
+            out.volume = data->volume;
+            pa_operation* op = pa_ext_stream_restore_write(ctx, PA_UPDATE_REPLACE, &out, 1, 1,
+                                                           operationDoneCallback, data->self);
+            if (op)
+            {
+                data->wrote = true;
+                pa_operation_unref(op);
+            }
+        };
+
+        for (const QString& candidate : streamRestoreAppCandidates(app))
+        {
+            ExactVolumeData data{this,
+                                 QStringLiteral("sink-input-by-application-name:") + candidate,
+                                 channelVolume, false};
+            pa_threaded_mainloop_lock(m_mainloop);
+            waitForOperation(pa_ext_stream_restore_read(m_ctx, callback, &data),
+                             "restore exact stream restore channel volumes");
+            pa_threaded_mainloop_unlock(m_mainloop);
+            if (data.wrote) return true;
+        }
+        return false;
     }
 
     std::optional<double> streamRestoreSetVolume(const QString& app, double targetVolume,
@@ -1675,6 +2137,30 @@ class PaWorker : public QObject
         if (!info || !d || !d->defaultSinkName) return;
         if (info->default_sink_name)
             *d->defaultSinkName = QString::fromUtf8(info->default_sink_name);
+    }
+
+    struct ServerBackendCbData
+    {
+        QString serverName;
+    };
+    static void serverBackendCallback(pa_context*, const pa_server_info* info, void* ud)
+    {
+        auto* d = static_cast<ServerBackendCbData*>(ud);
+        if (!info || !d) return;
+        d->serverName = QString::fromUtf8(info->server_name ? info->server_name : "");
+    }
+
+    void detectPulseServerBackend()
+    {
+        m_isPipeWirePulse = false;
+        if (!contextReady()) return;
+        ServerBackendCbData data;
+        pa_threaded_mainloop_lock(m_mainloop);
+        waitForOperation(pa_context_get_server_info(m_ctx, serverBackendCallback, &data),
+                         "detect PulseAudio server backend");
+        pa_threaded_mainloop_unlock(m_mainloop);
+        m_isPipeWirePulse =
+            data.serverName.contains(QStringLiteral("PipeWire"), Qt::CaseInsensitive);
     }
 
     struct SinkInfoListCbData
@@ -1787,10 +2273,52 @@ class PaWorker : public QObject
         return anyWritten;
     }
 
-    void removePending(const QString& app)
+    void reportHiddenVolume(const QString& app, const PipeWireNode& node)
+    {
+        const QString key = hiddenNodeKey(node);
+        if (!node.hasHiddenVolumeMultiplier() || m_reportedHiddenNodes.contains(key)) return;
+        m_reportedHiddenNodes.insert(key);
+        const QString label = app.trimmed().isEmpty() ? QStringLiteral("unknown") : app;
+        qWarning().nospace() << "[PaWorker] Hidden PipeWire volume multiplier detected for "
+                             << label << " (node " << node.id << "): raw=" << node.rawVolume
+                             << ", visible=" << node.visibleVolume()
+                             << ", effective=" << node.effectiveVolume()
+                             << ". It will be normalized only by an explicit volume action.";
+        emit hiddenVolumeDetected(label, node.rawVolume, node.visibleVolume(),
+                                  node.effectiveVolume());
+    }
+
+    static QString hiddenNodeKey(const PipeWireNode& node)
+    {
+        if (!node.objectSerial.isEmpty()) return node.objectSerial;
+        return QStringLiteral("%1:%2:%3").arg(node.id).arg(node.nodeName, node.name);
+    }
+
+    void parkPendingVolume(const QString& app, double volume)
+    {
+        QMutexLocker lk(&m_pendingMutex);
+        m_pendingChannelVolumes.remove(app);
+        m_pendingVolumes[app] = volume;
+    }
+
+    void parkPendingChannelVolumes(const QString& app, const QList<double>& volumes)
+    {
+        if (volumes.isEmpty()) return;
+        QMutexLocker lk(&m_pendingMutex);
+        m_pendingVolumes.remove(app);
+        m_pendingChannelVolumes[app] = volumes;
+    }
+
+    void removePendingVolume(const QString& app)
     {
         QMutexLocker lk(&m_pendingMutex);
         m_pendingVolumes.remove(app);
+        m_pendingChannelVolumes.remove(app);
+    }
+
+    void removePendingMute(const QString& app)
+    {
+        QMutexLocker lk(&m_pendingMutex);
         m_pendingMutes.remove(app);
     }
 
@@ -1826,6 +2354,14 @@ VolumeController::VolumeController(QObject* parent) : QObject(parent)
                 emit sinksReady(sinks);
             });
     connect(m_worker, &PaWorker::sinkChanged, this, &VolumeController::sinkChanged);
+    connect(
+        m_worker, &PaWorker::hiddenVolumeDetected, this,
+        [this](const QString& app, double rawVolume, double visibleVolume, double effectiveVolume)
+        {
+            if (!m_hiddenWarningsReplayed)
+                m_hiddenVolumeWarnings.append({app, rawVolume, visibleVolume, effectiveVolume});
+            emit hiddenVolumeDetected(app, rawVolume, visibleVolume, effectiveVolume);
+        });
 
     // Clean up worker when thread finishes
     connect(m_paThread, &QThread::finished, m_worker, &QObject::deleteLater);
@@ -2023,6 +2559,15 @@ void VolumeController::queryVolume(const QString& appName)
 
     QMetaObject::invokeMethod(m_worker, "doQueryVolume", Qt::QueuedConnection,
                               Q_ARG(QString, appName));
+}
+
+void VolumeController::replayHiddenVolumeWarnings()
+{
+    m_hiddenWarningsReplayed = true;
+    const QList<HiddenVolumeWarning> warnings = std::exchange(m_hiddenVolumeWarnings, {});
+    for (const HiddenVolumeWarning& warning : warnings)
+        emit hiddenVolumeDetected(warning.app, warning.rawVolume, warning.visibleVolume,
+                                  warning.effectiveVolume);
 }
 
 #include "volumecontroller.moc"

@@ -20,6 +20,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 ### Features
 
 - **Per-app volume control** — changes the volume of only the selected application, not the system master
+- **Mixer-visible PipeWire volume** — intentional volume changes keep PipeWire's hidden raw multiplier at unity and store the level in per-channel volume, so KDE Plasma, pavucontrol, `wpctl`, and PulseAudio clients show the same value; pre-existing discrepancies are reported without being changed until the next explicit volume action
 - **Multiple audio profiles** — define several profiles, each with its own hotkeys (keyboard keys or mouse wheel), optional `Ctrl`/`Shift` modifiers, and target audio app. Bare `VolUp` controls Spotify, `Ctrl+VolUp` controls Firefox, `F11` controls VLC — all from the same keyboard
 - **Show volume hotkey** — each profile can bind an optional `show` hotkey that displays the OSD with the current volume of that profile's app without changing it; also available via `kv-ctl show [--profile id]` and D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
 - **Focus audio / ducking** — each profile can bind a manual ducking hotkey that lowers every other known audio app to a configured percentage, then restores the previous levels on the next press
@@ -174,9 +175,16 @@ cmake -S cpp -B cpp/build -DBUILD_TESTING=ON
 cmake --build cpp/build
 cd cpp/build && ctest -E test_mprisclient
 cd cpp/build && dbus-run-session -- ctest -R test_mprisclient
+
+# Optional real PipeWire regression in a private runtime/config/D-Bus session
+cmake -S cpp -B cpp/build-pw-test -DBUILD_TESTING=ON \
+  -DENABLE_PIPEWIRE_INTEGRATION_TESTS=ON
+cmake --build cpp/build-pw-test
+ctest --test-dir cpp/build-pw-test -R integration_pipewire_visible_volume \
+  --output-on-failure
 ```
 
-Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` command parsing, PipeWire utilities, VolumeController (smoke test), InputHandler (API-only, no device required), and MPRIS client behavior. `test_mprisclient` should run under `dbus-run-session` so fake MPRIS players do not collide with the user's desktop session. Requires `gtest` / `libgtest-dev` package (see Requirements).
+Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` command parsing, PipeWire utilities, VolumeController (smoke test), InputHandler (API-only, no device required), and MPRIS client behavior. `test_mprisclient` should run under `dbus-run-session` so fake MPRIS players do not collide with the user's desktop session. The opt-in PipeWire integration test starts private PipeWire, pipewire-pulse, WirePlumber, D-Bus, null sinks, and silent streams under a temporary XDG tree; it never connects to the desktop audio session or reads the user's keyboard-volume-app configuration. Requires `gtest` / `libgtest-dev` package (see Requirements).
 
 ### Usage
 
@@ -431,6 +439,8 @@ Optional OSD repositioning lives under the same `osd` section: `position_control
 
 For troubleshooting rare MPRIS progress glitches, start the app with `KVA_DEBUG_PROGRESS=1` to log progress metadata, position source, and OSD bar decisions.
 
+On PipeWire, the tray warning **Hidden PipeWire volume detected** means another component or an older build left `Props:volume` different from `1.0` while the mixer-visible channel levels say something else. Detection at startup, refresh, reconnect, profile switching, and stream appearance is read-only. The next explicit volume change (hotkey, GUI, scene, ducking, D-Bus, or `kv-ctl`) folds the effective gain into the visible channels and resets the raw multiplier to unity. No configuration migration is required. On a native PulseAudio server there is no PipeWire raw/channel split; the app continues to use libpulse and stream-restore channel volumes.
+
 ### Project structure
 
 ```
@@ -520,6 +530,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 ### Funkcje
 
 - **Sterowanie głośnością per aplikacja** — zmienia głośność wyłącznie wybranej aplikacji, nie ruszając głośności systemowej
+- **Głośność PipeWire widoczna w mikserach** — jawne zmiany utrzymują ukryty surowy mnożnik PipeWire na `1.0`, a poziom zapisują per kanał, dzięki czemu KDE Plasma, pavucontrol, `wpctl` i klienty PulseAudio pokazują tę samą wartość; zastane rozbieżności są zgłaszane i pozostają nietknięte do następnej jawnej zmiany głośności
 - **Wiele profili audio** — definiuj kilka profili, każdy z własnymi skrótami (klawisze lub pokrętło myszy), opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją. `VolUp` steruje Spotify, `Ctrl+VolUp` steruje Firefoxem, `F11` steruje VLC — wszystko z tej samej klawiatury
 - **Hotkey „Pokaż głośność"** — każdy profil może mieć opcjonalny skrót `show`, który wyświetla OSD z aktualną głośnością aplikacji profilu bez jej zmieniania; dostępny też przez `kv-ctl show [--profile id]` i D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
 - **Tryb skupienia audio / ducking** — każdy profil może mieć ręczny skrót, który ścisza wszystkie inne znane aplikacje audio do ustawionego procentu, a kolejne naciśnięcie przywraca poprzednie poziomy
@@ -672,9 +683,16 @@ cmake -S cpp -B cpp/build -DBUILD_TESTING=ON
 cmake --build cpp/build
 cd cpp/build && ctest -E test_mprisclient
 cd cpp/build && dbus-run-session -- ctest -R test_mprisclient
+
+# Opcjonalna regresja na prawdziwym PipeWire w prywatnej sesji runtime/config/D-Bus
+cmake -S cpp -B cpp/build-pw-test -DBUILD_TESTING=ON \
+  -DENABLE_PIPEWIRE_INTEGRATION_TESTS=ON
+cmake --build cpp/build-pw-test
+ctest --test-dir cpp/build-pw-test -R integration_pipewire_visible_volume \
+  --output-on-failure
 ```
 
-Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire, VolumeController (test dymny), InputHandler (API, bez potrzeby urządzenia) oraz klienta MPRIS. `test_mprisclient` uruchamiaj przez `dbus-run-session`, żeby fikcyjne odtwarzacze MPRIS nie mieszały się z sesją pulpitu użytkownika. Wymaga pakietu `gtest` / `libgtest-dev` (zobacz Wymagania).
+Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire, VolumeController (test dymny), InputHandler (API, bez potrzeby urządzenia) oraz klienta MPRIS. `test_mprisclient` uruchamiaj przez `dbus-run-session`, żeby fikcyjne odtwarzacze MPRIS nie mieszały się z sesją pulpitu użytkownika. Opcjonalny test integracyjny PipeWire uruchamia prywatne instancje PipeWire, pipewire-pulse, WirePlumber i D-Bus, zerowe sinki i bezgłośne strumienie pod tymczasowym drzewem XDG; nie łączy się z sesją audio pulpitu ani nie czyta konfiguracji użytkownika. Wymaga pakietu `gtest` / `libgtest-dev` (zobacz Wymagania).
 
 ### Użytkowanie
 
@@ -921,6 +939,8 @@ Wartości skrótów to bindingi evdev: starsze liczby oznaczają kody `EV_KEY` (
 Postęp odtwarzania OSD jest konfigurowany w sekcji `osd`. `progress_enabled` jest głównym przełącznikiem, `progress_interactive` pozwala sterować seekowalnymi odtwarzaczami z paska postępu, `progress_poll_ms` jest ograniczane do `200..2000`, `progress_label_mode` przyjmuje `app`, `track` albo `both`, a `tracked_players` to lista priorytetów dopasowywana do nazw usług MPRIS. Gdy `auto_profile_switch` przekieruje klawisze głośności do aplikacji wskazanej focusem, pasujące obserwowane odtwarzacze MPRIS są preferowane dla wiersza postępu i przycisków multimedialnych; jeśli nie ma dopasowania, używany jest ten sam fallback z `tracked_players`. Gdy opcja jest włączona i działa śledzony odtwarzacz, OSD powiększa widok głośności o wiersz postępu z etykietą utworu, paskiem 0-1000 i czasem. Kliknięcie lub przeciągnięcie paska wysyła MPRIS `SetPosition`, jeśli odtwarzacz zgłasza `CanSeek` i znaną długość. Strumienie bez znanej długości wyłączają pasek i pokazują `LIVE`. Ustaw `progress_interactive: false`, aby wyłączyć seekowanie kliknięciem/przeciągnięciem globalnie, zachowując wizualny pasek postępu — przydatne gdy wolisz sterować wyłącznie z klawiatury.
 
 Do diagnozowania rzadkich problemów z postępem MPRIS uruchom aplikację z `KVA_DEBUG_PROGRESS=1`, żeby logować metadane postępu, źródło pozycji i decyzje paska OSD.
+
+Ostrzeżenie zasobnika **Wykryto ukrytą głośność PipeWire** oznacza, że inny komponent lub starsza wersja programu pozostawiły `Props:volume` różne od `1.0`, mimo że widoczne w mikserze poziomy kanałów wskazują inną wartość. Wykrywanie przy starcie, odświeżeniu, reconnect, zmianie profilu i pojawieniu się strumienia jest tylko do odczytu. Następna jawna zmiana głośności (skrót, GUI, scena, ducking, D-Bus albo `kv-ctl`) składa efektywny gain do widocznych kanałów i zeruje rozbieżność przez ustawienie surowego mnożnika na `1.0`. Migracja konfiguracji nie jest potrzebna. Na natywnym PulseAudio nie istnieje rozdział PipeWire na surowy mnożnik i kanały; program nadal używa kanałowych wartości libpulse i stream-restore.
 
 ### Struktura projektu
 
