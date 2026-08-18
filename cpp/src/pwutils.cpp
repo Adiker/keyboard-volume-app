@@ -6,7 +6,9 @@
 #include <QElapsedTimer>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <memory>
 #include <mutex>
 #include <numeric>
 #include <vector>
@@ -80,7 +82,7 @@ struct PipeWireSession
     QList<RegistryGlobal> globals;
     int pendingSeq = 0;
     bool syncDone = false;
-    bool coreError = false;
+    std::atomic_bool coreError{false};
 
     PipeWireSession()
     {
@@ -179,7 +181,7 @@ struct PipeWireSession
         static const pw_registry_events registryEvents{
             PW_VERSION_REGISTRY_EVENTS,
             &PipeWireSession::onRegistryGlobal,
-            nullptr,
+            &PipeWireSession::onRegistryGlobalRemove,
         };
         pw_registry_add_listener(registry, &registryListener, &registryEvents, this);
         registryListenerAdded = true;
@@ -192,21 +194,28 @@ struct PipeWireSession
 
     bool sync(int timeoutMs)
     {
-        if (!loop || !core || coreError) return false;
+        if (!loop || !core || coreError.load(std::memory_order_acquire)) return false;
 
         syncDone = false;
         pendingSeq = pw_core_sync(core, PW_ID_CORE, pendingSeq);
 
         QElapsedTimer timer;
         timer.start();
-        while (!syncDone && !coreError && timer.elapsed() < timeoutMs)
+        while (!syncDone && !coreError.load(std::memory_order_acquire) &&
+               timer.elapsed() < timeoutMs)
         {
             timespec abstime{};
             const int remaining = std::max(1, timeoutMs - static_cast<int>(timer.elapsed()));
             if (pw_thread_loop_get_time(loop, &abstime, remaining * SPA_NSEC_PER_MSEC) < 0) break;
             pw_thread_loop_timed_wait_full(loop, &abstime);
         }
-        return syncDone && !coreError;
+        return syncDone && !coreError.load(std::memory_order_acquire);
+    }
+
+    bool healthy() const
+    {
+        return loop && loopStarted && context && core && registry &&
+               !coreError.load(std::memory_order_acquire);
     }
 
     static void onCoreDone(void* data, uint32_t id, int seq)
@@ -222,7 +231,7 @@ struct PipeWireSession
     static void onCoreError(void* data, uint32_t, int, int, const char* message)
     {
         auto* self = static_cast<PipeWireSession*>(data);
-        self->coreError = true;
+        self->coreError.store(true, std::memory_order_release);
         qWarning() << "[pwutils] PipeWire error:" << (message ? message : "unknown");
         pw_thread_loop_signal(self->loop, false);
     }
@@ -240,7 +249,14 @@ struct PipeWireSession
         global.objectSerial = dictValue(props, "object.serial");
         global.clientId = dictValue(props, "client.id");
         global.mediaName = dictValue(props, "media.name");
+        self->globals.removeIf([id](const RegistryGlobal& existing) { return existing.id == id; });
         self->globals.append(global);
+    }
+
+    static void onRegistryGlobalRemove(void* data, uint32_t id)
+    {
+        auto* self = static_cast<PipeWireSession*>(data);
+        self->globals.removeIf([id](const RegistryGlobal& global) { return global.id == id; });
     }
 };
 
@@ -325,11 +341,11 @@ struct NodeInfoReader
     static void onNodeParam(void*, int, uint32_t, uint32_t, uint32_t, const spa_pod*) {}
 };
 
-void refreshClientInfo(PipeWireSession& session, RegistryGlobal& global)
+bool refreshClientInfo(PipeWireSession& session, RegistryGlobal& global)
 {
     auto* client = static_cast<pw_client*>(pw_registry_bind(
         session.registry, global.id, PW_TYPE_INTERFACE_Client, PW_VERSION_CLIENT, 0));
-    if (!client) return;
+    if (!client) return true; // The object may have disappeared after the registry snapshot.
 
     spa_hook clientListener{};
     ClientInfoReader reader{&global};
@@ -340,16 +356,17 @@ void refreshClientInfo(PipeWireSession& session, RegistryGlobal& global)
     };
 
     pw_client_add_listener(client, &clientListener, &clientEvents, &reader);
-    session.sync(PW_SYNC_TIMEOUT_MS);
+    const bool ok = session.sync(PW_SYNC_TIMEOUT_MS);
     spa_hook_remove(&clientListener);
     pw_proxy_destroy(reinterpret_cast<pw_proxy*>(client));
+    return ok;
 }
 
-void refreshNodeInfo(PipeWireSession& session, RegistryGlobal& global)
+bool refreshNodeInfo(PipeWireSession& session, RegistryGlobal& global)
 {
     auto* node = static_cast<pw_node*>(
         pw_registry_bind(session.registry, global.id, PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, 0));
-    if (!node) return;
+    if (!node) return true; // The object may have disappeared after the registry snapshot.
 
     spa_hook nodeListener{};
     NodeInfoReader reader{&global};
@@ -360,22 +377,40 @@ void refreshNodeInfo(PipeWireSession& session, RegistryGlobal& global)
     };
 
     pw_node_add_listener(node, &nodeListener, &nodeEvents, &reader);
-    session.sync(PW_SYNC_TIMEOUT_MS);
+    const bool ok = session.sync(PW_SYNC_TIMEOUT_MS);
     spa_hook_remove(&nodeListener);
     pw_proxy_destroy(reinterpret_cast<pw_proxy*>(node));
+    return ok;
 }
 
-void refreshObjectInfo(PipeWireSession& session)
+std::optional<QList<RegistryGlobal>> snapshotObjectInfo(PipeWireSession& session)
 {
     pw_thread_loop_lock(session.loop);
-    for (RegistryGlobal& global : session.globals)
+    if (!session.sync(PW_SYNC_TIMEOUT_MS))
+    {
+        pw_thread_loop_unlock(session.loop);
+        return std::nullopt;
+    }
+
+    // Registry callbacks can add/remove globals while a later info sync waits.
+    // Refresh a stable local copy so those callbacks cannot invalidate iteration.
+    QList<RegistryGlobal> globals = session.globals;
+    bool ok = true;
+    for (RegistryGlobal& global : globals)
     {
         if (global.type == QString::fromUtf8(PW_TYPE_INTERFACE_Client))
-            refreshClientInfo(session, global);
+            ok = refreshClientInfo(session, global) && ok;
         else if (global.type == QString::fromUtf8(PW_TYPE_INTERFACE_Node))
-            refreshNodeInfo(session, global);
+            ok = refreshNodeInfo(session, global) && ok;
+        if (!session.healthy())
+        {
+            ok = false;
+            break;
+        }
     }
     pw_thread_loop_unlock(session.loop);
+    if (!ok) return std::nullopt;
+    return globals;
 }
 
 bool nodeMatchesApp(const RegistryGlobal& global, const QStringList& candidates)
@@ -395,8 +430,10 @@ bool nodeMatchesApp(const RegistryGlobal& global, const QStringList& candidates)
     return false;
 }
 
-bool readNodeProps(PipeWireSession& session, uint32_t nodeId, PipeWireNode* state)
+bool readNodeProps(PipeWireSession& session, uint32_t nodeId, PipeWireNode* state,
+                   bool* sessionFailed = nullptr)
 {
+    if (sessionFailed) *sessionFailed = false;
     if (!state) return false;
     auto* node = static_cast<pw_node*>(
         pw_registry_bind(session.registry, nodeId, PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, 0));
@@ -413,7 +450,9 @@ bool readNodeProps(PipeWireSession& session, uint32_t nodeId, PipeWireNode* stat
 
     pw_node_add_listener(node, &nodeListener, &nodeEvents, &reader);
     pw_node_enum_params(node, 0, SPA_PARAM_Props, 0, 1, nullptr);
-    const bool ok = session.sync(PW_SYNC_TIMEOUT_MS) && reader.hasProps;
+    const bool synced = session.sync(PW_SYNC_TIMEOUT_MS);
+    if (!synced && sessionFailed) *sessionFailed = true;
+    const bool ok = synced && reader.hasProps;
 
     if (ok)
     {
@@ -428,15 +467,11 @@ bool readNodeProps(PipeWireSession& session, uint32_t nodeId, PipeWireNode* stat
     return ok;
 }
 
-bool setNodeProps(uint32_t nodeId, std::optional<double> rawVolume,
-                  const QList<double>& channelVolumes, std::optional<bool> muted)
+bool setNodeProps(PipeWireSession& session, uint32_t nodeId, std::optional<double> rawVolume,
+                  const QList<double>& channelVolumes, std::optional<bool> muted,
+                  bool* sessionFailed = nullptr)
 {
-    // This fallback is for paused/idle apps, so a short-lived session keeps the
-    // implementation simple. Promote this to a persistent worker-owned session
-    // before using it in any hot path.
-    PipeWireSession session;
-    if (!session.connect()) return false;
-
+    if (sessionFailed) *sessionFailed = false;
     pw_thread_loop_lock(session.loop);
     auto* node = static_cast<pw_node*>(
         pw_registry_bind(session.registry, nodeId, PW_TYPE_INTERFACE_Node, PW_VERSION_NODE, 0));
@@ -472,11 +507,64 @@ bool setNodeProps(uint32_t nodeId, std::optional<double> rawVolume,
 
     bool ok = false;
     if (param && pw_node_set_param(node, SPA_PARAM_Props, 0, param) >= 0)
+    {
         ok = session.sync(PW_SYNC_TIMEOUT_MS);
+        if (!ok && sessionFailed) *sessionFailed = true;
+    }
 
     pw_proxy_destroy(reinterpret_cast<pw_proxy*>(node));
     pw_thread_loop_unlock(session.loop);
     return ok;
+}
+
+std::optional<PipeWireSnapshot> inspectSession(PipeWireSession& session,
+                                               const QSet<QString>& systemBinaries,
+                                               const QSet<QString>& skipAppNames)
+{
+    const auto registryGlobals = snapshotObjectInfo(session);
+    if (!registryGlobals) return std::nullopt;
+
+    PipeWireSnapshot snapshot;
+    QList<PipeWireGlobalProps> globals;
+    for (const RegistryGlobal& global : *registryGlobals)
+    {
+        globals.append({
+            global.type,
+            global.name,
+            global.binary,
+            global.mediaClass,
+            global.nodeName,
+            QString::number(global.id),
+            global.clientId,
+            global.mediaName,
+        });
+    }
+    snapshot.clients = clientsFromPipeWireGlobals(globals, systemBinaries, skipAppNames);
+
+    for (const RegistryGlobal& global : *registryGlobals)
+    {
+        if (global.type != QString::fromUtf8(PW_TYPE_INTERFACE_Node) ||
+            !global.mediaClass.startsWith(QStringLiteral("Stream/")))
+            continue;
+
+        PipeWireNode node;
+        node.id = global.id;
+        node.name = global.name;
+        node.binary = global.binary;
+        node.mediaClass = global.mediaClass;
+        node.nodeName = global.nodeName;
+        node.objectSerial = global.objectSerial;
+        node.clientId = global.clientId;
+        node.mediaName = global.mediaName;
+
+        bool sessionFailed = false;
+        pw_thread_loop_lock(session.loop);
+        const bool read = readNodeProps(session, global.id, &node, &sessionFailed);
+        pw_thread_loop_unlock(session.loop);
+        if (sessionFailed) return std::nullopt;
+        if (read) snapshot.nodes.append(std::move(node));
+    }
+    return snapshot;
 }
 } // namespace
 
@@ -577,66 +665,61 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
 }
 
 // ─── libpipewire public helpers ───────────────────────────────────────────────
-PipeWireSnapshot inspectPipeWire(const QSet<QString>& systemBinaries,
-                                 const QSet<QString>& skipAppNames)
+struct PipeWireVolumeBackend::Impl
 {
-    PipeWireSnapshot snapshot;
-    PipeWireSession session;
-    if (!session.connect()) return snapshot;
-    refreshObjectInfo(session);
+    std::unique_ptr<PipeWireSession> session;
+    uint64_t generation = 0;
 
-    QList<PipeWireGlobalProps> globals;
-    for (const RegistryGlobal& global : session.globals)
+    PipeWireSession* acquireSession()
     {
-        globals.append({
-            global.type,
-            global.name,
-            global.binary,
-            global.mediaClass,
-            global.nodeName,
-            QString::number(global.id),
-            global.clientId,
-            global.mediaName,
-        });
-    }
-    snapshot.clients = clientsFromPipeWireGlobals(globals, systemBinaries, skipAppNames);
+        if (session && session->healthy()) return session.get();
+        session.reset();
 
-    pw_thread_loop_lock(session.loop);
-    for (const RegistryGlobal& global : std::as_const(session.globals))
+        auto candidate = std::make_unique<PipeWireSession>();
+        if (!candidate->connect()) return nullptr;
+        session = std::move(candidate);
+        ++generation;
+        return session.get();
+    }
+
+    void invalidate()
     {
-        if (global.type != QString::fromUtf8(PW_TYPE_INTERFACE_Node) ||
-            !global.mediaClass.startsWith(QStringLiteral("Stream/")))
-            continue;
-
-        PipeWireNode node;
-        node.id = global.id;
-        node.name = global.name;
-        node.binary = global.binary;
-        node.mediaClass = global.mediaClass;
-        node.nodeName = global.nodeName;
-        node.objectSerial = global.objectSerial;
-        node.clientId = global.clientId;
-        node.mediaName = global.mediaName;
-        if (readNodeProps(session, global.id, &node)) snapshot.nodes.append(std::move(node));
+        session.reset();
     }
-    pw_thread_loop_unlock(session.loop);
-    return snapshot;
+};
+
+PipeWireVolumeBackend::PipeWireVolumeBackend() : m_impl(std::make_unique<Impl>()) {}
+
+PipeWireVolumeBackend::~PipeWireVolumeBackend() = default;
+
+PipeWireSnapshot PipeWireVolumeBackend::inspect(const QSet<QString>& systemBinaries,
+                                                const QSet<QString>& skipAppNames)
+{
+    for (int attempt = 0; attempt < 2; ++attempt)
+    {
+        PipeWireSession* session = m_impl->acquireSession();
+        if (!session) return {};
+        if (auto snapshot = inspectSession(*session, systemBinaries, skipAppNames))
+            return *snapshot;
+        m_impl->invalidate();
+    }
+    return {};
 }
 
-QList<PipeWireClient> listPipeWireClients(const QSet<QString>& systemBinaries,
-                                          const QSet<QString>& skipAppNames)
+QList<PipeWireClient> PipeWireVolumeBackend::listClients(const QSet<QString>& systemBinaries,
+                                                         const QSet<QString>& skipAppNames)
 {
-    return inspectPipeWire(systemBinaries, skipAppNames).clients;
+    return inspect(systemBinaries, skipAppNames).clients;
 }
 
-QList<PipeWireNode> findPipeWireNodesForApp(const QString& appName,
-                                            const QStringList& matchCandidates)
+QList<PipeWireNode> PipeWireVolumeBackend::findNodesForApp(const QString& appName,
+                                                           const QStringList& matchCandidates)
 {
     QStringList candidates = matchCandidates;
     if (candidates.isEmpty() && !appName.isEmpty()) candidates.append(appName);
 
     QList<PipeWireNode> result;
-    const PipeWireSnapshot snapshot = inspectPipeWire();
+    const PipeWireSnapshot snapshot = inspect();
     for (const PipeWireNode& node : snapshot.nodes)
     {
         RegistryGlobal global;
@@ -656,35 +739,43 @@ QList<PipeWireNode> findPipeWireNodesForApp(const QString& appName,
     return result;
 }
 
-std::optional<PipeWireNode> findPipeWireNodeForApp(const QString& appName,
-                                                   const QStringList& matchCandidates)
+std::optional<PipeWireNode>
+PipeWireVolumeBackend::findNodeForApp(const QString& appName, const QStringList& matchCandidates)
 {
-    const QList<PipeWireNode> nodes = findPipeWireNodesForApp(appName, matchCandidates);
+    const QList<PipeWireNode> nodes = findNodesForApp(appName, matchCandidates);
     if (nodes.isEmpty()) return std::nullopt;
     return nodes.first();
 }
 
-std::optional<PipeWireNode> readPipeWireNode(uint32_t nodeId)
+std::optional<PipeWireNode> PipeWireVolumeBackend::readNode(uint32_t nodeId)
 {
-    PipeWireSession session;
-    if (!session.connect()) return std::nullopt;
-    PipeWireNode state;
-    pw_thread_loop_lock(session.loop);
-    const bool ok = readNodeProps(session, nodeId, &state);
-    pw_thread_loop_unlock(session.loop);
-    if (!ok) return std::nullopt;
-    return state;
+    for (int attempt = 0; attempt < 2; ++attempt)
+    {
+        PipeWireSession* session = m_impl->acquireSession();
+        if (!session) return std::nullopt;
+
+        PipeWireNode state;
+        bool sessionFailed = false;
+        pw_thread_loop_lock(session->loop);
+        const bool ok = readNodeProps(*session, nodeId, &state, &sessionFailed);
+        pw_thread_loop_unlock(session->loop);
+        if (ok) return state;
+        if (!sessionFailed) return std::nullopt;
+        m_impl->invalidate();
+    }
+    return std::nullopt;
 }
 
-bool setPipeWireNodeVisibleVolume(uint32_t nodeId, double volume, uint32_t channelCount)
+bool PipeWireVolumeBackend::setVisibleVolume(uint32_t nodeId, double volume, uint32_t channelCount)
 {
     volume = std::clamp(volume, 0.0, 1.0);
     channelCount = std::clamp(channelCount, 1U, static_cast<uint32_t>(SPA_AUDIO_MAX_CHANNELS));
     QList<double> channels(static_cast<qsizetype>(channelCount), volume);
-    return setPipeWireNodeVisibleChannelVolumes(nodeId, channels);
+    return setVisibleChannelVolumes(nodeId, channels);
 }
 
-bool setPipeWireNodeVisibleChannelVolumes(uint32_t nodeId, const QList<double>& channelVolumes)
+bool PipeWireVolumeBackend::setVisibleChannelVolumes(uint32_t nodeId,
+                                                     const QList<double>& channelVolumes)
 {
     if (channelVolumes.isEmpty() ||
         channelVolumes.size() > static_cast<qsizetype>(SPA_AUDIO_MAX_CHANNELS))
@@ -695,27 +786,122 @@ bool setPipeWireNodeVisibleChannelVolumes(uint32_t nodeId, const QList<double>& 
         value = std::max(0.0, value);
         value = value * value * value;
     }
-    return setNodeProps(nodeId, 1.0, sanitized, std::nullopt);
+    for (int attempt = 0; attempt < 2; ++attempt)
+    {
+        PipeWireSession* session = m_impl->acquireSession();
+        if (!session) return false;
+        bool sessionFailed = false;
+        const bool ok =
+            setNodeProps(*session, nodeId, 1.0, sanitized, std::nullopt, &sessionFailed);
+        if (ok) return true;
+        if (!sessionFailed) return false;
+        m_impl->invalidate();
+    }
+    return false;
+}
+
+bool PipeWireVolumeBackend::restoreVolumeState(uint32_t nodeId, double rawVolume,
+                                               const QList<double>& channelVolumes)
+{
+    for (int attempt = 0; attempt < 2; ++attempt)
+    {
+        PipeWireSession* session = m_impl->acquireSession();
+        if (!session) return false;
+        bool sessionFailed = false;
+        const bool ok =
+            setNodeProps(*session, nodeId, rawVolume, channelVolumes, std::nullopt, &sessionFailed);
+        if (ok) return true;
+        if (!sessionFailed) return false;
+        m_impl->invalidate();
+    }
+    return false;
+}
+
+bool PipeWireVolumeBackend::setMute(uint32_t nodeId, bool muted)
+{
+    for (int attempt = 0; attempt < 2; ++attempt)
+    {
+        PipeWireSession* session = m_impl->acquireSession();
+        if (!session) return false;
+        bool sessionFailed = false;
+        const bool ok = setNodeProps(*session, nodeId, std::nullopt, {}, muted, &sessionFailed);
+        if (ok) return true;
+        if (!sessionFailed) return false;
+        m_impl->invalidate();
+    }
+    return false;
+}
+
+uint64_t PipeWireVolumeBackend::connectionGeneration() const
+{
+    return m_impl->generation;
+}
+
+PipeWireSnapshot inspectPipeWire(const QSet<QString>& systemBinaries,
+                                 const QSet<QString>& skipAppNames)
+{
+    PipeWireVolumeBackend backend;
+    return backend.inspect(systemBinaries, skipAppNames);
+}
+
+QList<PipeWireClient> listPipeWireClients(const QSet<QString>& systemBinaries,
+                                          const QSet<QString>& skipAppNames)
+{
+    PipeWireVolumeBackend backend;
+    return backend.listClients(systemBinaries, skipAppNames);
+}
+
+QList<PipeWireNode> findPipeWireNodesForApp(const QString& appName,
+                                            const QStringList& matchCandidates)
+{
+    PipeWireVolumeBackend backend;
+    return backend.findNodesForApp(appName, matchCandidates);
+}
+
+std::optional<PipeWireNode> findPipeWireNodeForApp(const QString& appName,
+                                                   const QStringList& matchCandidates)
+{
+    PipeWireVolumeBackend backend;
+    return backend.findNodeForApp(appName, matchCandidates);
+}
+
+std::optional<PipeWireNode> readPipeWireNode(uint32_t nodeId)
+{
+    PipeWireVolumeBackend backend;
+    return backend.readNode(nodeId);
+}
+
+bool setPipeWireNodeVisibleVolume(uint32_t nodeId, double volume, uint32_t channelCount)
+{
+    PipeWireVolumeBackend backend;
+    return backend.setVisibleVolume(nodeId, volume, channelCount);
+}
+
+bool setPipeWireNodeVisibleChannelVolumes(uint32_t nodeId, const QList<double>& channelVolumes)
+{
+    PipeWireVolumeBackend backend;
+    return backend.setVisibleChannelVolumes(nodeId, channelVolumes);
 }
 
 bool setPipeWireNodeVolume(uint32_t nodeId, double volume)
 {
-    const std::optional<PipeWireNode> node = readPipeWireNode(nodeId);
+    PipeWireVolumeBackend backend;
+    const std::optional<PipeWireNode> node = backend.readNode(nodeId);
     const uint32_t channels =
         node ? static_cast<uint32_t>(std::max(1, static_cast<int>(node->channelVolumes.size())))
              : 2U;
-    return setPipeWireNodeVisibleVolume(nodeId, volume, channels);
+    return backend.setVisibleVolume(nodeId, volume, channels);
 }
 
 bool restorePipeWireNodeVolumeState(uint32_t nodeId, double rawVolume,
                                     const QList<double>& channelVolumes)
 {
-    return setNodeProps(nodeId, rawVolume, channelVolumes, std::nullopt);
+    PipeWireVolumeBackend backend;
+    return backend.restoreVolumeState(nodeId, rawVolume, channelVolumes);
 }
 
 bool setPipeWireNodeMute(uint32_t nodeId, bool muted)
 {
-    // The node id came from an earlier snapshot. If it disappeared before this
-    // write, bind fails and VolumeController falls through to pending state.
-    return setNodeProps(nodeId, std::nullopt, {}, muted);
+    PipeWireVolumeBackend backend;
+    return backend.setMute(nodeId, muted);
 }

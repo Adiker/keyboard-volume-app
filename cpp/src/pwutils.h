@@ -1,8 +1,12 @@
 #pragma once
+#include "appaudiofilters.h"
+
 #include <QString>
 #include <QStringList>
 #include <QList>
 #include <QSet>
+#include <cstdint>
+#include <memory>
 #include <optional>
 
 struct PipeWireClient
@@ -52,9 +56,41 @@ struct PipeWireSnapshot
     QList<PipeWireNode> nodes;
 };
 
-// Filter sets — defined in appaudiofilters.cpp; re-exported here for callers
-// that include pwutils.h.
-#include "appaudiofilters.h"
+// Persistent libpipewire connection used by PaWorker. All methods must be
+// called from the owning thread. A failed PipeWire core is discarded and
+// reconnected lazily on the next operation.
+class PipeWireVolumeBackend
+{
+  public:
+    PipeWireVolumeBackend();
+    ~PipeWireVolumeBackend();
+
+    PipeWireVolumeBackend(const PipeWireVolumeBackend&) = delete;
+    PipeWireVolumeBackend& operator=(const PipeWireVolumeBackend&) = delete;
+
+    PipeWireSnapshot inspect(const QSet<QString>& systemBinaries = SYSTEM_BINARIES,
+                             const QSet<QString>& skipAppNames = SKIP_APP_NAMES);
+    QList<PipeWireClient> listClients(const QSet<QString>& systemBinaries = SYSTEM_BINARIES,
+                                      const QSet<QString>& skipAppNames = SKIP_APP_NAMES);
+    QList<PipeWireNode> findNodesForApp(const QString& appName,
+                                        const QStringList& matchCandidates = {});
+    std::optional<PipeWireNode> findNodeForApp(const QString& appName,
+                                               const QStringList& matchCandidates = {});
+    std::optional<PipeWireNode> readNode(uint32_t nodeId);
+
+    bool setVisibleVolume(uint32_t nodeId, double volume, uint32_t channelCount = 2);
+    bool setVisibleChannelVolumes(uint32_t nodeId, const QList<double>& channelVolumes);
+    bool restoreVolumeState(uint32_t nodeId, double rawVolume, const QList<double>& channelVolumes);
+    bool setMute(uint32_t nodeId, bool muted);
+
+    // Diagnostic counter used by the isolated regression helper: repeated
+    // healthy operations must keep the same connection generation.
+    uint64_t connectionGeneration() const;
+
+  private:
+    struct Impl;
+    std::unique_ptr<Impl> m_impl;
+};
 
 // Pure helper used by tests and the live PipeWire snapshot path.
 // Optional filter sets default to the built-in constants.

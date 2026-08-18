@@ -340,6 +340,8 @@ wait_for_daemon()
 start_stream kv-active
 ACTIVE_NODE=$(wait_for_node kv-active)
 assert_node_state "initial stream readiness" kv-active 1.0 "1.0,1.0"
+"$PW_HELPER" reuse "$ACTIVE_NODE" | tee "$TEST_ROOT/connection-reuse.log"
+grep -q "reused=true" "$TEST_ROOT/connection-reuse.log"
 pw-cli set-param "$ACTIVE_NODE" Props '{ volume: 0.250000 }' >/dev/null
 assert_node_state "pre-existing hidden multiplier" kv-active 0.25 "1.0,1.0"
 "$PW_HELPER" inspect "$ACTIVE_NODE" | tee "$TEST_ROOT/production-parser.log"
@@ -441,6 +443,36 @@ assert_node_state "duck restore after reconnect" kv-duck 1.0 "0.47622,0.63496"
 start_stream kv-active kv_sink_b
 wait_for_node kv-active >/dev/null
 assert_node_state "pipewire-pulse reconnect" kv-active 1.0 "0.61,0.61"
+assert_node_sink kv-active kv_sink_b
+
+for app in kv-active kv-inactive kv-pending kv-keep kv-duck; do
+    stop_stream "$app"
+done
+wait_for_no_node kv-active
+"$KVCTL" set volume 61
+kill "$PULSE_PID" "$WIREPLUMBER_PID" "$PIPEWIRE_PID"
+wait "$PULSE_PID" 2>/dev/null || true
+wait "$WIREPLUMBER_PID" 2>/dev/null || true
+wait "$PIPEWIRE_PID" 2>/dev/null || true
+PULSE_PID=
+WIREPLUMBER_PID=
+PIPEWIRE_PID=
+
+pipewire >"$TEST_ROOT/pipewire-core-reconnect.log" 2>&1 &
+PIPEWIRE_PID=$!
+wireplumber >"$TEST_ROOT/wireplumber-core-reconnect.log" 2>&1 &
+WIREPLUMBER_PID=$!
+pipewire-pulse >"$TEST_ROOT/pipewire-pulse-core-reconnect.log" 2>&1 &
+PULSE_PID=$!
+for _ in $(seq 1 120); do
+    [[ -S $XDG_RUNTIME_DIR/pulse/native ]] && pactl info >/dev/null 2>&1 && break
+    sleep 0.05
+done
+pactl info >/dev/null
+ensure_test_sinks
+start_stream kv-active kv_sink_b
+wait_for_node kv-active >/dev/null
+assert_node_state "PipeWire core reconnect" kv-active 1.0 "0.61,0.61"
 assert_node_sink kv-active kv_sink_b
 
 echo "PipeWire visible-volume integration test passed"

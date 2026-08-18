@@ -426,7 +426,7 @@ class PaWorker : public QObject
         // multiplier while preserving its former effective level as the base
         // for this relative user action.
         const QList<PipeWireNode> nodes =
-            ::findPipeWireNodesForApp(appName, matchCandidatesFor(appName));
+            m_pipeWire.findNodesForApp(appName, matchCandidatesFor(appName));
         std::optional<double> pipeWireVolume;
         bool pipeWireMuted = false;
         for (const PipeWireNode& node : nodes)
@@ -435,7 +435,7 @@ class PaWorker : public QObject
             const double newVol = std::clamp(node.effectiveVolume() + delta, minVol, maxVol);
             const uint32_t channels =
                 static_cast<uint32_t>(std::max(1, static_cast<int>(node.channelVolumes.size())));
-            if (!::setPipeWireNodeVisibleVolume(node.id, newVol, channels)) continue;
+            if (!m_pipeWire.setVisibleVolume(node.id, newVol, channels)) continue;
             if (!pipeWireVolume) pipeWireVolume = newVol;
             pipeWireMuted = node.muted;
         }
@@ -516,11 +516,11 @@ class PaWorker : public QObject
         }
 
         // 3. PipeWire node
-        auto node = ::findPipeWireNodeForApp(appName, matchCandidatesFor(appName));
+        auto node = m_pipeWire.findNodeForApp(appName, matchCandidatesFor(appName));
         if (node)
         {
             bool newMuted = !node->muted;
-            if (::setPipeWireNodeMute(node->id, newMuted))
+            if (m_pipeWire.setMute(node->id, newMuted))
             {
                 m_appMutes[appName] = newMuted;
                 removePendingMute(appName);
@@ -603,8 +603,8 @@ class PaWorker : public QObject
         }
 
         // 3. PipeWire node
-        auto node = ::findPipeWireNodeForApp(appName, matchCandidatesFor(appName));
-        if (node && ::setPipeWireNodeMute(node->id, targetMuted))
+        auto node = m_pipeWire.findNodeForApp(appName, matchCandidatesFor(appName));
+        if (node && m_pipeWire.setMute(node->id, targetMuted))
         {
             m_appMutes[appName] = targetMuted;
             {
@@ -667,12 +667,12 @@ class PaWorker : public QObject
         bool pipeWireApplied = false;
         bool pipeWireMuted = false;
         for (const PipeWireNode& node :
-             ::findPipeWireNodesForApp(appName, matchCandidatesFor(appName)))
+             m_pipeWire.findNodesForApp(appName, matchCandidatesFor(appName)))
         {
             reportHiddenVolume(appName, node);
             const uint32_t channels =
                 static_cast<uint32_t>(std::max(1, static_cast<int>(node.channelVolumes.size())));
-            if (!::setPipeWireNodeVisibleVolume(node.id, targetVolume, channels)) continue;
+            if (!m_pipeWire.setVisibleVolume(node.id, targetVolume, channels)) continue;
             pipeWireApplied = true;
             pipeWireMuted = node.muted;
         }
@@ -737,7 +737,7 @@ class PaWorker : public QObject
                         continue;
                     if (input.pipeWireNodeId && !snapshot.visibleChannelVolumes.isEmpty())
                     {
-                        restored = ::setPipeWireNodeVisibleChannelVolumes(
+                        restored = m_pipeWire.setVisibleChannelVolumes(
                             *input.pipeWireNodeId, snapshot.visibleChannelVolumes);
                     }
                     if (!restored && snapshot.pulseChannelVolume.channels > 0)
@@ -758,13 +758,13 @@ class PaWorker : public QObject
                 if (!restored && !snapshot.visibleChannelVolumes.isEmpty())
                 {
                     const QList<PipeWireNode> nodes =
-                        ::findPipeWireNodesForApp(snapshot.app, matchCandidatesFor(snapshot.app));
+                        m_pipeWire.findNodesForApp(snapshot.app, matchCandidatesFor(snapshot.app));
                     for (const PipeWireNode& node : nodes)
                     {
                         const uint32_t expectedNodeId = snapshot.pipeWireNodeId.value_or(node.id);
                         if (restoredPipeWireNodes.contains(node.id) || node.id != expectedNodeId)
                             continue;
-                        restored = ::setPipeWireNodeVisibleChannelVolumes(
+                        restored = m_pipeWire.setVisibleChannelVolumes(
                             node.id, snapshot.visibleChannelVolumes);
                         if (restored) restoredPipeWireNodes.insert(node.id);
                         break;
@@ -857,7 +857,7 @@ class PaWorker : public QObject
 
             bool handledNode = false;
             for (const PipeWireNode& node :
-                 ::findPipeWireNodesForApp(app.name, matchCandidatesFor(app.name)))
+                 m_pipeWire.findNodesForApp(app.name, matchCandidatesFor(app.name)))
             {
                 if (handledPipeWireNodes.contains(node.id)) continue;
                 handledPipeWireNodes.insert(node.id);
@@ -880,7 +880,7 @@ class PaWorker : public QObject
                                static_cast<double>(entry.visibleChannelVolumes.size());
                 const bool needsWrite =
                     qAbs(entry.volume - duckVolume) > 0.0001 || node.hasHiddenVolumeMultiplier();
-                if (needsWrite && ::setPipeWireNodeVisibleVolume(
+                if (needsWrite && m_pipeWire.setVisibleVolume(
                                       node.id, duckVolume,
                                       std::max(1, static_cast<int>(node.channelVolumes.size()))))
                     snapshot.append(std::move(entry));
@@ -949,7 +949,7 @@ class PaWorker : public QObject
         }
 
         // 3. PipeWire node (idle/paused app)
-        auto node = ::findPipeWireNodeForApp(appName, matchCandidatesFor(appName));
+        auto node = m_pipeWire.findNodeForApp(appName, matchCandidatesFor(appName));
         if (node)
         {
             m_appVolumes[appName] = node->visibleVolume();
@@ -974,7 +974,7 @@ class PaWorker : public QObject
         Config* cfg = m_config.load(std::memory_order_acquire);
         const QSet<QString> systemBinaries = cfg ? cfg->effectiveSystemBinaries() : SYSTEM_BINARIES;
         const QSet<QString> skipAppNames = cfg ? cfg->effectiveSkipAppNames() : SKIP_APP_NAMES;
-        const PipeWireSnapshot pwSnapshot = ::inspectPipeWire(systemBinaries, skipAppNames);
+        const PipeWireSnapshot pwSnapshot = m_pipeWire.inspect(systemBinaries, skipAppNames);
         const auto& pwClientsRaw = pwSnapshot.clients;
         const QList<AppAlias> aliases = cfg ? cfg->appAliases() : QList<AppAlias>{};
         const auto pwClients = applyAppAliases(pwClientsRaw, aliases);
@@ -1166,8 +1166,7 @@ class PaWorker : public QObject
                 bool volumeApplied = false;
                 const uint32_t pipeWireNodeId = si.pipeWireNodeId.value_or(0);
                 if (m_isPipeWirePulse && pipeWireNodeId != 0)
-                    volumeApplied =
-                        ::setPipeWireNodeVisibleChannelVolumes(pipeWireNodeId, channels);
+                    volumeApplied = m_pipeWire.setVisibleChannelVolumes(pipeWireNodeId, channels);
                 else
                 {
                     volumeApplied = setPulseSinkInputChannelVolumes(
@@ -1441,6 +1440,7 @@ class PaWorker : public QObject
     std::atomic<bool> m_stopping{false};
     bool m_cleanedUp = false;
     bool m_isPipeWirePulse = false;
+    PipeWireVolumeBackend m_pipeWire;
 
     QTimer* m_refreshTimer = nullptr;
     QTimer* m_sinkRefreshTimer = nullptr;
@@ -1743,7 +1743,7 @@ class PaWorker : public QObject
     std::optional<PipeWireNode> pipeWireStateFor(const SinkInputInfo& input)
     {
         if (!m_isPipeWirePulse || !input.pipeWireNodeId) return std::nullopt;
-        return ::readPipeWireNode(*input.pipeWireNodeId);
+        return m_pipeWire.readNode(*input.pipeWireNodeId);
     }
 
     bool setPulseSinkInputVolume(const SinkInputInfo& input, double targetVolume)
@@ -1780,7 +1780,7 @@ class PaWorker : public QObject
         if (m_isPipeWirePulse && input.pipeWireNodeId)
         {
             const uint32_t channels = std::max<uint8_t>(1, input.channelVolume.channels);
-            return ::setPipeWireNodeVisibleVolume(*input.pipeWireNodeId, targetVolume, channels);
+            return m_pipeWire.setVisibleVolume(*input.pipeWireNodeId, targetVolume, channels);
         }
         return setPulseSinkInputVolume(input, targetVolume);
     }
@@ -1791,8 +1791,8 @@ class PaWorker : public QObject
         if (m_isPipeWirePulse && pipeWireState)
         {
             if (!input.pipeWireNodeId) return false;
-            return ::restorePipeWireNodeVolumeState(*input.pipeWireNodeId, pipeWireState->rawVolume,
-                                                    pipeWireState->channelVolumes);
+            return m_pipeWire.restoreVolumeState(*input.pipeWireNodeId, pipeWireState->rawVolume,
+                                                 pipeWireState->channelVolumes);
         }
 
         if (!contextReady()) return false;
@@ -1893,7 +1893,7 @@ class PaWorker : public QObject
         *d->out = StreamRestoreState{info->mute != 0, info->volume};
     }
 
-    QStringList streamRestoreAppCandidates(const QString& app) const
+    QStringList streamRestoreAppCandidates(const QString& app)
     {
         QStringList candidates;
         auto add = [&](const QString& candidate)
@@ -1921,7 +1921,7 @@ class PaWorker : public QObject
             Config* cfg = m_config.load(std::memory_order_acquire);
             return cfg ? cfg->effectiveSkipAppNames() : SKIP_APP_NAMES;
         }();
-        for (const PipeWireClient& client : ::listPipeWireClients(systemBinaries, skipAppNames))
+        for (const PipeWireClient& client : m_pipeWire.listClients(systemBinaries, skipAppNames))
         {
             if (appIdMatches(client.binary, lowerApp) || appIdMatches(client.name, lowerApp))
             {
