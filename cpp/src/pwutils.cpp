@@ -692,6 +692,11 @@ PipeWireVolumeBackend::PipeWireVolumeBackend() : m_impl(std::make_unique<Impl>()
 
 PipeWireVolumeBackend::~PipeWireVolumeBackend() = default;
 
+void PipeWireVolumeBackend::close()
+{
+    m_impl->invalidate();
+}
+
 PipeWireSnapshot PipeWireVolumeBackend::inspect(const QSet<QString>& systemBinaries,
                                                 const QSet<QString>& skipAppNames)
 {

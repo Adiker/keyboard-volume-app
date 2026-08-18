@@ -332,6 +332,7 @@ class PaWorker : public QObject
             delete m_watcher;
             m_watcher = nullptr;
         }
+        m_pipeWire.close();
         disconnectContext();
         m_cleanedUp = true;
         emit cleanupFinished();

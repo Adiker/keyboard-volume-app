@@ -83,6 +83,10 @@ class PipeWireVolumeBackend
     bool restoreVolumeState(uint32_t nodeId, double rawVolume, const QList<double>& channelVolumes);
     bool setMute(uint32_t nodeId, bool muted);
 
+    // Release the worker-owned connection during PaWorker cleanup. The next
+    // operation reconnects lazily, so this is safe and idempotent.
+    void close();
+
     // Diagnostic counter used by the isolated regression helper: repeated
     // healthy operations must keep the same connection generation.
     uint64_t connectionGeneration() const;

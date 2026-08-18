@@ -504,7 +504,7 @@ keyboard-volume-app/
 
 ### Performance
 
-The volume change hot path (keypress → OSD update) uses a single libpulse IPC call (~1ms). Idle PipeWire app listing and paused-node fallback use libpipewire directly, so the app does not spawn `pw-dump` or `pw-cli` subprocesses. All PulseAudio/PipeWire operations run on a dedicated worker thread — the Qt event loop is never blocked. If the PulseAudio context fails or terminates, the worker reconnects with backoff and keeps pending volume/mute state until the target app reconnects. Transient app-list refreshes during audio daemon restarts do not replace the configured selected app. D-Bus property reads are served from a local cache (zero IPC); writes delegate asynchronously to the PulseAudio worker thread.
+On native PulseAudio, the active-stream volume hot path uses libpulse directly. On pipewire-pulse, active and idle volume writes reuse one worker-owned libpipewire connection so mixer-visible channel values can be updated without reconnecting per operation; no `pw-dump` or `pw-cli` subprocesses are spawned. All PulseAudio/PipeWire operations run on a dedicated worker thread — the Qt event loop is never blocked. If either audio connection fails or terminates, the worker reconnects lazily or with backoff as appropriate and keeps pending volume/mute state until the target app reconnects. Transient app-list refreshes during audio daemon restarts do not replace the configured selected app. D-Bus property reads are served from a local cache (zero IPC); writes delegate asynchronously to the audio worker thread.
 
 ### License
 
@@ -1005,7 +1005,7 @@ keyboard-volume-app/
 
 ### Wydajność
 
-Ścieżka krytyczna zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykonuje jedno wywołanie IPC przez libpulse (~1ms). Listowanie nieaktywnych aplikacji PipeWire i mechanizm zapasowy dla wstrzymanych węzłów używają bezpośrednio libpipewire, więc aplikacja nie uruchamia procesów pomocniczych `pw-dump` ani `pw-cli`. Wszystkie operacje PulseAudio/PipeWire działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Jeśli kontekst PulseAudio zakończy się błędem lub zostanie zerwany, wątek roboczy ponawia połączenie z narastającym opóźnieniem i zachowuje oczekujące zmiany głośności/wyciszenia do czasu ponownego pojawienia się aplikacji. Przejściowe odświeżenia listy podczas restartu daemona audio nie zmieniają skonfigurowanej wybranej aplikacji. Odczyty właściwości D-Bus są obsługiwane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku PulseAudio.
+Na natywnym PulseAudio krytyczna ścieżka głośności aktywnego strumienia używa bezpośrednio libpulse. Pod pipewire-pulse zapisy aktywnych i nieaktywnych strumieni współdzielą jedno połączenie libpipewire należące do wątku roboczego, dzięki czemu aplikacja aktualizuje widoczne wartości kanałów bez ponownego łączenia przy każdej operacji; nie uruchamia też procesów `pw-dump` ani `pw-cli`. Wszystkie operacje PulseAudio/PipeWire działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Gdy któreś połączenie audio zawiedzie, wątek roboczy odtwarza je leniwie lub z narastającym opóźnieniem i zachowuje oczekujące zmiany głośności/wyciszenia do czasu ponownego pojawienia się aplikacji. Przejściowe odświeżenia listy podczas restartu demona audio nie zmieniają skonfigurowanej wybranej aplikacji. Odczyty właściwości D-Bus są obsługiwane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku audio.
 
 ### Licencja
 
