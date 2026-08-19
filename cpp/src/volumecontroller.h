@@ -83,6 +83,10 @@ class VolumeController : public QObject
     // Does NOT modify any volume. Falls back to cached value when PA is unavailable.
     void queryVolume(const QString& appName);
 
+    // Re-emit startup detections that may have arrived before the tray connected.
+    // This is notification-only and never changes the audio graph.
+    void replayHiddenVolumeWarnings();
+
     void close();
 
   signals:
@@ -99,11 +103,27 @@ class VolumeController : public QObject
     // (sinkName empty when routing could not be applied yet — parked).
     void sinkChanged(const QString& app, const QString& sinkName);
 
+    // Read-only diagnosis: an existing PipeWire stream has a non-unity raw
+    // volume multiplier that system mixers do not display. No normalization is
+    // performed until an explicit user volume operation.
+    void hiddenVolumeDetected(const QString& app, double rawVolume, double visibleVolume,
+                              double effectiveVolume);
+
   private:
+    struct HiddenVolumeWarning
+    {
+        QString app;
+        double rawVolume = 1.0;
+        double visibleVolume = 1.0;
+        double effectiveVolume = 1.0;
+    };
+
     QThread* m_paThread = nullptr;
     class PaWorker* m_worker = nullptr;
     QList<AudioApp> m_listCache;
     QList<SinkInfo> m_sinkCache;
+    QList<HiddenVolumeWarning> m_hiddenVolumeWarnings;
+    bool m_hiddenWarningsReplayed = false;
     QHash<QString, QStringList> m_profileRoutedApps;
     bool m_closing = false;
 };

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 
 #include "pwutils.h"
 
@@ -246,4 +247,36 @@ TEST(PwUtils, RemoveDefaultSystemBinaryShowsClient)
     const auto clients = clientsFromPipeWireGlobals(globals, system, SKIP_APP_NAMES);
     EXPECT_TRUE(containsClient(clients, QStringLiteral("Python"), QStringLiteral("python3")));
     EXPECT_TRUE(containsClient(clients, QStringLiteral("Firefox"), QStringLiteral("firefox")));
+}
+
+TEST(PwUtils, VisibleVolumeComesFromChannelsNotRawMultiplier)
+{
+    PipeWireNode node;
+    node.rawVolume = 0.25;
+    node.channelVolumes = {1.0, 1.0};
+
+    EXPECT_DOUBLE_EQ(node.visibleVolume(), 1.0);
+    EXPECT_NEAR(node.effectiveVolume(), std::cbrt(0.25), 0.000001);
+    EXPECT_TRUE(node.hasHiddenVolumeMultiplier());
+}
+
+TEST(PwUtils, UnityRawVolumeHasNoHiddenMultiplier)
+{
+    PipeWireNode node;
+    node.rawVolume = 1.0;
+    node.channelVolumes = {0.2, 0.4};
+
+    EXPECT_NEAR(node.visibleVolume(), (std::cbrt(0.2) + std::cbrt(0.4)) / 2.0, 0.000001);
+    EXPECT_NEAR(node.effectiveVolume(), node.visibleVolume(), 0.000001);
+    EXPECT_FALSE(node.hasHiddenVolumeMultiplier());
+}
+
+TEST(PwUtils, ScalarOnlyNodeRemainsReadable)
+{
+    PipeWireNode node;
+    node.rawVolume = 0.75;
+
+    EXPECT_NEAR(node.visibleVolume(), std::cbrt(0.75), 0.000001);
+    EXPECT_NEAR(node.effectiveVolume(), std::cbrt(0.75), 0.000001);
+    EXPECT_FALSE(node.hasHiddenVolumeMultiplier());
 }

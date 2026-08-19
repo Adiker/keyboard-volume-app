@@ -20,6 +20,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 ### Features
 
 - **Per-app volume control** — changes the volume of only the selected application, not the system master
+- **Mixer-visible PipeWire volume** — intentional volume changes keep PipeWire's hidden raw multiplier at unity and store the level in per-channel volume, so KDE Plasma, pavucontrol, `wpctl`, and PulseAudio clients show the same value; pre-existing discrepancies are reported without being changed until the next explicit volume action
 - **Multiple audio profiles** — define several profiles, each with its own hotkeys (keyboard keys or mouse wheel), optional `Ctrl`/`Shift` modifiers, and target audio app. Bare `VolUp` controls Spotify, `Ctrl+VolUp` controls Firefox, `F11` controls VLC — all from the same keyboard
 - **Show volume hotkey** — each profile can bind an optional `show` hotkey that displays the OSD with the current volume of that profile's app without changing it; also available via `kv-ctl show [--profile id]` and D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
 - **Focus audio / ducking** — each profile can bind a manual ducking hotkey that lowers every other known audio app to a configured percentage, then restores the previous levels on the next press
@@ -174,9 +175,16 @@ cmake -S cpp -B cpp/build -DBUILD_TESTING=ON
 cmake --build cpp/build
 cd cpp/build && ctest -E test_mprisclient
 cd cpp/build && dbus-run-session -- ctest -R test_mprisclient
+
+# Optional real PipeWire regression in a private runtime/config/D-Bus session
+cmake -S cpp -B cpp/build-pw-test -DBUILD_TESTING=ON \
+  -DENABLE_PIPEWIRE_INTEGRATION_TESTS=ON
+cmake --build cpp/build-pw-test
+ctest --test-dir cpp/build-pw-test -R integration_pipewire_visible_volume \
+  --output-on-failure
 ```
 
-Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` command parsing, PipeWire utilities, VolumeController (smoke test), InputHandler (API-only, no device required), and MPRIS client behavior. `test_mprisclient` should run under `dbus-run-session` so fake MPRIS players do not collide with the user's desktop session. Requires `gtest` / `libgtest-dev` package (see Requirements).
+Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` command parsing, PipeWire utilities, VolumeController (smoke test), InputHandler (API-only, no device required), and MPRIS client behavior. `test_mprisclient` should run under `dbus-run-session` so fake MPRIS players do not collide with the user's desktop session. The opt-in PipeWire integration test starts private PipeWire, pipewire-pulse, WirePlumber, D-Bus, null sinks, and silent streams under a temporary XDG tree; it never connects to the desktop audio session or reads the user's keyboard-volume-app configuration. Requires `gtest` / `libgtest-dev` package (see Requirements).
 
 ### Usage
 
@@ -431,6 +439,8 @@ Optional OSD repositioning lives under the same `osd` section: `position_control
 
 For troubleshooting rare MPRIS progress glitches, start the app with `KVA_DEBUG_PROGRESS=1` to log progress metadata, position source, and OSD bar decisions.
 
+On PipeWire, the tray warning **Hidden PipeWire volume detected** means another component or an older build left `Props:volume` different from `1.0` while the mixer-visible channel levels say something else. Detection at startup, refresh, reconnect, profile switching, and stream appearance is read-only. The next explicit volume change (hotkey, GUI, scene, ducking, D-Bus, or `kv-ctl`) folds the effective gain into the visible channels and resets the raw multiplier to unity. No configuration migration is required. On a native PulseAudio server there is no PipeWire raw/channel split; the app continues to use libpulse and stream-restore channel volumes.
+
 ### Project structure
 
 ```
@@ -494,7 +504,7 @@ keyboard-volume-app/
 
 ### Performance
 
-The volume change hot path (keypress → OSD update) uses a single libpulse IPC call (~1ms). Idle PipeWire app listing and paused-node fallback use libpipewire directly, so the app does not spawn `pw-dump` or `pw-cli` subprocesses. All PulseAudio/PipeWire operations run on a dedicated worker thread — the Qt event loop is never blocked. If the PulseAudio context fails or terminates, the worker reconnects with backoff and keeps pending volume/mute state until the target app reconnects. Transient app-list refreshes during audio daemon restarts do not replace the configured selected app. D-Bus property reads are served from a local cache (zero IPC); writes delegate asynchronously to the PulseAudio worker thread.
+On native PulseAudio, the active-stream volume hot path uses libpulse directly. On pipewire-pulse, active and idle volume writes reuse one worker-owned libpipewire connection so mixer-visible channel values can be updated without reconnecting per operation; no `pw-dump` or `pw-cli` subprocesses are spawned. All PulseAudio/PipeWire operations run on a dedicated worker thread — the Qt event loop is never blocked. If either audio connection fails or terminates, the worker reconnects lazily or with backoff as appropriate and keeps pending volume/mute state until the target app reconnects. Transient app-list refreshes during audio daemon restarts do not replace the configured selected app. D-Bus property reads are served from a local cache (zero IPC); writes delegate asynchronously to the audio worker thread.
 
 ### License
 
@@ -520,6 +530,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 ### Funkcje
 
 - **Sterowanie głośnością per aplikacja** — zmienia głośność wyłącznie wybranej aplikacji, nie ruszając głośności systemowej
+- **Głośność PipeWire widoczna w mikserach** — jawne zmiany utrzymują ukryty surowy mnożnik PipeWire na `1.0`, a poziom zapisują per kanał, dzięki czemu KDE Plasma, pavucontrol, `wpctl` i klienty PulseAudio pokazują tę samą wartość; zastane rozbieżności są zgłaszane i pozostają nietknięte do następnej jawnej zmiany głośności
 - **Wiele profili audio** — definiuj kilka profili, każdy z własnymi skrótami (klawisze lub pokrętło myszy), opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją. `VolUp` steruje Spotify, `Ctrl+VolUp` steruje Firefoxem, `F11` steruje VLC — wszystko z tej samej klawiatury
 - **Hotkey „Pokaż głośność"** — każdy profil może mieć opcjonalny skrót `show`, który wyświetla OSD z aktualną głośnością aplikacji profilu bez jej zmieniania; dostępny też przez `kv-ctl show [--profile id]` i D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
 - **Tryb skupienia audio / ducking** — każdy profil może mieć ręczny skrót, który ścisza wszystkie inne znane aplikacje audio do ustawionego procentu, a kolejne naciśnięcie przywraca poprzednie poziomy
@@ -672,9 +683,16 @@ cmake -S cpp -B cpp/build -DBUILD_TESTING=ON
 cmake --build cpp/build
 cd cpp/build && ctest -E test_mprisclient
 cd cpp/build && dbus-run-session -- ctest -R test_mprisclient
+
+# Opcjonalna regresja na prawdziwym PipeWire w prywatnej sesji runtime/config/D-Bus
+cmake -S cpp -B cpp/build-pw-test -DBUILD_TESTING=ON \
+  -DENABLE_PIPEWIRE_INTEGRATION_TESTS=ON
+cmake --build cpp/build-pw-test
+ctest --test-dir cpp/build-pw-test -R integration_pipewire_visible_volume \
+  --output-on-failure
 ```
 
-Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire, VolumeController (test dymny), InputHandler (API, bez potrzeby urządzenia) oraz klienta MPRIS. `test_mprisclient` uruchamiaj przez `dbus-run-session`, żeby fikcyjne odtwarzacze MPRIS nie mieszały się z sesją pulpitu użytkownika. Wymaga pakietu `gtest` / `libgtest-dev` (zobacz Wymagania).
+Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire, VolumeController (test dymny), InputHandler (API, bez potrzeby urządzenia) oraz klienta MPRIS. `test_mprisclient` uruchamiaj przez `dbus-run-session`, żeby fikcyjne odtwarzacze MPRIS nie mieszały się z sesją pulpitu użytkownika. Opcjonalny test integracyjny PipeWire uruchamia prywatne instancje PipeWire, pipewire-pulse, WirePlumber i D-Bus, zerowe sinki i bezgłośne strumienie pod tymczasowym drzewem XDG; nie łączy się z sesją audio pulpitu ani nie czyta konfiguracji użytkownika. Wymaga pakietu `gtest` / `libgtest-dev` (zobacz Wymagania).
 
 ### Użytkowanie
 
@@ -922,6 +940,8 @@ Postęp odtwarzania OSD jest konfigurowany w sekcji `osd`. `progress_enabled` je
 
 Do diagnozowania rzadkich problemów z postępem MPRIS uruchom aplikację z `KVA_DEBUG_PROGRESS=1`, żeby logować metadane postępu, źródło pozycji i decyzje paska OSD.
 
+Ostrzeżenie zasobnika **Wykryto ukrytą głośność PipeWire** oznacza, że inny komponent lub starsza wersja programu pozostawiły `Props:volume` różne od `1.0`, mimo że widoczne w mikserze poziomy kanałów wskazują inną wartość. Wykrywanie przy starcie, odświeżeniu, reconnect, zmianie profilu i pojawieniu się strumienia jest tylko do odczytu. Następna jawna zmiana głośności (skrót, GUI, scena, ducking, D-Bus albo `kv-ctl`) składa efektywny gain do widocznych kanałów i zeruje rozbieżność przez ustawienie surowego mnożnika na `1.0`. Migracja konfiguracji nie jest potrzebna. Na natywnym PulseAudio nie istnieje rozdział PipeWire na surowy mnożnik i kanały; program nadal używa kanałowych wartości libpulse i stream-restore.
+
 ### Struktura projektu
 
 ```
@@ -985,7 +1005,7 @@ keyboard-volume-app/
 
 ### Wydajność
 
-Ścieżka krytyczna zmiany głośności (naciśnięcie klawisza → aktualizacja OSD) wykonuje jedno wywołanie IPC przez libpulse (~1ms). Listowanie nieaktywnych aplikacji PipeWire i mechanizm zapasowy dla wstrzymanych węzłów używają bezpośrednio libpipewire, więc aplikacja nie uruchamia procesów pomocniczych `pw-dump` ani `pw-cli`. Wszystkie operacje PulseAudio/PipeWire działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Jeśli kontekst PulseAudio zakończy się błędem lub zostanie zerwany, wątek roboczy ponawia połączenie z narastającym opóźnieniem i zachowuje oczekujące zmiany głośności/wyciszenia do czasu ponownego pojawienia się aplikacji. Przejściowe odświeżenia listy podczas restartu daemona audio nie zmieniają skonfigurowanej wybranej aplikacji. Odczyty właściwości D-Bus są obsługiwane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku PulseAudio.
+Na natywnym PulseAudio krytyczna ścieżka głośności aktywnego strumienia używa bezpośrednio libpulse. Pod pipewire-pulse zapisy aktywnych i nieaktywnych strumieni współdzielą jedno połączenie libpipewire należące do wątku roboczego, dzięki czemu aplikacja aktualizuje widoczne wartości kanałów bez ponownego łączenia przy każdej operacji; nie uruchamia też procesów `pw-dump` ani `pw-cli`. Wszystkie operacje PulseAudio/PipeWire działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Gdy któreś połączenie audio zawiedzie, wątek roboczy odtwarza je leniwie lub z narastającym opóźnieniem i zachowuje oczekujące zmiany głośności/wyciszenia do czasu ponownego pojawienia się aplikacji. Przejściowe odświeżenia listy podczas restartu demona audio nie zmieniają skonfigurowanej wybranej aplikacji. Odczyty właściwości D-Bus są obsługiwane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku audio.
 
 ### Licencja
 

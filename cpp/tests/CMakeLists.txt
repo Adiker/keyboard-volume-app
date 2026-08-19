@@ -121,6 +121,27 @@ target_link_libraries(test_pwutils PRIVATE
 )
 add_test(NAME test_pwutils COMMAND test_pwutils)
 
+# Full PipeWire integration is opt-in because it starts private PipeWire,
+# pipewire-pulse, WirePlumber and D-Bus daemons and requires their CLI tools.
+option(ENABLE_PIPEWIRE_INTEGRATION_TESTS
+       "Run isolated PipeWire visible-volume integration regression" OFF)
+if(ENABLE_PIPEWIRE_INTEGRATION_TESTS)
+    # Small non-installed helper that exposes the exact values read through the
+    # production libpipewire parser.
+    add_executable(pw_volume_test_helper
+        pw_volume_test_helper.cpp
+        ../src/appaudiofilters.cpp
+        ../src/pwutils.cpp
+    )
+    target_include_directories(pw_volume_test_helper PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    )
+    target_link_libraries(pw_volume_test_helper PRIVATE
+        Qt6::Core
+        PkgConfig::LIBPIPEWIRE
+    )
+endif()
+
 # ─── test_inputhandler (API-only, no device needed) ─────────────────────────────
 add_executable(test_inputhandler
     test_inputhandler.cpp
@@ -192,6 +213,19 @@ target_link_libraries(test_dbusinterface PRIVATE
     PkgConfig::LIBPIPEWIRE
 )
 add_test(NAME test_dbusinterface COMMAND test_dbusinterface)
+
+if(ENABLE_PIPEWIRE_INTEGRATION_TESTS)
+    add_test(
+        NAME integration_pipewire_visible_volume
+        COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/integration_pipewire_visible_volume.sh
+                ${CMAKE_BINARY_DIR}
+    )
+    set_tests_properties(integration_pipewire_visible_volume PROPERTIES
+        LABELS "integration;pipewire"
+        TIMEOUT 60
+        RUN_SERIAL TRUE
+    )
+endif()
 
 # ─── test_mprisclient (requires session D-Bus; skipped automatically otherwise) ─
 find_package(Qt6 QUIET COMPONENTS DBus)

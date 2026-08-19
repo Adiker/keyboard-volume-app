@@ -30,9 +30,12 @@ TrayApp::TrayApp(Config* config, VolumeController* volumeCtrl, InputHandler* inp
 
     // Rebuild menu whenever the PA worker delivers a fresh app list.
     connect(m_volumeCtrl, &VolumeController::appsReady, this, &TrayApp::rebuildMenu);
+    connect(m_volumeCtrl, &VolumeController::hiddenVolumeDetected, this,
+            &TrayApp::onHiddenVolumeDetected);
 
     buildMenu(); // builds from cache (may be empty on first call; appsReady will refresh)
     m_tray->show();
+    m_volumeCtrl->replayHiddenVolumeWarnings();
 }
 
 // ─── Menu ─────────────────────────────────────────────────────────────────────
@@ -129,6 +132,19 @@ void TrayApp::onApplyScene(const QString& sceneId)
     const AudioScene scene = m_config->findSceneById(sceneId);
     if (scene.id.isEmpty()) return;
     m_volumeCtrl->applyScene(scene);
+}
+
+void TrayApp::onHiddenVolumeDetected(const QString& app, double rawVolume, double visibleVolume,
+                                     double effectiveVolume)
+{
+    const auto percent = [](double value) { return qRound(value * 100.0); };
+    const QString text = ::tr(QStringLiteral("warn.hidden_volume.text"))
+                             .arg(app)
+                             .arg(percent(rawVolume))
+                             .arg(percent(visibleVolume))
+                             .arg(percent(effectiveVolume));
+    m_tray->showMessage(::tr(QStringLiteral("warn.hidden_volume.title")), text,
+                        QSystemTrayIcon::Warning, 10000);
 }
 
 void TrayApp::onRefresh()
