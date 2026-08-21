@@ -1,4 +1,5 @@
 #include "trayapp.h"
+#include "aboutdialog.h"
 #include "config.h"
 #include "volumecontroller.h"
 #include "inputhandler.h"
@@ -65,6 +66,9 @@ void TrayApp::buildMenu()
 
     QAction* settingsAct = m_menu->addAction(::tr(QStringLiteral("tray.action.settings")));
     connect(settingsAct, &QAction::triggered, this, &TrayApp::openSettings);
+
+    QAction* aboutAct = m_menu->addAction(::tr(QStringLiteral("tray.action.about")));
+    connect(aboutAct, &QAction::triggered, this, &TrayApp::openAbout);
 
     m_menu->addSeparator();
 
@@ -189,6 +193,14 @@ void TrayApp::openAppSelector()
     AppSelectorDialog dlg(m_config);
     centerDialogOnScreenAt(&dlg, anchor);
     if (dlg.exec() == QDialog::Accepted) onAppSelected(dlg.selectedAppName());
+}
+
+void TrayApp::openAbout()
+{
+    const QPoint anchor = QCursor::pos();
+    AboutDialog dlg;
+    centerDialogOnScreenAt(&dlg, anchor);
+    dlg.exec();
 }
 
 void TrayApp::rebuildMenu()

@@ -1,5 +1,6 @@
 <RCC>
     <qresource prefix="/">
         <file alias="icon.png">../resources/icon.png</file>
+        <file alias="license.txt">../LICENSE</file>
     </qresource>
 </RCC>

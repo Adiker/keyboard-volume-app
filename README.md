@@ -31,7 +31,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising configured hotkey bindings (keys or scroll) from any profile, so the desktop never intercepts them
 - **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio hotkeys (keys or mouse wheel) are reassignable via Settings → Profiles; right-click any hotkey field for an **Unassign** menu option to clear it; defaults are the dedicated media keys
 - **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; can optionally expand with MPRIS playback progress, track label and elapsed/total time; drag any visible OSD edge or corner to resize it persistently; optional reposition controls (on-OSD arrow buttons, interior mouse drag, configurable keyboard shortcuts while visible); click or drag the progress bar to seek when the player allows it; live streams show `LIVE`; auto-hides after a configurable timeout
-- **System tray** — select the active audio app, refresh the list, change input device or open settings from the tray menu
+- **System tray** — select the active audio app, refresh the list, change input device, open settings, or view the bilingual About dialog with version, author, project links, and the complete offline license text
 - **Idle app detection** — lists non-system PipeWire audio clients, including apps that are connected but not currently playing
 - **Friendly audio app names** — normalizes PipeWire/PulseAudio streams where the visible app and controllable stream differ, so wrappers such as Harmonoid can appear as the real app while still controlling the underlying stream; configurable **app aliases**, profile **app_regex**, and **audio_app_filters** refine identity further
 - **Audio backend recovery** — reconnects to PulseAudio/pipewire-pulse after daemon restarts while keeping the configured selected app
@@ -46,7 +46,7 @@ A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls th
 - **Media hotkeys** — global play-pause / next / previous / stop bindings dispatched to the active MPRIS player; with auto-switch by focus enabled, they prefer the focused audio app's player before falling back to tracked-player priority; configurable in Settings → Media hotkeys, also reachable via `kv-ctl media <action>` and D-Bus `MediaPlayPause/Next/Previous/Stop`; their OSD can be disabled, show only the pressed action, or show the full volume OSD
 - **Marquee labels** — app and track names that exceed the OSD width scroll automatically; short labels display statically
 - **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
-- **Unit tests** — GTest + Qt Test suite covering Config, i18n, `kv-ctl` parsing, PipeWire utilities, VolumeController, InputHandler, and the MPRIS client
+- **Unit tests** — GTest + Qt Test suite covering Config, i18n, the About dialog, `kv-ctl` parsing, PipeWire utilities, VolumeController, InputHandler, and the MPRIS client
 
 ### Requirements
 
@@ -540,7 +540,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające skonfigurowane skróty (klawisze lub zdarzenia scroll) w którymkolwiek profilu, aby system nie przechwytywał ich
 - **Konfigurowalne skróty** — Głośność w górę, Głośność w dół, Wyciszenie i tryb skupienia każdego profilu można przypisać do dowolnego klawisza lub pokrętła myszy przez Ustawienia → Profile; prawy klik na polu hotkeya otwiera menu **Wyczyść**; domyślnie są to dedykowane klawisze multimedialne
 - **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; opcjonalnie rozwija się o postęp MPRIS, etykietę utworu i czas odtwarzania; przeciągnięcie dowolnej widocznej krawędzi lub rogu trwale zmienia rozmiar OSD; kliknięcie lub przeciągnięcie paska przewija odtwarzacz, jeśli ten na to pozwala; transmisje live pokazują `LIVE`; znika automatycznie po upływie skonfigurowanego czasu
-- **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego oraz dostęp do ustawień
+- **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego, dostęp do ustawień oraz dwujęzycznego okna „O programie” z wersją, autorem, linkami projektu i pełnym tekstem licencji offline
 - **Wykrywanie nieaktywnych aplikacji** — lista zawiera niesystemowe klienty audio PipeWire, także aplikacje podłączone, ale aktualnie nieodtwarzające dźwięku
 - **Odzyskiwanie backendu audio** — ponownie łączy się z PulseAudio/pipewire-pulse po restarcie daemona i zachowuje skonfigurowaną wybraną aplikację
 - **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇
@@ -554,7 +554,7 @@ Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Wi
 - **Skróty multimedialne** — globalne powiązania play-pause / next / previous / stop przekazywane do aktywnego odtwarzacza MPRIS; przy włączonym auto-przełączaniu wg focusu preferują odtwarzacz aktywnej aplikacji audio, a potem wracają do priorytetu obserwowanych odtwarzaczy; konfigurowalne w Ustawienia → Skróty multimedialne, dostępne też przez `kv-ctl media <akcja>` i D-Bus `MediaPlayPause/Next/Previous/Stop`
 - **Etykiety marquee** — nazwy aplikacji i utworów przekraczające szerokość OSD przewijają się automatycznie; krótkie etykiety wyświetlają się statycznie
 - **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
-- **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, parsera `kv-ctl`, narzędzi PipeWire, VolumeController, InputHandler i klienta MPRIS
+- **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, okna „O programie”, parsera `kv-ctl`, narzędzi PipeWire, VolumeController, InputHandler i klienta MPRIS
 
 ### Wymagania
 

@@ -40,7 +40,7 @@ These are read at startup in `cpp/src/main.cpp` to decide whether to use native 
 keyboard-volume-app/
 ├── cpp/
 │   ├── CMakeLists.txt           # CMake build (Qt6, libevdev, libpulse, libpipewire, DBus)
-│   ├── resources.qrc            # Qt resource file — embeds icon.png
+│   ├── resources.qrc            # Qt resource file — embeds icon.png and canonical LICENSE
 │   ├── protocols/               # Wayland protocol XML definitions for window-tracker
 │   │   └── wlr-foreign-toplevel-management-unstable-v1.xml
 │   └── src/
@@ -51,6 +51,7 @@ keyboard-volume-app/
 │       ├── pwutils.h/cpp           # Shared PipeWire helpers (libpipewire)
 │       ├── applistwidget.h/cpp     # Reusable PW app list widget + Refresh button
 │       ├── appselectordialog.h/cpp # QDialog for changing the default audio app from tray
+│       ├── aboutdialog.h/cpp    # Bilingual About dialog with offline GPL text
 │       ├── inputhandler.h/cpp   # evdev QThread — global key capture + uinput re-injection
 │       ├── osdwindow.h/cpp      # Frameless always-on-top Qt6 OSD overlay
 │       ├── osdlabelformat.h/cpp # Free function formatOsdLabelTemplate + LabelTokens
@@ -279,6 +280,15 @@ Modal `QDialog` for changing the default audio application. Opened from the tray
 - Embeds an `AppListWidget`, subtitle label, OK/Cancel `QDialogButtonBox`.
 - On accept: reads `selectedAppName()` from the widget, saves via `Config::setSelectedApp()`, accepts.
 - Window title: `app_selector.title`, subtitle: `app_selector.subtitle`.
+
+### `cpp/src/aboutdialog.h/cpp` — `AboutDialog`
+
+Application-modal, bilingual dialog opened from the tray menu via "About...". The About tab
+shows the embedded app icon, `QApplication::applicationVersion()`, author and project links, and
+the `GPL-2.0-or-later` identifier. The License tab displays the canonical root `LICENSE` file as a
+read-only, selectable `:/license.txt` Qt resource, so installed builds retain the complete license
+text without depending on a filesystem or network path. The dialog uses
+`centerDialogOnScreenAt()` for the same multi-monitor placement behavior as other tray dialogs.
 
 ### `cpp/src/screenutils.h` — `centerDialogOnScreenAt()`
 
@@ -805,6 +815,7 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_config` — 40 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / scroll hotkeys / show hotkey / id uniqueification / per-profile vol_min and vol_max, legacy label-mode migration, custom-label defaults)
 - `test_i18n` — 7 tests (lookup, fallback)
+- `test_aboutdialog` — 3 offscreen GUI tests (EN/PL content, author/project links, version, close action, and byte-identical embedded GPL text)
 - `test_kvctlcommand` — 10 tests (subcommand parser, profile option, get/set fields, per-profile set volume, show command, invalid input)
 - `test_pwutils` — PipeWire client filtering/ownership plus raw, mixer-visible, and effective volume regressions
 - `test_appmatcher` — 11 tests (focused-window → AudioApp lookup, including empty-field regression)
