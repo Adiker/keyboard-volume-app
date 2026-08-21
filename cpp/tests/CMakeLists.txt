@@ -43,6 +43,26 @@ target_link_libraries(test_i18n PRIVATE
 )
 add_test(NAME test_i18n COMMAND test_i18n)
 
+# ─── test_aboutdialog ───────────────────────────────────────────────────────────
+add_executable(test_aboutdialog
+    test_aboutdialog.cpp
+    ../src/aboutdialog.cpp
+    ../src/i18n.cpp
+    ../resources.qrc
+)
+target_compile_definitions(test_aboutdialog PRIVATE
+    PROJECT_LICENSE_PATH="${CMAKE_SOURCE_DIR}/../LICENSE"
+)
+target_include_directories(test_aboutdialog PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(test_aboutdialog PRIVATE
+    GTest::gtest
+    Qt6::Core
+    Qt6::Widgets
+)
+add_test(NAME test_aboutdialog COMMAND test_aboutdialog)
+
 # ─── test_kvctlcommand ────────────────────────────────────────────────────────
 add_executable(test_kvctlcommand
     test_kvctlcommand.cpp

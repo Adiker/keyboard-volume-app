@@ -15,7 +15,26 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("tray.action.change_device"),
               QStringLiteral("Change input device...")},
              {QStringLiteral("tray.action.settings"), QStringLiteral("Settings...")},
+             {QStringLiteral("tray.action.about"), QStringLiteral("About...")},
              {QStringLiteral("tray.action.quit"), QStringLiteral("Quit")},
+             // about
+             {QStringLiteral("about.title"), QStringLiteral("About Keyboard Volume App")},
+             {QStringLiteral("about.tab.info"), QStringLiteral("About")},
+             {QStringLiteral("about.tab.license"), QStringLiteral("License")},
+             {QStringLiteral("about.description"),
+              QStringLiteral("Control the volume of a selected audio application with global "
+                             "hotkeys and an on-screen display.")},
+             {QStringLiteral("about.version"), QStringLiteral("Version:")},
+             {QStringLiteral("about.author"), QStringLiteral("Author:")},
+             {QStringLiteral("about.project"), QStringLiteral("Project:")},
+             {QStringLiteral("about.license"), QStringLiteral("License:")},
+             {QStringLiteral("about.license_summary"),
+              QStringLiteral("This program is distributed under the GNU General Public License, "
+                             "version 2 or any later version. The complete license text is "
+                             "included below.")},
+             {QStringLiteral("about.license_load_error"),
+              QStringLiteral("The embedded license text could not be loaded.")},
+             {QStringLiteral("about.close"), QStringLiteral("Close")},
              // device selector
              {QStringLiteral("device.title"), QStringLiteral("Select input device")},
              {QStringLiteral("device.title.first_run"),
@@ -296,7 +315,28 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("tray.action.change_device"),
               QStringLiteral("Zmie\u0144 urz\u0105dzenie wej\u015bciowe...")},
              {QStringLiteral("tray.action.settings"), QStringLiteral("Ustawienia...")},
+             {QStringLiteral("tray.action.about"), QStringLiteral("O programie...")},
              {QStringLiteral("tray.action.quit"), QStringLiteral("Wyj\u015bcie")},
+             // about
+             {QStringLiteral("about.title"), QStringLiteral("O programie Keyboard Volume App")},
+             {QStringLiteral("about.tab.info"), QStringLiteral("Informacje")},
+             {QStringLiteral("about.tab.license"), QStringLiteral("Licencja")},
+             {QStringLiteral("about.description"),
+              QStringLiteral("Sterowanie g\u0142o\u015bno\u015bci\u0105 wybranej aplikacji audio "
+                             "za pomoc\u0105 "
+                             "globalnych skr\u00f3t\u00f3w i nak\u0142adki OSD.")},
+             {QStringLiteral("about.version"), QStringLiteral("Wersja:")},
+             {QStringLiteral("about.author"), QStringLiteral("Autor:")},
+             {QStringLiteral("about.project"), QStringLiteral("Projekt:")},
+             {QStringLiteral("about.license"), QStringLiteral("Licencja:")},
+             {QStringLiteral("about.license_summary"),
+              QStringLiteral("Ten program jest rozpowszechniany na warunkach GNU General Public "
+                             "License w wersji 2 lub dowolnej p\u00f3\u017aniejszej. Pe\u0142ny "
+                             "tekst licencji "
+                             "znajduje si\u0119 poni\u017cej.")},
+             {QStringLiteral("about.license_load_error"),
+              QStringLiteral("Nie uda\u0142o si\u0119 wczyta\u0107 osadzonego tekstu licencji.")},
+             {QStringLiteral("about.close"), QStringLiteral("Zamknij")},
              // device selector
              {QStringLiteral("device.title"),
               QStringLiteral("Wybierz urz\u0105dzenie wej\u015bciowe")},
