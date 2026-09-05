@@ -30,10 +30,14 @@ TEST(I18n, LookupExistingKey)
     setLanguage("en");
     EXPECT_EQ(tr("settings.title").toStdString(), "Settings");
     EXPECT_EQ(tr("settings.profiles.ducking_hotkey").toStdString(), "Focus audio hotkey:");
+    EXPECT_EQ(tr("tray.action.about").toStdString(), "About...");
+    EXPECT_EQ(tr("about.tab.license").toStdString(), "License");
 
     setLanguage("pl");
     EXPECT_EQ(tr("settings.title").toStdString(), "Ustawienia");
     EXPECT_EQ(tr("settings.profiles.ducking_hotkey").toStdString(), "Skrót trybu skupienia:");
+    EXPECT_EQ(tr("tray.action.about").toStdString(), "O programie...");
+    EXPECT_EQ(tr("about.tab.license").toStdString(), "Licencja");
 }
 
 TEST(I18n, FallbackToRawKey)

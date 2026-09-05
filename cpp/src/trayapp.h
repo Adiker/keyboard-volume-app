@@ -42,6 +42,7 @@ class TrayApp : public QObject
     void onAppSelected(const QString& name);
     void openSettings();
     void openAppSelector();
+    void openAbout();
     void onApplyScene(const QString& sceneId);
     void onHiddenVolumeDetected(const QString& app, double rawVolume, double visibleVolume,
                                 double effectiveVolume);

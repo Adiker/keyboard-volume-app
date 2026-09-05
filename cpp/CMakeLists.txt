@@ -29,6 +29,7 @@ set(SOURCES
     src/osdlabelformat.cpp
     src/albumartcache.cpp
     src/trayapp.cpp
+    src/aboutdialog.cpp
     src/deviceselector.cpp
     src/settingsdialog.cpp
     src/firstrunwizard.cpp
