@@ -644,7 +644,7 @@ D-Bus calls arrive on the main thread and are forwarded to `VolumeController` (w
 
 ## D-Bus / MPRIS — `dbus-send` recipes
 
-`kv-ctl` is the recommended client. When debugging without a `kv-ctl` build, or scripting on systems that do not ship `qdbus` (Qt6 makes it an optional package on several distros), use `dbus-send`. End-user `qdbus` examples live in `README.md`.
+`kv-ctl` is the recommended client. When debugging without a `kv-ctl` build, or scripting on systems that do not ship `qdbus` (Qt6 makes it an optional package on several distros), use `dbus-send`. End-user `qdbus` examples live in [`docs/en/remote-control.md`](docs/en/remote-control.md) and [`docs/pl/remote-control.md`](docs/pl/remote-control.md).
 
 ```bash
 # Bump volume / mute on the default profile
