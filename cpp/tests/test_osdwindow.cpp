@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QPixmap>
 #include <QScreen>
 #include <QTemporaryDir>
 
@@ -246,6 +247,49 @@ TEST(OSDWindowLabel, CustomEmptyBottomHidesTrackLabel)
 
     EXPECT_EQ(window.m_labelName->text().toStdString(), "Hello");
     EXPECT_FALSE(window.m_labelTrack->isVisible());
+}
+
+TEST(OSDWindowAlbumArt, PreservesAspectRatioWhenFittingArtwork)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OSDWindow window(&config);
+    const QSize target = window.m_albumArt->size();
+    ASSERT_EQ(target.width(), target.height());
+
+    QPixmap portrait(20, 40);
+    portrait.fill(Qt::red);
+    window.setAlbumArt(portrait);
+
+    const QPixmap fitted = window.m_albumArt->pixmap(Qt::ReturnByValue);
+    EXPECT_EQ(fitted.size(), QSize(target.width() / 2, target.height()));
+    EXPECT_FALSE(window.m_albumArt->hasScaledContents());
+
+    OsdConfig osd = config.osd();
+    osd.osdScale = 2.0;
+    config.setOsd(osd);
+    window.reloadStyles();
+
+    const QPixmap rescaled = window.m_albumArt->pixmap(Qt::ReturnByValue);
+    EXPECT_EQ(rescaled.size(), QSize(target.width(), target.height() * 2));
+}
+
+TEST(OSDWindowAlbumArt, PreservesAspectRatioForLandscapeArtwork)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    OSDWindow window(&config);
+    const QSize target = window.m_albumArt->size();
+    QPixmap landscape(40, 20);
+    landscape.fill(Qt::blue);
+    window.setAlbumArt(landscape);
+
+    const QPixmap fitted = window.m_albumArt->pixmap(Qt::ReturnByValue);
+    EXPECT_EQ(fitted.size(), QSize(target.width(), target.height() / 2));
 }
 
 TEST(OSDWindowResize, RightEdgePersistsScaleAndRestartsTimer)
