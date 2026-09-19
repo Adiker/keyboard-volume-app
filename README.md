@@ -1,71 +1,29 @@
-[English](#english) | [Polski](#polski)
-
----
-
-> **Notice:** C++/Qt6 is now the primary version of this project. The original Python/PyQt6 implementation is preserved in the [`python-legacy`](https://github.com/Adiker/keyboard-volume-app/tree/python-legacy) branch and tagged as [`python-last`](https://github.com/Adiker/keyboard-volume-app/releases/tag/python-last).
-
-<h2 id="english">🇬🇧 English</h2>
+[Polski](README.pl.md)
 
 # keyboard-volume-app
 
-A Linux-native alternative to AutoHotkey volume scripts for Windows. Controls the volume of a single chosen application via keyboard — without touching the system master volume. Pick an audio app from the tray icon, use the keyboard volume keys or wheel, and get an OSD overlay with the current level.
+Linux per-application volume control for keyboard and mouse hotkeys. The app
+changes the selected application's volume instead of the system master volume,
+and shows the result in a configurable OSD overlay.
 
 ![C++](https://img.shields.io/badge/C%2B%2B-20-blue)
 ![Qt](https://img.shields.io/badge/Qt-6-green)
-![CMake](https://img.shields.io/badge/CMake-3.20%2B-red)
 ![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey)
-![Desktop](https://img.shields.io/badge/Desktop-KDE%20Plasma-blue)
 ![Audio](https://img.shields.io/badge/Audio-PipeWire%20%2F%20PulseAudio-orange)
 
-### Features
+## What it does
 
-- **Per-app volume control** — changes the volume of only the selected application, not the system master
-- **Mixer-visible PipeWire volume** — intentional volume changes keep PipeWire's hidden raw multiplier at unity and store the level in per-channel volume, so KDE Plasma, pavucontrol, `wpctl`, and PulseAudio clients show the same value; pre-existing discrepancies are reported without being changed until the next explicit volume action
-- **Multiple audio profiles** — define several profiles, each with its own hotkeys (keyboard keys or mouse wheel), optional `Ctrl`/`Shift` modifiers, and target audio app. Bare `VolUp` controls Spotify, `Ctrl+VolUp` controls Firefox, `F11` controls VLC — all from the same keyboard
-- **Show volume hotkey** — each profile can bind an optional `show` hotkey that displays the OSD with the current volume of that profile's app without changing it; also available via `kv-ctl show [--profile id]` and D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
-- **Focus audio / ducking** — each profile can bind a manual ducking hotkey that lowers every other known audio app to a configured percentage, then restores the previous levels on the next press
-- **Auto-switch by window focus** — when enabled, the active (focused) window determines which profile's audio app receives volume keys; switch from Spotify to Firefox and volume keys follow automatically
-- **Output sink routing** — per-profile and per-scene PulseAudio output device (sink) selection; route Discord to a headset and Firefox to speakers, apply sink-only scene presets from the tray or `kv-ctl`, and ad-hoc routing with `kv-ctl set sink APP DEVICE`
-- **Audio scenes / mixer presets** — create, edit, duplicate, and apply named presets from Settings that set volume, mute, and/or output sink for several apps at once; each scene can take an optional global hotkey, and you can still apply them from scripts with `kv-ctl scene ID`
-- **Global key capture** — reads directly from evdev input devices (keyboards and mice), works regardless of which window is focused
-- **Multi-node grab** — automatically grabs all sibling event nodes of the chosen keyboard (e.g. main keyboard + Consumer Control interface) plus any other device advertising configured hotkey bindings (keys or scroll) from any profile, so the desktop never intercepts them
-- **Configurable hotkeys** — every profile's Volume Up, Volume Down, Mute and Focus audio hotkeys (keys or mouse wheel) are reassignable via Settings → Profiles; right-click any hotkey field for an **Unassign** menu option to clear it; defaults are the dedicated media keys
-- **OSD overlay** — frameless, always-on-top window showing app name, volume bar and percentage; can optionally expand with MPRIS playback progress, track label and elapsed/total time; drag any visible OSD edge or corner to resize it persistently; optional reposition controls (on-OSD arrow buttons, interior mouse drag, configurable keyboard shortcuts while visible); click or drag the progress bar to seek when the player allows it; live streams show `LIVE`; auto-hides after a configurable timeout
-- **System tray** — select the active audio app, refresh the list, change input device, open settings, or view the bilingual About dialog with version, author, project links, and the complete offline license text
-- **Idle app detection** — lists non-system PipeWire audio clients, including apps that are connected but not currently playing
-- **Friendly audio app names** — normalizes PipeWire/PulseAudio streams where the visible app and controllable stream differ, so wrappers such as Harmonoid can appear as the real app while still controlling the underlying stream; configurable **app aliases**, profile **app_regex**, and **audio_app_filters** refine identity further
-- **Audio backend recovery** — reconnects to PulseAudio/pipewire-pulse after daemon restarts while keeping the configured selected app
-- **Mute toggle** — press the mute key to toggle mute on the selected app only; OSD shows current level with a 🔇 indicator
-- **Persistent config** — all settings saved atomically to `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`)
-- **PL / EN interface** — switch language in Settings
-- **First-run wizard** — on first launch, a QWizard guides through language, input device, and default audio app selection; the app is production-ready out of the box after a few clicks
-- **D-Bus control** — full remote access via `org.keyboardvolumeapp.VolumeControl`: read/write volume, mute, active app, app list, volume step, **profiles**, **scenes**, enumerated **Sinks**, runtime `ProgressEnabled`, and `SetAppSink(app, sink)`; bare `VolumeUp/Down/ToggleMute/ToggleDucking/RefreshApps` methods, per-profile methods, plus `ApplyScene(id)`
-- **`kv-ctl` CLI** — script-friendly command-line client for D-Bus control without calling the external `qdbus` program
-- **MPRIS v2** — optionally registered as `org.mpris.MediaPlayer2.keyboardvolumeapp` for desktop volume widgets, KDE Connect, and any MPRIS-compatible client; disabled by default to avoid conflicts with apps like Discord Music Presence; enable via Settings → Playback progress → "Expose fake MPRIS player endpoint"
-- **MPRIS playback tracking** — consumes other players' MPRIS metadata, position, seek support and player priority for the optional OSD playback progress features; when auto-switch by focus is enabled, the focused audio app is preferred for progress metadata
-- **Media hotkeys** — global play-pause / next / previous / stop bindings dispatched to the active MPRIS player; with auto-switch by focus enabled, they prefer the focused audio app's player before falling back to tracked-player priority; configurable in Settings → Media hotkeys, also reachable via `kv-ctl media <action>` and D-Bus `MediaPlayPause/Next/Previous/Stop`; their OSD can be disabled, show only the pressed action, or show the full volume OSD
-- **Marquee labels** — app and track names that exceed the OSD width scroll automatically; short labels display statically
-- **CLI flags** — `--help` and `--version` for quick help and version info without starting the app
-- **Unit tests** — GTest + Qt Test suite covering Config, i18n, the About dialog, `kv-ctl` parsing, PipeWire utilities, VolumeController, InputHandler, and the MPRIS client
+- Controls one audio application at a time, with mute, volume limits and idle-app detection.
+- Supports multiple profiles, modifier-qualified hotkeys, mouse-wheel bindings and automatic switching by focused window.
+- Applies scenes for volume, mute and output-sink changes; optional ducking lowers other known audio apps temporarily.
+- Provides a resizable OSD with optional MPRIS track metadata, progress, seeking, album art and media controls.
+- Captures configured keys directly through evdev, so hotkeys work independently of the focused window.
+- Integrates with PipeWire/PulseAudio, keeps mixer-visible volume consistent, and reconnects after audio-daemon restarts.
+- Includes a tray UI, first-run wizard, English/Polish translations, `kv-ctl`, D-Bus control and an opt-in MPRIS endpoint.
 
-### Requirements
+## Install and start
 
-| Dependency | Purpose |
-|---|---|
-| Qt6 (Widgets, DBus) | System tray, OSD window, settings dialogs |
-| libevdev + uinput access | Global keyboard input capture and re-injection |
-| libpulse | Per-app volume control via PipeWire/PulseAudio socket |
-| libpipewire | Listing and controlling idle PipeWire audio apps without subprocesses |
-| TagLib | Reading local audio-file duration when a player reports stale MPRIS metadata |
-| libxcb | X11 protocol for active-window detection (auto-switch feature) |
-| wayland-client + LayerShellQt >= 6.6 | Optional native Wayland OSD positioning via `zwlr_layer_shell_v1`; Wayland focus tracking via `zwlr_foreign_toplevel_management_unstable_v1` |
-| GTest | Unit tests (optional, `BUILD_TESTING=ON`) |
-| CMake 3.20+ | Build system |
-| C++20 compiler | GCC 11+ or Clang 13+ |
-
-### Installation
-
-#### Arch Linux / AUR
+### Arch Linux / AUR
 
 ```bash
 yay -S keyboard-volume-app-git
@@ -80,933 +38,84 @@ cd keyboard-volume-app-git
 makepkg -si
 ```
 
-The [`keyboard-volume-app-git`](https://aur.archlinux.org/packages/keyboard-volume-app-git) package tracks the upstream `main` branch, builds Release binaries, and installs everything to `/usr` including `keyboard-volume-app`, `kv-ctl`, the `.desktop` entry, icon, and systemd user service.
+### Packages or source
 
-To build directly using the PKGBUILD in this repo (sources still pulled from GitHub `main`):
+Release CI publishes `.deb` and `.rpm` artifacts. Download the package for
+your distribution from the latest successful GitHub Actions run and install it
+with the system package manager. Full package and dependency details are in
+the [installation guide](docs/en/installation.md).
 
-```bash
-cd pkg/arch
-makepkg -si
-```
-
-#### Debian / RPM packages
-
-Release builds publish `.deb` and `.rpm` packages as GitHub Actions artifacts. Download the package for your distribution, then install it with your system package manager:
+To build the current source tree:
 
 ```bash
-sudo apt install ./keyboard-volume-app_0.1.0-1_amd64.deb
-sudo dnf install ./keyboard-volume-app-0.1.0-1.x86_64.rpm
-```
-
-The packages install `keyboard-volume-app`, `kv-ctl`, the desktop entry, icon, and systemd user service under `/usr`. The app still needs evdev access, so add your user to the `input` group as described below.
-
-#### Build from source
-
-```bash
-git clone git@github.com:Adiker/keyboard-volume-app.git
+git clone https://github.com/Adiker/keyboard-volume-app.git
 cd keyboard-volume-app
-```
-
-**Install dependencies**
-
-Arch / Manjaro:
-```bash
-sudo pacman -S qt6-base libevdev libpulse libxcb pipewire taglib wayland layer-shell-qt cmake gcc gtest
-```
-
-Ubuntu / Debian:
-```bash
-sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libtag1-dev libxcb-dev libwayland-dev cmake g++ libgtest-dev
-```
-
-Native Wayland OSD positioning is compiled in when `wayland-client` and `LayerShellQt >= 6.6` development files are available. On wlroots/KDE compositors that expose `zwlr_layer_shell_v1`, the OSD uses native Wayland layer-shell positioning. On GNOME or other compositors without that protocol, the app keeps the XWayland (`xcb`) fallback when `QT_QPA_PLATFORM` is unset. OSD resizing is handled inside the app by dragging the visible OSD edges or corners, so it works with both the native layer-shell path and the XWayland fallback. Auto-switch by focused window uses `zwlr_foreign_toplevel_management_unstable_v1` on wlroots-compatible Wayland compositors and falls back to X11/XWayland via XCB.
-
-**Build**
-```bash
 cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
-cmake --build cpp/build -j$(nproc)
+cmake --build cpp/build -j"$(nproc)"
 ```
 
-This produces `cpp/build/keyboard-volume-app` and `cpp/build/kv-ctl`.
+### First launch
 
-**Input device permissions** — evdev requires read access to `/dev/input/event*`; write access is used to keep keyboard lock LEDs synchronized when devices are mirrored through uinput. Add your user to the `input` group:
-
-```bash
-sudo usermod -aG input $USER
-```
-
-Log out and back in for the change to take effect.
-
-**Autostart with systemd user service** — packaged/system installs place the unit in `/usr/lib/systemd/user`. Enable it per user:
-
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now keyboard-volume-app.service
-```
-
-Disable it with:
-
-```bash
-systemctl --user disable --now keyboard-volume-app.service
-```
-
-For a manual per-user install without a package, copy `deploy/keyboard-volume-app.service` to `$HOME/.config/systemd/user/` and adjust `ExecStart` if the binary is not installed as `/usr/bin/keyboard-volume-app`. The app still needs evdev access, so keep the `input` group setup above.
-
-### Running
-
-```bash
-cpp/build/keyboard-volume-app
-```
-
-On first launch the **first-run wizard** guides you through language selection, input device configuration, and default audio app selection. The device list is filtered to show only keyboards that expose volume keys (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
-
-**CLI flags:**
-
-```bash
-cpp/build/keyboard-volume-app --help     # Show help
-cpp/build/keyboard-volume-app --version  # Show version
-cpp/build/kv-ctl --help                  # Show CLI control commands
-```
-
-### Testing
-
-```bash
-cmake -S cpp -B cpp/build -DBUILD_TESTING=ON
-cmake --build cpp/build
-cd cpp/build && ctest -E test_mprisclient
-cd cpp/build && dbus-run-session -- ctest -R test_mprisclient
-
-# Optional real PipeWire regression in a private runtime/config/D-Bus session
-cmake -S cpp -B cpp/build-pw-test -DBUILD_TESTING=ON \
-  -DENABLE_PIPEWIRE_INTEGRATION_TESTS=ON
-cmake --build cpp/build-pw-test
-ctest --test-dir cpp/build-pw-test -R integration_pipewire_visible_volume \
-  --output-on-failure
-```
-
-Tests cover the Config manager, audio scenes, i18n translations, `kv-ctl` command parsing, PipeWire utilities, VolumeController (smoke test), InputHandler (API-only, no device required), and MPRIS client behavior. `test_mprisclient` should run under `dbus-run-session` so fake MPRIS players do not collide with the user's desktop session. The opt-in PipeWire integration test starts private PipeWire, pipewire-pulse, WirePlumber, D-Bus, null sinks, and silent streams under a temporary XDG tree; it never connects to the desktop audio session or reads the user's keyboard-volume-app configuration. Requires `gtest` / `libgtest-dev` package (see Requirements).
-
-### Usage
-
-1. **Select audio app** — click the tray icon → pick an app from the list. Apps currently playing audio are listed first; idle apps (connected to PipeWire but paused) appear below.
-2. **Volume keys / wheel** — press the volume keys or scroll the wheel up/down to change the selected app's volume by the configured step.
-3. **Mute** — press the mute key to toggle mute on the selected app only. The OSD appears with a 🔇 indicator when muted.
-   While the OSD is visible, drag any edge or corner to resize it; the new size is saved automatically.
-4. **Refresh app list** — tray menu → *Refresh app list* to re-scan running audio apps.
-5. **Change input device** — tray menu → *Change input device...* to pick a different keyboard without restarting.
-6. **Settings** — tray menu → *Settings...* to configure:
-   - Interface language (English / Polski)
-   - OSD display timeout (ms)
-   - OSD screen position (X / Y)
-   - **OSD repositioning** (optional, off by default) — enable arrow buttons that snap the OSD to screen edges, interior mouse drag, and/or keyboard shortcuts active only while the OSD is visible; assign each shortcut in Settings (empty = disabled; e.g. arrow keys for snap, `+`/`−` for scale)
-   - OSD opacity (0–100%)
-   - Volume step per keypress (%)
-   - OSD colors (background, text, progress bar)
-   - **Playback progress** — enable the MPRIS progress row, allow/disable interactive seeking, choose poll interval, choose app/track/both label mode, edit the comma-separated tracked-player priority list, choose whether media hotkeys show no OSD / only the pressed action / the full volume OSD, and optionally expose a fake MPRIS v2 endpoint for desktop widgets (disabled by default)
-   - **Profiles** — add / edit / remove audio profiles, each with its own hotkeys, optional `Ctrl`/`Shift` modifiers, target app(s), optional **app regex** for Follow Focus groups, optional **output sink** (PulseAudio device name; empty = system default), and optional Focus audio ducking hotkey; right-click any hotkey field to **Unassign** it; row 0 is the default profile (used by the tray and by bare D-Bus / MPRIS calls); hotkeys are shown as `"Volume Up (115)"` — human-readable name first, evdev code in parentheses
-   - **App aliases** — remap detected PipeWire names to a friendly display label and optional control target (e.g. `chromium` → display `YouTube Music`, target `youtube-music`)
-   - **Media hotkeys** — global play-pause / next / previous / stop bindings that dispatch to the active MPRIS player chosen by the built-in MPRIS consumer. With auto-switch by window focus enabled, the focused audio app's MPRIS player is preferred; otherwise selection falls back to priority order from *Tracked players*. Independent of profiles — when an active profile claims the same key the profile binding wins, otherwise the media binding fires. Defaults are unassigned so the app does not silently capture your existing media keys.
-
-7. **CLI / D-Bus remote control** — use `kv-ctl` to drive the running tray app from scripts, custom keybinds, or external tools without calling the external `qdbus` program:
+1. Ensure the user can read `/dev/input/event*` devices:
 
    ```bash
-   # Bump volume on the default profile's app
-   kv-ctl up
-
-   # Bump volume on a specific profile
-   kv-ctl up --profile firefox-ctrl
-
-   # Toggle Focus audio ducking for the default profile
-   kv-ctl duck
-
-   # Toggle Focus audio ducking for a specific profile
-   kv-ctl duck --profile discord
-
-   # Show current volume on OSD without changing it
-   kv-ctl show
-
-   # Show current volume for a specific profile
-   kv-ctl show --profile firefox-ctrl
-
-   # List all profiles
-   kv-ctl get profiles
-
-   # List configured audio scenes and apply one
-   kv-ctl get scenes
-   kv-ctl scene meeting
-
-   # List PulseAudio sinks and route an app ad-hoc (stable PA sink name, not description)
-   kv-ctl get sinks
-   kv-ctl set sink chromium alsa_output.usb-headset
-
-   # Switch to Firefox
-   kv-ctl set active-app Firefox
-
-   # Read current volume
-   kv-ctl get volume
-
-   # Set an absolute volume for a specific profile (0..100)
-   kv-ctl set volume 35 --profile firefox-ctrl
-
-   # Toggle OSD playback progress at runtime
-   kv-ctl get progress-enabled
-   kv-ctl set progress-enabled true
-
-   # Enable/disable auto-profile switching at runtime (e.g. from a WM workspace script)
-   kv-ctl get auto-profile-switch
-   kv-ctl set auto-profile-switch true
-   kv-ctl set auto-profile-switch false
-
-   # Media playback (relayed to the active MPRIS player)
-   kv-ctl media play-pause
-   kv-ctl media next
-   kv-ctl media previous
-   kv-ctl media stop
+   sudo usermod -aG input "$USER"
    ```
 
-   `kv-ctl` still uses the app's existing session D-Bus API under the hood, so `keyboard-volume-app` must already be running.
-   App names are case-sensitive; use `kv-ctl get apps` to list the exact names known by the daemon.
-   `kv-ctl get profiles` keeps its original first six tab-separated columns and appends `apps=` and `regex=` fields for the complete identity configuration.
+   Log out and in again after changing the group.
+2. Start `keyboard-volume-app` from the application menu, or run
+   `cpp/build/keyboard-volume-app` when using a source build.
+3. Follow the wizard to choose the language, input device and initial audio app.
+4. Use the configured volume/mute keys or wheel. The tray icon opens app
+   selection and Settings.
 
-8. **Direct D-Bus access (advanced)** — when `kv-ctl` is not available (e.g. on a remote machine or from a tool that already speaks D-Bus), the same API is reachable through `qdbus`. The daemon registers two services on the session bus:
+## Documentation
 
-   ```bash
-   # Custom interface — properties (Get / Set)
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Get \
-     org.keyboardvolumeapp.VolumeControl Volume
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Get \
-     org.keyboardvolumeapp.VolumeControl Apps
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Get \
-     org.keyboardvolumeapp.VolumeControl ActiveApp
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Set \
-     org.keyboardvolumeapp.VolumeControl Volume 0.75
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Set \
-     org.keyboardvolumeapp.VolumeControl Muted true
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Set \
-     org.keyboardvolumeapp.VolumeControl ActiveApp "Firefox"
+| Topic | English | Polski |
+|---|---|---|
+| Installation, dependencies, Wayland and systemd | [Installation](docs/en/installation.md) | [Instalacja](docs/pl/installation.md) |
+| Everyday use, profiles, OSD, scenes and troubleshooting | [User guide](docs/en/user-guide.md) | [Przewodnik użytkownika](docs/pl/user-guide.md) |
+| `config.json`, hotkey formats and migrations | [Configuration](docs/en/configuration.md) | [Konfiguracja](docs/pl/configuration.md) |
+| `kv-ctl`, `qdbus`, D-Bus and MPRIS | [Remote control](docs/en/remote-control.md) | [Sterowanie zdalne](docs/pl/remote-control.md) |
+| Architecture, tests and maintainer workflows | [ARCHITECTURE.md](ARCHITECTURE.md) | — |
 
-   # Custom interface — methods (default profile)
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.VolumeUp
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.VolumeDown
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.ToggleMute
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.SetMute true
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.RefreshApps
+The source-build guide lists the required Qt6, libevdev, PulseAudio, PipeWire,
+TagLib, Wayland/XCB and CMake packages. Native Wayland OSD positioning is
+optional; unsupported compositors use the XWayland fallback.
 
-   # Custom interface — per-profile and scenes
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.VolumeUpProfile firefox-ctrl
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.SetVolumeProfile firefox-ctrl 0.35
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.SetMuteProfile firefox-ctrl true
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.ToggleDuckingProfile discord
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.ShowVolume
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.ApplyScene meeting
-
-   # Custom interface — media controls (relayed to the active MPRIS player)
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.MediaPlayPause
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.MediaNext
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.MediaPrevious
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.MediaStop
-
-   # Debug — read everything at once / introspect
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.GetAll \
-     org.keyboardvolumeapp.VolumeControl
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Introspectable.Introspect
-
-   # MPRIS endpoint (only when "Expose fake MPRIS endpoint" is enabled in Settings)
-   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
-     org.freedesktop.DBus.Properties.Get org.mpris.MediaPlayer2 Identity
-   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
-     org.freedesktop.DBus.Properties.Get org.mpris.MediaPlayer2.Player Volume
-   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
-     org.freedesktop.DBus.Properties.Set org.mpris.MediaPlayer2.Player Volume 0.5
-   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
-     org.mpris.MediaPlayer2.Quit
-   ```
-
-   The MPRIS endpoint is opt-in (Settings → Playback progress → *Expose fake MPRIS endpoint*) and stays unregistered by default to avoid being picked up by tools like `discord-music-presence`. For shell scripts that should not depend on `qdbus` being installed, see `dbus-send` recipes in `ARCHITECTURE.md`.
-
-> **Hotkey capture note:** the app grabs its configured hotkey bindings (keys and scroll) at the evdev level, so those exact events won't be visible to Qt while the app is running. To reassign a *currently active* hotkey, right-click the hotkey field in Settings → Profiles, choose **Unassign**, save, reopen the profile, and capture the new binding.
-
-### Configuration
-
-Config file: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (defaults to `~/.config/keyboard-volume-app/`). Writes are atomic, so a failed save keeps the previous file intact. Settings can export this file or import another valid JSON config; before import, Settings asks whether to restart immediately or exit after success. Import creates a `config.json.backup-*` backup and closes the app so the imported config cannot be overwritten by stale in-memory settings.
-
-```json
-{
-  "input_device": "/dev/input/event3",
-  "selected_app": "youtube-music",
-  "language": "en",
-  "osd": {
-    "screen": 0,
-    "x": 50,
-    "y": 1150,
-    "timeout_ms": 1200,
-    "opacity": 85,
-    "color_bg": "#1A1A1A",
-    "color_text": "#FFFFFF",
-    "color_bar": "#0078D7",
-    "progress_enabled": false,
-    "progress_interactive": true,
-    "progress_poll_ms": 500,
-    "progress_label_mode": "both",
-    "tracked_players": ["spotify", "vlc", "strawberry", "harmonoid", "youtube"]
-  },
-  "volume_step": 5,
-  "hotkeys": {
-    "volume_up": 115,
-    "volume_down": 114,
-    "mute": 113
-  },
-  "media_hotkeys": {
-    "play_pause": 0,
-    "next": 0,
-    "previous": 0,
-    "stop": 0
-  },
-  "auto_profile_switch": false,
-  "app_aliases": [
-    { "match": "chromium", "display": "YouTube Music", "target": "youtube-music" }
-  ],
-  "audio_app_filters": {
-    "extra_system_binaries": [],
-    "remove_system_binaries": [],
-    "extra_skip_app_names": [],
-    "remove_skip_app_names": []
-  },
-  "profiles": [
-    { "id": "default", "name": "Default", "app": "youtube-music",
-      "modifiers": [],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
-      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
-      "auto_switch": true },
-    { "id": "comms", "name": "Comms", "apps": ["discord"],
-      "app_regex": ".*(discord|teams|slack|zoom).*",
-      "modifiers": ["ctrl"],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
-      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
-      "auto_switch": true },
-    { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
-      "modifiers": ["ctrl"],
-      "hotkeys": { "volume_up": { "type": "rel", "code": 8, "direction": 1 },
-                   "volume_down": 114, "mute": 113, "show": 0 },
-      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
-      "auto_switch": true }
-  ],
-  "scenes": [
-    { "id": "meeting", "name": "Meeting", "hotkey": 88,
-      "targets": [
-        { "match": "Spotify", "volume": 10, "muted": false },
-        { "match": "Discord", "volume": 80 },
-        { "match": "Steam", "muted": true }
-      ] }
-  ]
-}
-```
-
-Hotkey values are evdev bindings: legacy integers are `EV_KEY` codes (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), while scroll bindings use objects such as `{ "type": "rel", "code": 8, "direction": 1 }` for `REL_WHEEL` up and `"direction": -1` for down. `show` defaults to `0` (unassigned) and supports the same key/scroll binding formats. The top-level `selected_app` and `hotkeys` are kept as a deprecated mirror of `profiles[0]` for one release of backwards compatibility — `profiles` is the canonical source of truth. Old config files without `profiles` are migrated automatically on first launch. Scene target `match` values use the same app/binary names as `kv-ctl get apps`; `volume` is a `0..100` percent value, and omitted `volume` or `muted` fields leave that part unchanged. A scene's optional `hotkey` (same key/scroll format as profile hotkeys; missing in older configs) applies the scene globally — resolution priority is profile > scene > media, and when two scenes share a binding the first one in the list wins.
-
-`app_aliases` remaps detected PipeWire/Pulse names for the tray and pickers: `match` is compared case-insensitively against `application.name` / binary, `display` is the UI label, and optional `target` is the volume-control binary (empty keeps the original). `audio_app_filters` adds or removes entries on top of the built-in system-binary / skip-name lists (`extra_*` / `remove_*`) without replacing the whole defaults. Profile `app_regex` is an optional case-insensitive regex matched against audio app names for Follow Focus and profile lookup, in addition to the explicit `apps` list.
-
-`media_hotkeys` is a top-level object with `play_pause`, `next`, `previous`, and `stop`, each accepting the same `EV_KEY` integer or scroll-binding object as profile hotkeys. All four default to `0` (unassigned). Bound keys dispatch to whichever MPRIS player is currently active. When `auto_profile_switch` has selected a focused audio app, matching tracked MPRIS players are preferred; otherwise the active player is resolved by the `tracked_players` priority list, then by playback state. When the same key is also claimed by an active profile binding the profile wins; the media binding only fires when no profile is matched.
-
-`auto_profile_switch` (default `false`) globally enables auto-profile switching by focused window. Per-profile `auto_switch` (default `true`) controls whether a given profile participates in auto-switching.
-
-OSD playback progress is configured under `osd`. `progress_enabled` is the master toggle, `progress_interactive` allows seek-capable players to be controlled from the progress bar, `progress_poll_ms` is clamped to `200..2000`, `progress_label_mode` is `app`, `track`, or `both`, and `tracked_players` is a priority list matched against MPRIS service names. When `auto_profile_switch` redirects volume keys to a focused audio app, matching tracked MPRIS players are preferred for the progress row and media controls; if no focused match exists, the same `tracked_players` priority fallback is used. When enabled and a tracked player is active, the OSD expands from the base volume view to a progress row with a track label, 0-1000 progress bar, and time label. Clicking or dragging the bar sends MPRIS `SetPosition` while the player reports `CanSeek` and a known length. Streams with unknown length disable the bar and show `LIVE`. Set `progress_interactive: false` to disable click/drag seek globally while keeping the visual progress row — useful if the player supports `CanSeek` but you prefer keyboard-only control.
-
-Optional OSD repositioning lives under the same `osd` section: `position_controls_enabled` (default `false`) with sub-options for on-OSD arrows, interior mouse drag, and keyboard shortcuts. Bindings in `layout_hotkeys` use the same evdev format as profile/media hotkeys; leave a field at `0` to keep that action disabled. Keyboard shortcuts are active only while the OSD overlay is visible.
-
-For troubleshooting rare MPRIS progress glitches, start the app with `KVA_DEBUG_PROGRESS=1` to log progress metadata, position source, and OSD bar decisions.
-
-On PipeWire, the tray warning **Hidden PipeWire volume detected** means another component or an older build left `Props:volume` different from `1.0` while the mixer-visible channel levels say something else. Detection at startup, refresh, reconnect, profile switching, and stream appearance is read-only. The next explicit volume change (hotkey, GUI, scene, ducking, D-Bus, or `kv-ctl`) folds the effective gain into the visible channels and resets the raw multiplier to unity. No configuration migration is required. On a native PulseAudio server there is no PipeWire raw/channel split; the app continues to use libpulse and stream-restore channel volumes.
-
-### Project structure
-
-```
-keyboard-volume-app/
-├── cpp/
-│   ├── CMakeLists.txt
-│   ├── resources.qrc            # Qt resource manifest (embeds icon)
-│   ├── protocols/               # Custom Wayland protocol XML definitions
-│   │   └── wlr-foreign-toplevel-management-unstable-v1.xml
-│   ├── src/
-│       ├── main.cpp             # Entry point, wires all modules together
-│       ├── config.h/cpp         # JSON config read/write
-│       ├── i18n.h/cpp           # PL/EN translations and tr() helper
-│       ├── volumecontroller.h/cpp  # libpulse — per-app volume and mute
-│       ├── inputhandler.h/cpp   # evdev QThread — global key capture (epoll)
-│       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (open/close/grab)
-│       ├── osdwindow.h/cpp      # Qt6 OSD overlay
-│       ├── trayapp.h/cpp        # System tray icon and menu
-│       ├── deviceselector.h/cpp # Input device picker dialog
-│       ├── settingsdialog.h/cpp # OSD/volume/profiles settings dialog
-│       ├── profileeditdialog.h/cpp # Sub-dialog for editing a single audio profile
-│       ├── firstrunwizard.h/cpp  # First-run wizard (language + device + app)
-│       ├── dbusinterface.h/cpp   # D-Bus VolumeControl interface
-│       ├── mprisinterface.h/cpp  # MPRIS v2 adaptor
-│       ├── mprisclient.h/cpp     # MPRIS consumer for player metadata/progress
-│       ├── kvctl.cpp             # kv-ctl D-Bus CLI client
-│       ├── kvctlcommand.h/cpp    # kv-ctl command parser
-│       ├── pwutils.h/cpp         # PipeWire client listing utility
-│       ├── applistwidget.h/cpp   # Reusable PW app list widget
-│       ├── appselectordialog.h/cpp  # Dialog for changing default audio app
-│       ├── windowtracker.h/cpp   # Window focus monitor (X11 + Wayland backends)
-│       ├── screenutils.h         # Header-only multi-monitor dialog centering
-│       ├── audioapp.h           # AudioApp struct
-│       └── waylandstate.h       # Declares global extern bool g_nativeWayland
-│   └── tests/
-│       ├── CMakeLists.txt
-│       ├── test_config.cpp
-│       ├── test_i18n.cpp
-│       ├── test_kvctlcommand.cpp
-│       ├── test_inputhandler.cpp
-│       ├── test_pwutils.cpp
-│       ├── test_volumecontroller.cpp
-│       ├── test_mprisclient.cpp
-│       └── test_osdwindow.cpp
-├── deploy/
-│   └── keyboard-volume-app.service  # systemd user service
-├── pkg/
-│   └── arch/
-│       └── PKGBUILD             # Arch Linux package (keyboard-volume-app-git)
-├── resources/
-│   ├── icon.png
-│   └── keyboard-volume-app.desktop  # Desktop entry for distribution
-├── .clang-format                # Code formatting configuration
-├── LICENSE
-├── AGENTS.md
-├── ARCHITECTURE.md
-├── CLAUDE.md
-├── GEMINI.md
-└── ROADMAP.md
-```
-
-### Performance
-
-On native PulseAudio, the active-stream volume hot path uses libpulse directly. On pipewire-pulse, active and idle volume writes reuse one worker-owned libpipewire connection so mixer-visible channel values can be updated without reconnecting per operation; no `pw-dump` or `pw-cli` subprocesses are spawned. All PulseAudio/PipeWire operations run on a dedicated worker thread — the Qt event loop is never blocked. If either audio connection fails or terminates, the worker reconnects lazily or with backoff as appropriate and keeps pending volume/mute state until the target app reconnects. Transient app-list refreshes during audio daemon restarts do not replace the configured selected app. D-Bus property reads are served from a local cache (zero IPC); writes delegate asynchronously to the audio worker thread.
-
-### License
-
-GPL-2.0-or-later — see [LICENSE](LICENSE)
-
----
-
-> **Uwaga:** C++/Qt6 jest teraz główną wersją tego projektu. Oryginalna implementacja Python/PyQt6 została zachowana w gałęzi [`python-legacy`](https://github.com/Adiker/keyboard-volume-app/tree/python-legacy) i oznaczona tagiem [`python-last`](https://github.com/Adiker/keyboard-volume-app/releases/tag/python-last).
-
-<h2 id="polski">🇵🇱 Polski</h2>
-
-# keyboard-volume-app
-
-Linuksowa alternatywa dla skryptów AutoHotkey sterujących głośnością na Windowsie. Zmienia głośność wybranej aplikacji za pomocą klawiatury — bez ingerowania w głośność systemową. Wybierz aplikację audio z ikony w zasobniku systemowym, użyj klawiszy klawiatury lub pokrętła myszy i obserwuj nakładkę OSD z aktualnym poziomem głośności.
-
-![C++](https://img.shields.io/badge/C%2B%2B-20-blue)
-![Qt](https://img.shields.io/badge/Qt-6-green)
-![CMake](https://img.shields.io/badge/CMake-3.20%2B-red)
-![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey)
-![Desktop](https://img.shields.io/badge/Desktop-KDE%20Plasma-blue)
-![Audio](https://img.shields.io/badge/Audio-PipeWire%20%2F%20PulseAudio-orange)
-
-### Funkcje
-
-- **Sterowanie głośnością per aplikacja** — zmienia głośność wyłącznie wybranej aplikacji, nie ruszając głośności systemowej
-- **Głośność PipeWire widoczna w mikserach** — jawne zmiany utrzymują ukryty surowy mnożnik PipeWire na `1.0`, a poziom zapisują per kanał, dzięki czemu KDE Plasma, pavucontrol, `wpctl` i klienty PulseAudio pokazują tę samą wartość; zastane rozbieżności są zgłaszane i pozostają nietknięte do następnej jawnej zmiany głośności
-- **Wiele profili audio** — definiuj kilka profili, każdy z własnymi skrótami (klawisze lub pokrętło myszy), opcjonalnymi modyfikatorami `Ctrl`/`Shift` i docelową aplikacją. `VolUp` steruje Spotify, `Ctrl+VolUp` steruje Firefoxem, `F11` steruje VLC — wszystko z tej samej klawiatury
-- **Hotkey „Pokaż głośność"** — każdy profil może mieć opcjonalny skrót `show`, który wyświetla OSD z aktualną głośnością aplikacji profilu bez jej zmieniania; dostępny też przez `kv-ctl show [--profile id]` i D-Bus `ShowVolume()` / `ShowVolumeProfile(id)`
-- **Tryb skupienia audio / ducking** — każdy profil może mieć ręczny skrót, który ścisza wszystkie inne znane aplikacje audio do ustawionego procentu, a kolejne naciśnięcie przywraca poprzednie poziomy
-- **Sceny audio / presety miksera** — twórz, edytuj, duplikuj i stosuj nazwane presety z poziomu Ustawień, które ustawiają głośność i/lub wyciszenie kilku aplikacji naraz; każda scena może mieć opcjonalny globalny skrót, a sceny nadal odpalisz ze skryptów przez `kv-ctl scene ID`
-- **Auto-przełączanie profilu wg aktywnego okna** — po włączeniu aktywne okno (np. Firefox, Spotify) automatycznie wybiera odpowiedni profil audio; klawisze głośności zawsze sterują aplikacją na wierzchu
-- **Globalne przechwytywanie** — odczytuje zdarzenia bezpośrednio z urządzeń evdev (klawiatury i myszy), działa niezależnie od tego, które okno jest aktywne
-- **Przechwytywanie wielu węzłów** — automatycznie blokuje wszystkie powiązane węzły wejściowe wybranej klawiatury oraz każde inne urządzenie zgłaszające skonfigurowane skróty (klawisze lub zdarzenia scroll) w którymkolwiek profilu, aby system nie przechwytywał ich
-- **Konfigurowalne skróty** — Głośność w górę, Głośność w dół, Wyciszenie i tryb skupienia każdego profilu można przypisać do dowolnego klawisza lub pokrętła myszy przez Ustawienia → Profile; prawy klik na polu hotkeya otwiera menu **Wyczyść**; domyślnie są to dedykowane klawisze multimedialne
-- **Nakładka OSD** — bezramkowe okno wyświetlane zawsze na wierzchu, pokazujące nazwę aplikacji, pasek głośności i wartość procentową; opcjonalnie rozwija się o postęp MPRIS, etykietę utworu i czas odtwarzania; przeciągnięcie dowolnej widocznej krawędzi lub rogu trwale zmienia rozmiar OSD; kliknięcie lub przeciągnięcie paska przewija odtwarzacz, jeśli ten na to pozwala; transmisje live pokazują `LIVE`; znika automatycznie po upływie skonfigurowanego czasu
-- **Zasobnik systemowy** — wybór aktywnej aplikacji audio, odświeżanie listy, zmiana urządzenia wejściowego, dostęp do ustawień oraz dwujęzycznego okna „O programie” z wersją, autorem, linkami projektu i pełnym tekstem licencji offline
-- **Wykrywanie nieaktywnych aplikacji** — lista zawiera niesystemowe klienty audio PipeWire, także aplikacje podłączone, ale aktualnie nieodtwarzające dźwięku
-- **Odzyskiwanie backendu audio** — ponownie łączy się z PulseAudio/pipewire-pulse po restarcie daemona i zachowuje skonfigurowaną wybraną aplikację
-- **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇
-- **Trwała konfiguracja** — wszystkie ustawienia zapisywane atomowo w `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`)
-- **Interfejs PL / EN** — przełączanie języka w oknie ustawień
-- **Asystent pierwszego uruchomienia** — przy pierwszym starcie QWizard przeprowadza przez wybór języka, urządzenia wejściowego i domyślnej aplikacji audio; aplikacja działa od razu po kilku kliknięciach
-- **Sterowanie przez D-Bus** — pełne zdalne sterowanie przez `org.keyboardvolumeapp.VolumeControl`: odczyt/zapis głośności, wyciszenia, wybór aplikacji, lista aplikacji, krok głośności, **profile**, **sceny** oraz runtime `ProgressEnabled`; metody bez wskazania profilu, metody profilowe oraz `ApplyScene(id)`
-- **CLI `kv-ctl`** — wygodny klient wiersza poleceń do sterowania przez D-Bus bez wywoływania zewnętrznego programu `qdbus`
-- **MPRIS v2** — opcjonalnie rejestrowany jako `org.mpris.MediaPlayer2.keyboardvolumeapp` dla widżetów głośności pulpitu, KDE Connect i każdego klienta MPRIS; domyślnie wyłączony, aby uniknąć konfliktów z aplikacjami takimi jak Discord Music Presence; włącz przez Ustawienia → Postęp odtwarzania → „Eksponuj fałszywy endpoint MPRIS"
-- **Śledzenie odtwarzania MPRIS** — odczytuje metadane, pozycję, możliwość seekowania i priorytet innych odtwarzaczy dla opcjonalnego paska postępu OSD; gdy auto-przełączanie wg focusu jest włączone, preferowany jest odtwarzacz MPRIS aktywnej aplikacji audio
-- **Skróty multimedialne** — globalne powiązania play-pause / next / previous / stop przekazywane do aktywnego odtwarzacza MPRIS; przy włączonym auto-przełączaniu wg focusu preferują odtwarzacz aktywnej aplikacji audio, a potem wracają do priorytetu obserwowanych odtwarzaczy; konfigurowalne w Ustawienia → Skróty multimedialne, dostępne też przez `kv-ctl media <akcja>` i D-Bus `MediaPlayPause/Next/Previous/Stop`
-- **Etykiety marquee** — nazwy aplikacji i utworów przekraczające szerokość OSD przewijają się automatycznie; krótkie etykiety wyświetlają się statycznie
-- **Flagi CLI** — `--help` i `--version` do szybkiego podglądu pomocy i wersji bez uruchamiania aplikacji
-- **Testy jednostkowe** — GTest + Qt Test dla Config, i18n, okna „O programie”, parsera `kv-ctl`, narzędzi PipeWire, VolumeController, InputHandler i klienta MPRIS
-
-### Wymagania
-
-| Zależność | Przeznaczenie |
-|---|---|
-| Qt6 (Widgets, DBus) | Zasobnik systemowy, okno OSD, dialogi ustawień |
-| libevdev + dostęp do uinput | Globalne przechwytywanie klawiszy i reinjekcja zdarzeń |
-| libpulse | Sterowanie głośnością per aplikacja przez gniazdo PipeWire/PulseAudio |
-| libpipewire | Listowanie i sterowanie nieaktywnymi aplikacjami PipeWire bez procesów pomocniczych |
-| TagLib | Odczyt długości lokalnych plików audio, gdy odtwarzacz zgłasza nieaktualne metadane MPRIS |
-| libxcb | Protokół X11 do wykrywania aktywnego okna (funkcja auto-przełączania) |
-| wayland-client + LayerShellQt >= 6.6 | Opcjonalne natywne pozycjonowanie OSD na Waylandzie przez `zwlr_layer_shell_v1`; śledzenie fokusu przez `zwlr_foreign_toplevel_management_unstable_v1` |
-| GTest | Testy jednostkowe (opcjonalne, `BUILD_TESTING=ON`) |
-| CMake 3.20+ | System budowania |
-| Kompilator C++20 | GCC 11+ lub Clang 13+ |
-
-### Instalacja
-
-#### Arch Linux / AUR
+For a quick script example, start the app and run:
 
 ```bash
-yay -S keyboard-volume-app-git
+kv-ctl up
+kv-ctl get apps
+kv-ctl set volume 35
 ```
 
-Bez helpera AUR:
+See the [remote-control guide](docs/en/remote-control.md) for the complete
+command list and typed D-Bus examples. Test recipes and the isolated PipeWire
+regression are maintained in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-```bash
-sudo pacman -S --needed base-devel git
-git clone https://aur.archlinux.org/keyboard-volume-app-git.git
-cd keyboard-volume-app-git
-makepkg -si
-```
+## Defaults and compatibility
 
-Pakiet [`keyboard-volume-app-git`](https://aur.archlinux.org/packages/keyboard-volume-app-git) śledzi upstreamowy branch `main`, buduje binarki Release i instaluje wszystko do `/usr`, w tym `keyboard-volume-app`, `kv-ctl`, wpis `.desktop`, ikonę i usługę systemd user.
+The default bindings are `KEY_VOLUMEUP` (115), `KEY_VOLUMEDOWN` (114) and
+`KEY_MUTE` (113). Media and OSD-position bindings start unassigned. The
+configuration file is stored at `$XDG_CONFIG_HOME/keyboard-volume-app/config.json`
+or `~/.config/keyboard-volume-app/config.json` when the variable is unset.
+The optional fake MPRIS endpoint is disabled by default. Existing Python
+configuration and the archived Python branch are not modified by the C++ app.
 
-Aby budować bezpośrednio przez PKGBUILD z tego repozytorium (źródła nadal są pobierane z GitHuba z brancha `main`):
+The tray and Settings UI can be switched between English and Polish at any
+time. All configuration writes preserve the previous file when saving fails.
+For compositor-specific behavior, see the Wayland section of the installation
+guide.
 
-```bash
-cd pkg/arch
-makepkg -si
-```
+## Project status
 
-#### Pakiety Debian / RPM
+The C++/Qt6 implementation is the primary version. The original Python/PyQt6
+implementation is preserved in the [`python-legacy`](https://github.com/Adiker/keyboard-volume-app/tree/python-legacy)
+branch and the [`python-last`](https://github.com/Adiker/keyboard-volume-app/releases/tag/python-last)
+tag.
 
-Buildy Release publikują pakiety `.deb` i `.rpm` jako artefakty GitHub Actions. Pobierz pakiet dla swojej dystrybucji, a potem zainstaluj go systemowym menedżerem pakietów:
+## License
 
-```bash
-sudo apt install ./keyboard-volume-app_0.1.0-1_amd64.deb
-sudo dnf install ./keyboard-volume-app-0.1.0-1.x86_64.rpm
-```
-
-Pakiety instalują `keyboard-volume-app`, `kv-ctl`, wpis desktopowy, ikonę i usługę systemd user w `/usr`. Aplikacja nadal wymaga dostępu evdev, więc dodaj użytkownika do grupy `input` zgodnie z opisem poniżej.
-
-#### Budowanie ze źródeł
-
-```bash
-git clone git@github.com:Adiker/keyboard-volume-app.git
-cd keyboard-volume-app
-```
-
-**Instalacja zależności**
-
-Arch / Manjaro:
-```bash
-sudo pacman -S qt6-base libevdev libpulse libxcb pipewire taglib wayland layer-shell-qt cmake gcc gtest
-```
-
-Ubuntu / Debian:
-```bash
-sudo apt install qt6-base-dev libevdev-dev libpulse-dev libpipewire-0.3-dev libtag1-dev libxcb-dev libwayland-dev cmake g++ libgtest-dev
-```
-
-Natywne pozycjonowanie OSD na Waylandzie jest kompilowane, gdy dostępne są pliki deweloperskie `wayland-client` oraz `LayerShellQt >= 6.6`. Na kompozytorach wlroots/KDE z protokołem `zwlr_layer_shell_v1` OSD używa natywnego pozycjonowania layer-shell. Na GNOME lub innych kompozytorach bez tego protokołu aplikacja zachowuje fallback do XWayland (`xcb`), gdy `QT_QPA_PLATFORM` nie jest ustawione. Zmiana rozmiaru OSD jest obsługiwana wewnątrz aplikacji przez przeciąganie widocznych krawędzi lub rogów, więc działa zarówno w ścieżce natywnej layer-shell, jak i w fallbacku XWayland. Auto-przełączanie według aktywnego okna używa `zwlr_foreign_toplevel_management_unstable_v1` na zgodnych kompozytorach Wayland i fallbacku X11/XWayland przez XCB.
-
-**Kompilacja**
-```bash
-cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
-cmake --build cpp/build -j$(nproc)
-```
-
-Powstają binarki `cpp/build/keyboard-volume-app` oraz `cpp/build/kv-ctl`.
-
-**Uprawnienia do urządzenia wejściowego** — evdev wymaga dostępu do odczytu plików `/dev/input/event*`; zapis jest używany do synchronizacji diod lock klawiatury, gdy urządzenia są odbijane przez uinput. Dodaj swojego użytkownika do grupy `input`:
-
-```bash
-sudo usermod -aG input $USER
-```
-
-Wyloguj się i zaloguj ponownie, by zmiana weszła w życie.
-
-**Autostart przez systemd user service** — instalacja pakietowa/systemowa umieszcza unit w `/usr/lib/systemd/user`. Włącz go dla swojego użytkownika:
-
-```bash
-systemctl --user daemon-reload
-systemctl --user enable --now keyboard-volume-app.service
-```
-
-Wyłącz go poleceniem:
-
-```bash
-systemctl --user disable --now keyboard-volume-app.service
-```
-
-Przy ręcznej instalacji per-user bez paczki skopiuj `deploy/keyboard-volume-app.service` do `$HOME/.config/systemd/user/` i dostosuj `ExecStart`, jeśli binarka nie jest zainstalowana jako `/usr/bin/keyboard-volume-app`. Aplikacja nadal wymaga dostępu evdev, więc konfiguracja grupy `input` powyżej pozostaje wymagana.
-
-### Uruchamianie
-
-```bash
-cpp/build/keyboard-volume-app
-```
-
-Przy pierwszym uruchomieniu **asystent pierwszego uruchomienia** przeprowadzi przez wybór języka, urządzenia wejściowego i domyślnej aplikacji audio. Lista urządzeń jest filtrowana — pokazuje tylko klawiatury posiadające klawisze głośności (`KEY_VOLUMEUP` / `KEY_VOLUMEDOWN`).
-
-**Flagi CLI:**
-
-```bash
-cpp/build/keyboard-volume-app --help     # Pokaż pomoc
-cpp/build/keyboard-volume-app --version  # Pokaż wersję
-cpp/build/kv-ctl --help                  # Pokaż komendy sterowania CLI
-```
-
-### Testowanie
-
-```bash
-cmake -S cpp -B cpp/build -DBUILD_TESTING=ON
-cmake --build cpp/build
-cd cpp/build && ctest -E test_mprisclient
-cd cpp/build && dbus-run-session -- ctest -R test_mprisclient
-
-# Opcjonalna regresja na prawdziwym PipeWire w prywatnej sesji runtime/config/D-Bus
-cmake -S cpp -B cpp/build-pw-test -DBUILD_TESTING=ON \
-  -DENABLE_PIPEWIRE_INTEGRATION_TESTS=ON
-cmake --build cpp/build-pw-test
-ctest --test-dir cpp/build-pw-test -R integration_pipewire_visible_volume \
-  --output-on-failure
-```
-
-Testy obejmują Config, sceny audio, i18n, parser `kv-ctl`, narzędzia PipeWire, VolumeController (test dymny), InputHandler (API, bez potrzeby urządzenia) oraz klienta MPRIS. `test_mprisclient` uruchamiaj przez `dbus-run-session`, żeby fikcyjne odtwarzacze MPRIS nie mieszały się z sesją pulpitu użytkownika. Opcjonalny test integracyjny PipeWire uruchamia prywatne instancje PipeWire, pipewire-pulse, WirePlumber i D-Bus, zerowe sinki i bezgłośne strumienie pod tymczasowym drzewem XDG; nie łączy się z sesją audio pulpitu ani nie czyta konfiguracji użytkownika. Wymaga pakietu `gtest` / `libgtest-dev` (zobacz Wymagania).
-
-### Użytkowanie
-
-1. **Wybór aplikacji audio** — kliknij ikonę w zasobniku systemowym → wybierz aplikację z listy. Aplikacje aktualnie odtwarzające dźwięk są na górze; nieaktywne (podłączone do PipeWire, ale zapauzowane) pojawiają się poniżej.
-2. **Klawisze / pokrętło myszy** — naciśnij skonfigurowane klawisze głośności lub przewiń pokrętło myszy w górę albo w dół, aby zmienić głośność wybranej aplikacji o skonfigurowany krok.
-3. **Wyciszenie** — naciśnij klawisz mute, aby wyciszyć lub odciszyć wyłącznie wybraną aplikację; OSD pokazuje aktualny poziom ze wskaźnikiem 🔇.
-   Gdy OSD jest widoczne, przeciągnij dowolną krawędź lub róg, aby zmienić rozmiar; nowy rozmiar zapisuje się automatycznie.
-4. **Odświeżenie listy** — menu zasobnika → *Odśwież listę aplikacji*, aby ponownie wczytać aktywne aplikacje audio.
-5. **Zmiana urządzenia wejściowego** — menu zasobnika → *Zmień urządzenie wejściowe...*, aby wybrać inną klawiaturę bez restartu aplikacji.
-6. **Ustawienia** — menu zasobnika → *Ustawienia...*, aby skonfigurować:
-   - Język interfejsu (English / Polski)
-   - Czas wyświetlania OSD (ms)
-   - Pozycję OSD na ekranie (X / Y)
-   - Krycie OSD (0–100%)
-   - Krok zmiany głośności na jedno naciśnięcie klawisza (%)
-   - Kolory OSD (tło, tekst, pasek)
-    - **Postęp odtwarzania** — włączenie wiersza MPRIS, włączenie/wyłączenie interaktywnego seekowania, interwał odpytywania, tryb etykiety app/track/both, rozdzielona przecinkami lista priorytetów odtwarzaczy oraz opcjonalne eksponowanie fałszywego endpointu MPRIS v2 (domyślnie wyłączone)
-    - **Profile** — dodaj / edytuj / usuwaj profile audio, każdy z własnymi skrótami, opcjonalnymi modyfikatorami `Ctrl`/`Shift`, docelową aplikacją, opcjonalnym **regexem aplikacji** dla Follow Focus i opcjonalnym skrótem trybu skupienia; prawy klik na polu hotkeya = **Wyczyść**; pierwszy wiersz jest profilem domyślnym (używanym przez zasobnik oraz przez metody D-Bus / MPRIS bez wskazania profilu); hotkeye wyświetlane są jako `"Volume Up (115)"` — czytelna nazwa i kod evdev w nawiasie
-    - **Aliasy aplikacji** — mapuj wykryte nazwy PipeWire na przyjazną etykietę i opcjonalny cel sterowania (np. `chromium` → wyświetlane `YouTube Music`, cel `youtube-music`)
-    - **Skróty multimedialne** — globalne powiązania play-pause / next / previous / stop, które są przekazywane do aktywnego odtwarzacza MPRIS wybranego przez wbudowany konsument MPRIS. Przy włączonym auto-przełączaniu wg focusu preferowany jest odtwarzacz MPRIS aktywnej aplikacji audio; w pozostałych przypadkach wybór wraca do kolejności z listy *Obserwowane odtwarzacze*. Niezależne od profili — gdy aktywny profil przejmie ten sam klawisz, wygrywa powiązanie profilu, w przeciwnym razie uruchamia się powiązanie multimedialne. Domyślnie nieprzypisane, więc aplikacja nie przechwytuje po cichu istniejących klawiszy multimedialnych.
-
-7. **Zdalne sterowanie CLI / D-Bus** — użyj `kv-ctl` do kontrolowania działającej aplikacji ze skryptów, własnych skrótów lub zewnętrznych narzędzi bez uruchamiania zewnętrznego programu `qdbus`:
-
-   ```bash
-   # Zwiększ głośność aplikacji profilu domyślnego
-   kv-ctl up
-
-   # Zwiększ głośność wybranego profilu
-   kv-ctl up --profile firefox-ctrl
-
-   # Włącz lub wyłącz ducking profilu domyślnego
-   kv-ctl duck
-
-   # Włącz lub wyłącz ducking wybranego profilu
-   kv-ctl duck --profile discord
-
-   # Pokaż aktualną głośność na OSD bez zmieniania wartości
-   kv-ctl show
-
-   # Pokaż aktualną głośność wybranego profilu
-   kv-ctl show --profile firefox-ctrl
-
-   # Wylistuj wszystkie profile
-   kv-ctl get profiles
-
-   # Wylistuj sceny audio i zastosuj jedną z nich
-   kv-ctl get scenes
-   kv-ctl scene meeting
-
-   # Przełącz na Firefox
-   kv-ctl set active-app Firefox
-
-   # Odczytaj aktualną głośność
-   kv-ctl get volume
-
-   # Ustaw głośność konkretnego profilu (0..100)
-   kv-ctl set volume 35 --profile firefox-ctrl
-
-   # Przełącz postęp odtwarzania OSD w trakcie działania aplikacji
-   kv-ctl get progress-enabled
-   kv-ctl set progress-enabled true
-
-   # Włącz/wyłącz automatyczne przełączanie profili w trakcie działania (np. ze skryptu WM)
-   kv-ctl get auto-profile-switch
-   kv-ctl set auto-profile-switch true
-   kv-ctl set auto-profile-switch false
-
-   # Sterowanie odtwarzaniem (przekazane do aktywnego odtwarzacza MPRIS)
-   kv-ctl media play-pause
-   kv-ctl media next
-   kv-ctl media previous
-   kv-ctl media stop
-   ```
-
-   `kv-ctl` nadal używa istniejącego API D-Bus aplikacji, więc `keyboard-volume-app` musi już działać.
-   Nazwy aplikacji rozróżniają wielkość liter; użyj `kv-ctl get apps`, żeby sprawdzić dokładne nazwy znane daemonowi.
-   `kv-ctl get profiles` zachowuje dotychczasowe pierwsze sześć kolumn rozdzielonych tabulatorami i dodaje pola `apps=` oraz `regex=` z pełną konfiguracją tożsamości.
-
-8. **Bezpośredni dostęp przez D-Bus (zaawansowane)** — gdy `kv-ctl` nie jest dostępne (np. zdalna maszyna albo narzędzie, które już mówi po D-Bus), to samo API jest osiągalne przez `qdbus`. Daemon rejestruje dwie usługi na sesyjnej szynie:
-
-   ```bash
-   # Własny interfejs — properties (Get / Set)
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Get \
-     org.keyboardvolumeapp.VolumeControl Volume
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Get \
-     org.keyboardvolumeapp.VolumeControl Apps
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Get \
-     org.keyboardvolumeapp.VolumeControl ActiveApp
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Set \
-     org.keyboardvolumeapp.VolumeControl Volume 0.75
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Set \
-     org.keyboardvolumeapp.VolumeControl Muted true
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.Set \
-     org.keyboardvolumeapp.VolumeControl ActiveApp "Firefox"
-
-   # Własny interfejs — metody (profil domyślny)
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.VolumeUp
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.VolumeDown
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.ToggleMute
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.SetMute true
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.RefreshApps
-
-   # Własny interfejs — per profil i sceny
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.VolumeUpProfile firefox-ctrl
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.SetVolumeProfile firefox-ctrl 0.35
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.SetMuteProfile firefox-ctrl true
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.ToggleDuckingProfile discord
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.ShowVolume
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.ApplyScene meeting
-
-   # Własny interfejs — sterowanie odtwarzaniem (przekazane do aktywnego odtwarzacza MPRIS)
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.MediaPlayPause
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.MediaNext
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.MediaPrevious
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.keyboardvolumeapp.VolumeControl.MediaStop
-
-   # Debug — odczyt wszystkiego naraz / introspekcja
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Properties.GetAll \
-     org.keyboardvolumeapp.VolumeControl
-   qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
-     org.freedesktop.DBus.Introspectable.Introspect
-
-   # Endpoint MPRIS (tylko gdy "Eksponuj fałszywy endpoint MPRIS" jest włączone w Ustawieniach)
-   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
-     org.freedesktop.DBus.Properties.Get org.mpris.MediaPlayer2 Identity
-   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
-     org.freedesktop.DBus.Properties.Get org.mpris.MediaPlayer2.Player Volume
-   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
-     org.freedesktop.DBus.Properties.Set org.mpris.MediaPlayer2.Player Volume 0.5
-   qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
-     org.mpris.MediaPlayer2.Quit
-   ```
-
-   Endpoint MPRIS jest opt-in (Ustawienia → Postęp odtwarzania → *Eksponuj fałszywy endpoint MPRIS*) i domyślnie pozostaje niezarejestrowany, żeby narzędzia takie jak `discord-music-presence` go nie wykrywały. Dla skryptów powłoki, które nie powinny zależeć od obecności `qdbus`, w `ARCHITECTURE.md` znajdziesz odpowiedniki w `dbus-send`.
-
-> **Uwaga dot. przechwytywania skrótów:** aplikacja blokuje aktualnie skonfigurowane skróty (klawisze i scroll) na poziomie evdev, więc te właśnie zdarzenia nie są widoczne dla Qt podczas działania programu. Aby zmienić *aktywny* skrót, kliknij prawym przyciskiem pole hotkeya w Ustawienia → Profile, wybierz **Wyczyść**, zapisz, otwórz profil ponownie i przechwyć nowe powiązanie.
-
-### Konfiguracja
-
-Plik konfiguracyjny: `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (domyślnie `~/.config/keyboard-volume-app/`). Zapisy są atomowe, więc nieudany zapis zostawia poprzedni plik bez zmian. Ustawienia pozwalają wyeksportować ten plik albo zaimportować inny poprawny config JSON; przed importem pytają, czy po sukcesie uruchomić aplikację ponownie od razu, czy ją zamknąć. Import tworzy backup `config.json.backup-*` i zamyka aplikację, żeby zaimportowana konfiguracja nie została nadpisana starymi ustawieniami z pamięci.
-
-```json
-{
-  "input_device": "/dev/input/event3",
-  "selected_app": "youtube-music",
-  "language": "pl",
-  "osd": {
-    "screen": 0,
-    "x": 50,
-    "y": 1150,
-    "timeout_ms": 1200,
-    "opacity": 85,
-    "color_bg": "#1A1A1A",
-    "color_text": "#FFFFFF",
-    "color_bar": "#0078D7",
-    "progress_enabled": false,
-    "progress_interactive": true,
-    "progress_poll_ms": 500,
-    "progress_label_mode": "both",
-    "tracked_players": ["spotify", "vlc", "strawberry", "harmonoid", "youtube"]
-  },
-  "volume_step": 5,
-  "hotkeys": {
-    "volume_up": 115,
-    "volume_down": 114,
-    "mute": 113
-  },
-  "media_hotkeys": {
-    "play_pause": 0,
-    "next": 0,
-    "previous": 0,
-    "stop": 0
-  },
-  "auto_profile_switch": false,
-  "app_aliases": [
-    { "match": "chromium", "display": "YouTube Music", "target": "youtube-music" }
-  ],
-  "audio_app_filters": {
-    "extra_system_binaries": [],
-    "remove_system_binaries": [],
-    "extra_skip_app_names": [],
-    "remove_skip_app_names": []
-  },
-  "profiles": [
-    { "id": "default", "name": "Default", "app": "youtube-music",
-      "modifiers": [],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
-      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
-      "auto_switch": true },
-    { "id": "comms", "name": "Comms", "apps": ["discord"],
-      "app_regex": ".*(discord|teams|slack|zoom).*",
-      "modifiers": ["ctrl"],
-      "hotkeys": { "volume_up": 115, "volume_down": 114, "mute": 113, "show": 0 },
-      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
-      "auto_switch": true },
-    { "id": "firefox-ctrl", "name": "Firefox (Ctrl)", "app": "firefox",
-      "modifiers": ["ctrl"],
-      "hotkeys": { "volume_up": { "type": "rel", "code": 8, "direction": 1 },
-                   "volume_down": 114, "mute": 113, "show": 0 },
-      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
-      "auto_switch": true }
-  ],
-  "scenes": [
-    { "id": "meeting", "name": "Meeting", "hotkey": 88,
-      "targets": [
-        { "match": "Spotify", "volume": 10, "muted": false },
-        { "match": "Discord", "volume": 80 },
-        { "match": "Steam", "muted": true }
-      ] }
-  ]
-}
-```
-
-Wartości skrótów to bindingi evdev: starsze liczby oznaczają kody `EV_KEY` (`KEY_VOLUMEUP` = 115, `KEY_VOLUMEDOWN` = 114, `KEY_MUTE` = 113), a scroll używa obiektów takich jak `{ "type": "rel", "code": 8, "direction": 1 }` dla `REL_WHEEL` w górę i `"direction": -1` w dół. `show` domyślnie ma `0` (nieprzypisany) i obsługuje te same formaty klawiszy oraz scrolla. Pola `selected_app` i `hotkeys` na najwyższym poziomie są utrzymywane jako przestarzałe odbicie `profiles[0]` przez jedno wydanie w celu zachowania zgodności wstecznej — `profiles` jest kanonicznym źródłem prawdy. Stare pliki konfiguracyjne bez `profiles` są migrowane automatycznie przy pierwszym uruchomieniu. `match` w targetach scen używa tych samych nazw aplikacji/binarek co `kv-ctl get apps`; `volume` to procent `0..100`, a pominięte pola `volume` lub `muted` pozostawiają daną część stanu bez zmian. Opcjonalny `hotkey` sceny (ten sam format klawiszy/scrolla co skróty profilu; brak w starszych konfiguracjach) stosuje scenę globalnie — kolejność rozwiązywania to profil > scena > media, a gdy dwie sceny współdzielą binding, wygrywa pierwsza na liście.
-
-`app_aliases` mapuje wykryte nazwy PipeWire/Pulse na etykietę UI (`display`) i opcjonalny cel sterowania (`target`). `audio_app_filters` dodaje lub usuwa wpisy względem wbudowanych list systemowych binarek / pomijanych nazw (`extra_*` / `remove_*`). `app_regex` w profilu to opcjonalne wyrażenie regularne (bez rozróżniania wielkości liter) dopasowywane do nazw aplikacji audio przy Follow Focus, obok listy `apps`.
-
-`media_hotkeys` to obiekt na najwyższym poziomie z polami `play_pause`, `next`, `previous` i `stop`. Każde pole akceptuje ten sam format co skróty profilu (kod `EV_KEY` jako liczba albo obiekt scrolla). Wszystkie cztery domyślnie są `0` (nieprzypisane). Naciśnięcie powiązanego klawisza wysyła komendę do aktywnego odtwarzacza MPRIS. Gdy `auto_profile_switch` wybrał aplikację audio na podstawie focusu, preferowane są pasujące obserwowane odtwarzacze MPRIS; w przeciwnym razie aktywny odtwarzacz jest wybierany wg listy `tracked_players`, a następnie wg stanu odtwarzania. Jeśli ten sam klawisz jest też zajęty przez aktywny profil, wygrywa profil — powiązanie multimedialne uruchamia się tylko wtedy, gdy żaden profil nie pasuje.
-
-`auto_profile_switch` (domyślnie `false`) globalnie włącza auto-przełączanie profilu wg aktywnego okna. Per-profilowe `auto_switch` (domyślnie `true`) kontroluje, czy dany profil bierze udział w auto-przełączaniu.
-
-Postęp odtwarzania OSD jest konfigurowany w sekcji `osd`. `progress_enabled` jest głównym przełącznikiem, `progress_interactive` pozwala sterować seekowalnymi odtwarzaczami z paska postępu, `progress_poll_ms` jest ograniczane do `200..2000`, `progress_label_mode` przyjmuje `app`, `track` albo `both`, a `tracked_players` to lista priorytetów dopasowywana do nazw usług MPRIS. Gdy `auto_profile_switch` przekieruje klawisze głośności do aplikacji wskazanej focusem, pasujące obserwowane odtwarzacze MPRIS są preferowane dla wiersza postępu i przycisków multimedialnych; jeśli nie ma dopasowania, używany jest ten sam fallback z `tracked_players`. Gdy opcja jest włączona i działa śledzony odtwarzacz, OSD powiększa widok głośności o wiersz postępu z etykietą utworu, paskiem 0-1000 i czasem. Kliknięcie lub przeciągnięcie paska wysyła MPRIS `SetPosition`, jeśli odtwarzacz zgłasza `CanSeek` i znaną długość. Strumienie bez znanej długości wyłączają pasek i pokazują `LIVE`. Ustaw `progress_interactive: false`, aby wyłączyć seekowanie kliknięciem/przeciągnięciem globalnie, zachowując wizualny pasek postępu — przydatne gdy wolisz sterować wyłącznie z klawiatury.
-
-Do diagnozowania rzadkich problemów z postępem MPRIS uruchom aplikację z `KVA_DEBUG_PROGRESS=1`, żeby logować metadane postępu, źródło pozycji i decyzje paska OSD.
-
-Ostrzeżenie zasobnika **Wykryto ukrytą głośność PipeWire** oznacza, że inny komponent lub starsza wersja programu pozostawiły `Props:volume` różne od `1.0`, mimo że widoczne w mikserze poziomy kanałów wskazują inną wartość. Wykrywanie przy starcie, odświeżeniu, reconnect, zmianie profilu i pojawieniu się strumienia jest tylko do odczytu. Następna jawna zmiana głośności (skrót, GUI, scena, ducking, D-Bus albo `kv-ctl`) składa efektywny gain do widocznych kanałów i zeruje rozbieżność przez ustawienie surowego mnożnika na `1.0`. Migracja konfiguracji nie jest potrzebna. Na natywnym PulseAudio nie istnieje rozdział PipeWire na surowy mnożnik i kanały; program nadal używa kanałowych wartości libpulse i stream-restore.
-
-### Struktura projektu
-
-```
-keyboard-volume-app/
-├── cpp/
-│   ├── CMakeLists.txt
-│   ├── resources.qrc            # Manifest zasobów Qt (osadza ikonę)
-│   ├── protocols/               # XML definicje protokołów Wayland
-│   │   └── wlr-foreign-toplevel-management-unstable-v1.xml
-│   ├── src/
-│       ├── main.cpp             # Punkt wejścia, łączy wszystkie moduły
-│       ├── config.h/cpp         # Odczyt i zapis konfiguracji JSON
-│       ├── i18n.h/cpp           # Tłumaczenia PL/EN i funkcja tr()
-│       ├── volumecontroller.h/cpp  # libpulse — głośność i wyciszenie per aplikacja
-│       ├── inputhandler.h/cpp   # evdev QThread — globalne przechwytywanie klawiszy (epoll)
-│       ├── evdevdevice.h/cpp    # Opakowanie RAII dla urządzeń evdev
-│       ├── osdwindow.h/cpp      # Nakładka OSD (Qt6)
-│       ├── trayapp.h/cpp        # Ikona tray i menu
-│       ├── deviceselector.h/cpp # Dialog wyboru urządzenia wejściowego
-│       ├── settingsdialog.h/cpp # Dialog ustawień OSD, głośności i profili
-│       ├── profileeditdialog.h/cpp # Sub-dialog edycji pojedynczego profilu audio
-│       ├── firstrunwizard.h/cpp  # Asystent pierwszego uruchomienia
-│       ├── dbusinterface.h/cpp   # Interfejs D-Bus VolumeControl
-│       ├── mprisinterface.h/cpp  # Adaptor MPRIS v2
-│       ├── mprisclient.h/cpp     # Klient MPRIS dla metadanych/postępu zewnętrznego odtwarzacza
-│       ├── kvctl.cpp             # Klient CLI D-Bus kv-ctl
-│       ├── kvctlcommand.h/cpp    # Parser komend kv-ctl
-│       ├── pwutils.h/cpp         # Narzędzie do listowania klientów PipeWire
-│       ├── applistwidget.h/cpp   # Reusable widget listy aplikacji PW
-│       ├── appselectordialog.h/cpp  # Dialog zmiany domyślnej aplikacji audio
-│       ├── windowtracker.h/cpp    # Monitor aktywnego okna (X11 + Wayland) dla auto-przełączania profili
-│       ├── screenutils.h         # Header-only centrowanie dialogów na właściwym monitorze
-│       ├── audioapp.h           # Struct AudioApp
-│       └── waylandstate.h       # Deklaracja globalnej zmiennej g_nativeWayland
-│   └── tests/
-│       ├── CMakeLists.txt
-│       ├── test_config.cpp
-│       ├── test_i18n.cpp
-│       ├── test_kvctlcommand.cpp
-│       ├── test_inputhandler.cpp
-│       ├── test_pwutils.cpp
-│       ├── test_volumecontroller.cpp
-│       ├── test_mprisclient.cpp
-│       └── test_osdwindow.cpp
-├── deploy/
-│   └── keyboard-volume-app.service  # Usługa systemd user
-├── pkg/
-│   └── arch/
-│       └── PKGBUILD             # Paczka Arch Linux (keyboard-volume-app-git)
-├── resources/
-│   ├── icon.png
-│   └── keyboard-volume-app.desktop  # Wpis .desktop do dystrybucji
-├── .clang-format                # Konfiguracja formatowania kodu
-├── LICENSE
-├── AGENTS.md
-├── ARCHITECTURE.md
-├── CLAUDE.md
-├── GEMINI.md
-└── ROADMAP.md
-```
-
-### Wydajność
-
-Na natywnym PulseAudio krytyczna ścieżka głośności aktywnego strumienia używa bezpośrednio libpulse. Pod pipewire-pulse zapisy aktywnych i nieaktywnych strumieni współdzielą jedno połączenie libpipewire należące do wątku roboczego, dzięki czemu aplikacja aktualizuje widoczne wartości kanałów bez ponownego łączenia przy każdej operacji; nie uruchamia też procesów `pw-dump` ani `pw-cli`. Wszystkie operacje PulseAudio/PipeWire działają na osobnym wątku — pętla zdarzeń Qt nigdy nie jest blokowana. Gdy któreś połączenie audio zawiedzie, wątek roboczy odtwarza je leniwie lub z narastającym opóźnieniem i zachowuje oczekujące zmiany głośności/wyciszenia do czasu ponownego pojawienia się aplikacji. Przejściowe odświeżenia listy podczas restartu demona audio nie zmieniają skonfigurowanej wybranej aplikacji. Odczyty właściwości D-Bus są obsługiwane z lokalnej pamięci podręcznej (zero IPC); zapisy delegowane są asynchronicznie do wątku audio.
-
-### Licencja
-
-GPL-2.0-or-later — patrz [LICENSE](LICENSE)
+[GPL-2.0-or-later](LICENSE)

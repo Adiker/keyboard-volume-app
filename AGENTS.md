@@ -17,7 +17,7 @@ Comprehensive project docs are in `ARCHITECTURE.md`. This file covers only the s
 ## Documentation
 
 - For every user-visible or operational change, check whether docs need updating.
-- Update `README.md` for end-user behavior, setup, configuration, CLI/D-Bus examples, and troubleshooting.
+- Update `README.md` / `README.pl.md` for the short end-user landing page. Put detailed end-user behavior, setup, configuration, CLI/D-Bus examples, and troubleshooting in the matching files under `docs/en/` and `docs/pl/`.
 - Update `ARCHITECTURE.md` for architecture, build/test recipes, branch layout, sharp implementation details, and maintainer workflows.
 - Update `CLAUDE.md` only for Claude-specific quick-start guidance.
 - Update `AGENTS.md` only for agent-specific guardrails or mistakes future agents are likely to make.
@@ -106,7 +106,7 @@ The app registers two D-Bus services on the session bus:
 - `Qt6::DBus` is a separate CMake component — requires `find_package(Qt6 REQUIRED COMPONENTS ... DBus)`.
 - The MPRIS `Volume` property maps to `DbusInterface::volume()`. `PlaybackStatus` is always `"Stopped"`. Play/Pause/Next/Previous are no-ops. `Quit` → `qApp->quit()`.
 
-For script-friendly `dbus-send` recipes (debugging without `kv-ctl` or `qdbus`), see **D-Bus / MPRIS → `dbus-send` recipes** in `ARCHITECTURE.md`. End-user `qdbus` examples are in `README.md`.
+For script-friendly `dbus-send` recipes (debugging without `kv-ctl` or `qdbus`), see **D-Bus / MPRIS → `dbus-send` recipes** in `ARCHITECTURE.md`. End-user `qdbus` examples are in `docs/en/remote-control.md` and `docs/pl/remote-control.md`.
 
 ## Icon / QRC
 
