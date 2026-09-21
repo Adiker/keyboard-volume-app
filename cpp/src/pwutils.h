@@ -38,6 +38,11 @@ struct PipeWireNode
     QString objectSerial{};
     QString clientId{};
     QString mediaName{};
+    // PipeWire client identity that owns the stream node.  Some applications
+    // embed a renderer (for example mpv) and expose the node under the
+    // renderer's name while the client remains the actual application.
+    QString clientName{};
+    QString clientBinary{};
     double rawVolume = 1.0;
     QList<double> channelVolumes{};
     bool muted = false;
@@ -102,6 +107,11 @@ QList<PipeWireClient>
 clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps>& globals,
                            const QSet<QString>& systemBinaries = SYSTEM_BINARIES,
                            const QSet<QString>& skipAppNames = SKIP_APP_NAMES);
+
+// Match both the stream-node identity and the PipeWire client that owns it.
+// The latter is needed when an application embeds a renderer with a different
+// application.name/node.name (for example limusic-app owning an mpv node).
+bool pipeWireNodeMatchesApp(const PipeWireNode& node, const QStringList& candidates);
 
 // Uses libpipewire to return idle PipeWire clients.
 // Returns empty list on connection failure, timeout, or parse error.
