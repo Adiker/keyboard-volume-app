@@ -108,9 +108,11 @@ clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps>& globals,
                            const QSet<QString>& systemBinaries = SYSTEM_BINARIES,
                            const QSet<QString>& skipAppNames = SKIP_APP_NAMES);
 
-// Match both the stream-node identity and the PipeWire client that owns it.
-// The latter is needed when an application embeds a renderer with a different
-// application.name/node.name (for example limusic-app owning an mpv node).
+// Match a PipeWire node to an app. When the owning client is known, its
+// identity is authoritative; otherwise fall back to the stream-node identity.
+// This prevents an embedded renderer with a different application.name/node.name
+// (for example limusic-app owning an mpv node) from being claimed by the
+// renderer's separate profile.
 bool pipeWireNodeMatchesApp(const PipeWireNode& node, const QStringList& candidates);
 
 // Uses libpipewire to return idle PipeWire clients.

@@ -183,7 +183,7 @@ TEST(PwUtils, HarmonoidMpvNodeMapsByPipeWireClientIdWithoutChangingClientCase)
     EXPECT_TRUE(containsClient(clients, QStringLiteral("harmonoid"), QStringLiteral("mpv")));
 }
 
-TEST(PwUtils, MatchesRendererNodeThroughOwningClient)
+TEST(PwUtils, OwningClientOverridesEmbeddedRendererIdentity)
 {
     PipeWireNode node;
     node.name = QStringLiteral("mpv");
@@ -192,8 +192,29 @@ TEST(PwUtils, MatchesRendererNodeThroughOwningClient)
     node.clientBinary = QStringLiteral("limusic-app");
 
     EXPECT_TRUE(pipeWireNodeMatchesApp(node, {QStringLiteral("limusic-app")}));
-    EXPECT_TRUE(pipeWireNodeMatchesApp(node, {QStringLiteral("mpv")}));
+    EXPECT_FALSE(pipeWireNodeMatchesApp(node, {QStringLiteral("mpv")}));
     EXPECT_FALSE(pipeWireNodeMatchesApp(node, {QStringLiteral("spotify")}));
+}
+
+TEST(PwUtils, StandaloneRendererMatchesItsOwningClient)
+{
+    PipeWireNode node;
+    node.name = QStringLiteral("mpv");
+    node.nodeName = QStringLiteral("mpv");
+    node.clientName = QStringLiteral("mpv");
+    node.clientBinary = QStringLiteral("mpv");
+
+    EXPECT_TRUE(pipeWireNodeMatchesApp(node, {QStringLiteral("mpv")}));
+    EXPECT_FALSE(pipeWireNodeMatchesApp(node, {QStringLiteral("limusic-app")}));
+}
+
+TEST(PwUtils, RendererIdentityIsFallbackWhenOwnerIsUnavailable)
+{
+    PipeWireNode node;
+    node.name = QStringLiteral("mpv");
+    node.nodeName = QStringLiteral("mpv");
+
+    EXPECT_TRUE(pipeWireNodeMatchesApp(node, {QStringLiteral("mpv")}));
 }
 
 TEST(PwUtils, GenericPlaybackMediaNameDoesNotReplaceSpecificApp)

@@ -1694,17 +1694,17 @@ class PaWorker : public QObject
                           const QList<AppAlias>& aliases,
                           std::optional<PipeWireNode>* pipeWireState = nullptr)
     {
-        if (input.matches(appName, aliases))
+        if (m_isPipeWirePulse && input.pipeWireNodeId)
         {
-            if (pipeWireState) *pipeWireState = pipeWireStateFor(input);
-            return true;
+            const std::optional<PipeWireNode> node = pipeWireStateFor(input);
+            if (pipeWireState) *pipeWireState = node;
+            if (node && (!node->clientName.isEmpty() || !node->clientBinary.isEmpty()))
+                return pipeWireNodeMatchesApp(*node, appMatchCandidates(appName, aliases));
         }
 
-        if (!m_isPipeWirePulse || !input.pipeWireNodeId) return false;
-
-        const std::optional<PipeWireNode> node = pipeWireStateFor(input);
-        if (pipeWireState) *pipeWireState = node;
-        return node && pipeWireNodeMatchesApp(*node, appMatchCandidates(appName, aliases));
+        // Fall back to the PulseAudio identity when the PipeWire node or its
+        // owning client is unavailable during a reconnect/race.
+        return input.matches(appName, aliases);
     }
 
     struct SinkInputListCbData

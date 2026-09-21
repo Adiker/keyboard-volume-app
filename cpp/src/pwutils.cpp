@@ -427,23 +427,6 @@ std::optional<QList<RegistryGlobal>> snapshotObjectInfo(PipeWireSession& session
     return globals;
 }
 
-bool nodeMatchesApp(const RegistryGlobal& global, const QStringList& candidates)
-{
-    if (global.type != QString::fromUtf8(PW_TYPE_INTERFACE_Node)) return false;
-    if (!global.mediaClass.startsWith(QStringLiteral("Stream/"))) return false;
-
-    for (const QString& candidate : candidates)
-    {
-        if (candidate.isEmpty()) continue;
-        if (global.name.compare(candidate, Qt::CaseInsensitive) == 0 ||
-            global.binary.compare(candidate, Qt::CaseInsensitive) == 0 ||
-            global.nodeName.compare(candidate, Qt::CaseInsensitive) == 0 ||
-            global.mediaName.compare(candidate, Qt::CaseInsensitive) == 0)
-            return true;
-    }
-    return false;
-}
-
 void populateNodeOwner(const QList<RegistryGlobal>& globals, PipeWireNode& node)
 {
     if (node.clientId.isEmpty()) return;
@@ -615,8 +598,15 @@ std::optional<PipeWireSnapshot> inspectSession(PipeWireSession& session,
 
 bool pipeWireNodeMatchesApp(const PipeWireNode& node, const QStringList& candidates)
 {
-    const QStringList fields{node.name,      node.binary,     node.nodeName,
-                             node.mediaName, node.clientName, node.clientBinary};
+    // An embedded renderer can deliberately use another application's node
+    // identity (for example limusic-app owns a node named mpv).  Once the
+    // PipeWire client is known, it is the canonical app identity: do not let a
+    // profile for the renderer steal a stream from its owning application.
+    const QStringList ownerFields{node.clientName, node.clientBinary};
+    const bool ownerKnown = !node.clientName.isEmpty() || !node.clientBinary.isEmpty();
+    const QStringList fields =
+        ownerKnown ? ownerFields
+                   : QStringList{node.name, node.binary, node.nodeName, node.mediaName};
     for (const QString& candidate : candidates)
     {
         if (candidate.isEmpty()) continue;
@@ -787,18 +777,8 @@ QList<PipeWireNode> PipeWireVolumeBackend::findNodesForApp(const QString& appNam
     const PipeWireSnapshot snapshot = inspect();
     for (const PipeWireNode& node : snapshot.nodes)
     {
-        RegistryGlobal global;
-        global.id = node.id;
-        global.type = QString::fromUtf8(PW_TYPE_INTERFACE_Node);
-        global.name = node.name;
-        global.binary = node.binary;
-        global.mediaClass = node.mediaClass;
-        global.nodeName = node.nodeName;
-        global.objectSerial = node.objectSerial;
-        global.clientId = node.clientId;
-        global.mediaName = node.mediaName;
         if (node.mediaClass.contains(QStringLiteral("Output")) &&
-            (nodeMatchesApp(global, candidates) || pipeWireNodeMatchesApp(node, candidates)))
+            pipeWireNodeMatchesApp(node, candidates))
             result.append(node);
     }
     return result;
