@@ -23,8 +23,9 @@ branch hygiene, PR expectations, and implementation guardrails.
 - `ARCHITECTURE.md` — full technical reference: project structure, module map,
   config schema, signal flow, threading, D-Bus/MPRIS, packaging, tests, and key
   conventions.
-- `README.md` — user-facing setup, usage, configuration, troubleshooting, and
-  `kv-ctl` / `qdbus` examples.
+- `README.md` / `README.pl.md` — short user-facing landing pages. Detailed
+  installation, usage, configuration and remote-control guides live under
+  `docs/en/` and `docs/pl/`.
 - `ROADMAP.md` — backlog, planned work, and historical review notes.
 
 ## Common Commands
@@ -59,8 +60,9 @@ files.
 
 - Do not duplicate architectural detail here. Add durable technical reference
   material to `ARCHITECTURE.md`.
-- Put end-user behavior, install steps, CLI examples, and troubleshooting in
-  `README.md`.
+- Keep the root README files short. Put detailed end-user behavior, install
+  steps, CLI examples, configuration and troubleshooting in the matching
+  `docs/en/` and `docs/pl/` guides.
 - Put agent-only workflow mistakes or non-obvious guardrails in `AGENTS.md`.
 - Documentation-only changes do not require a C++ build or CTest run; still run
   lightweight Markdown/reference checks when moving docs.
