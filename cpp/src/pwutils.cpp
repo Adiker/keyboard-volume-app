@@ -649,6 +649,7 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
     QSet<QString> clientBinaries;
     QMap<QString, QString> clientNameByBinary;
     QMap<QString, QString> clientNameById;
+    QMap<QString, QString> clientBinaryById;
     for (const PipeWireGlobalProps& global : globals)
     {
         if (!global.type.contains(QStringLiteral("Client"))) continue;
@@ -667,7 +668,11 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
         clientNames.insert(displayName);
         clientBinaries.insert(binary);
         clientNameByBinary[binary] = displayName;
-        if (!global.objectId.isEmpty()) clientNameById[global.objectId] = displayName;
+        if (!global.objectId.isEmpty())
+        {
+            clientNameById[global.objectId] = displayName;
+            clientBinaryById[global.objectId] = binary;
+        }
     }
 
     for (const PipeWireGlobalProps& global : globals)
@@ -694,7 +699,8 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
         if (!ownerDisplay.isEmpty())
         {
             const QString ownerId = global.clientId;
-            seen[ownerDisplay] = PipeWireClient{ownerDisplay, target, ownerId};
+            const QString ownerTarget = clientBinaryById.value(ownerId, ownerBinary);
+            seen[ownerDisplay] = PipeWireClient{ownerDisplay, ownerTarget, ownerId};
             continue;
         }
 

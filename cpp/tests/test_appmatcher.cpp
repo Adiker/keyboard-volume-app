@@ -51,6 +51,19 @@ TEST(AppMatcher, ExactBinaryMatchReturnsBinaryTarget)
     EXPECT_EQ(matchBinaryToApp(QStringLiteral("firefox"), cache), QStringLiteral("firefox"));
 }
 
+TEST(AppMatcher, LiMusicNamesShareControlCandidatesWithoutMpv)
+{
+    const QStringList appCandidates = appMatchCandidates(QStringLiteral("limusic-app"), {});
+    EXPECT_TRUE(appCandidates.contains(QStringLiteral("limusic-app")));
+    EXPECT_TRUE(appCandidates.contains(QStringLiteral("limusic")));
+    EXPECT_FALSE(appCandidates.contains(QStringLiteral("mpv")));
+
+    const QStringList binaryCandidates = appMatchCandidates(QStringLiteral("limusic"), {});
+    EXPECT_TRUE(binaryCandidates.contains(QStringLiteral("limusic")));
+    EXPECT_TRUE(binaryCandidates.contains(QStringLiteral("limusic-app")));
+    EXPECT_FALSE(appMatchCandidates(QStringLiteral("mpv"), {}).contains(QStringLiteral("limusic")));
+}
+
 TEST(AppMatcher, SubstringMatchInBothDirections)
 {
     // Cached app is "firefox"; focused window is "firefox-developer-edition".

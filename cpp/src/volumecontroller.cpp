@@ -1056,10 +1056,7 @@ class PaWorker : public QObject
             {
                 if (!node.mediaClass.contains(QStringLiteral("Output"))) continue;
                 const QStringList candidates = appMatchCandidates(client.binary, aliases);
-                if (!appNameMatchesFields(client.binary, node.name, node.binary, node.mediaName,
-                                          aliases) &&
-                    !candidates.contains(node.nodeName, Qt::CaseInsensitive))
-                    continue;
+                if (!pipeWireNodeMatchesApp(node, candidates)) continue;
                 app.volume = node.visibleVolume();
                 app.muted = node.muted;
                 break;
