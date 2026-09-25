@@ -400,10 +400,11 @@ class PaWorker : public QObject
             bool reportedMute = false;
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, aliases)) continue;
+                std::optional<PipeWireNode> node;
+                if (!sinkInputMatches(si, appName, aliases, &node)) continue;
 
                 double baseVolume = si.volume;
-                if (const auto node = pipeWireStateFor(si))
+                if (node)
                 {
                     reportHiddenVolume(si.displayName(), *node);
                     baseVolume = node->effectiveVolume();
@@ -480,19 +481,18 @@ class PaWorker : public QObject
         {
             pa_threaded_mainloop_lock(m_mainloop);
             const auto inputs = getSinkInputs();
+            pa_threaded_mainloop_unlock(m_mainloop);
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, aliases)) continue;
+                if (!sinkInputMatches(si, appName, aliases)) continue;
 
                 int newMute = si.muted ? 0 : 1;
+                pa_threaded_mainloop_lock(m_mainloop);
                 pa_operation* op = pa_context_set_sink_input_mute(m_ctx, si.index, newMute,
                                                                   operationDoneCallback, this);
-                if (!waitForOperation(op, "set sink input mute"))
-                {
-                    pa_threaded_mainloop_unlock(m_mainloop);
-                    return;
-                }
+                const bool completed = waitForOperation(op, "set sink input mute");
                 pa_threaded_mainloop_unlock(m_mainloop);
+                if (!completed) return;
 
                 m_appVolumes[appName] = si.volume;
                 m_appMutes[appName] = static_cast<bool>(newMute);
@@ -500,7 +500,6 @@ class PaWorker : public QObject
                 emit volumeChanged(appName, si.volume, static_cast<bool>(newMute));
                 return;
             }
-            pa_threaded_mainloop_unlock(m_mainloop);
         }
 
         // 2. Stream restore
@@ -552,13 +551,13 @@ class PaWorker : public QObject
         {
             pa_threaded_mainloop_lock(m_mainloop);
             const auto inputs = getSinkInputs();
+            pa_threaded_mainloop_unlock(m_mainloop);
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, aliases)) continue;
+                if (!sinkInputMatches(si, appName, aliases)) continue;
 
                 if (si.muted == targetMuted)
                 {
-                    pa_threaded_mainloop_unlock(m_mainloop);
                     m_appVolumes[appName] = si.volume;
                     m_appMutes[appName] = targetMuted;
                     {
@@ -569,14 +568,12 @@ class PaWorker : public QObject
                     return;
                 }
 
+                pa_threaded_mainloop_lock(m_mainloop);
                 pa_operation* op = pa_context_set_sink_input_mute(
                     m_ctx, si.index, targetMuted ? 1 : 0, operationDoneCallback, this);
-                if (!waitForOperation(op, "set sink input absolute mute"))
-                {
-                    pa_threaded_mainloop_unlock(m_mainloop);
-                    return;
-                }
+                const bool completed = waitForOperation(op, "set sink input absolute mute");
                 pa_threaded_mainloop_unlock(m_mainloop);
+                if (!completed) return;
 
                 m_appVolumes[appName] = si.volume;
                 m_appMutes[appName] = targetMuted;
@@ -587,7 +584,6 @@ class PaWorker : public QObject
                 emit volumeChanged(appName, si.volume, targetMuted);
                 return;
             }
-            pa_threaded_mainloop_unlock(m_mainloop);
         }
 
         // 2. Stream restore
@@ -648,7 +644,7 @@ class PaWorker : public QObject
             bool muted = false;
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, aliases)) continue;
+                if (!sinkInputMatches(si, appName, aliases)) continue;
 
                 if (!setActiveStreamVisibleVolume(si, targetVolume)) continue;
                 applied = true;
@@ -732,7 +728,7 @@ class PaWorker : public QObject
                 for (const SinkInputInfo& input : std::as_const(currentInputs))
                 {
                     if (restoredInputIndexes.contains(input.index) ||
-                        !input.matches(snapshot.app, aliases) ||
+                        !sinkInputMatches(input, snapshot.app, aliases) ||
                         (snapshot.pulseSinkInputIndex != PA_INVALID_INDEX &&
                          input.index != snapshot.pulseSinkInputIndex))
                         continue;
@@ -808,7 +804,8 @@ class PaWorker : public QObject
             pa_threaded_mainloop_unlock(m_mainloop);
             for (const SinkInputInfo& input : inputs)
             {
-                if (input.matches(keepApp, aliases)) continue;
+                std::optional<PipeWireNode> node;
+                if (sinkInputMatches(input, keepApp, aliases, &node)) continue;
 
                 DuckingSnapshot entry;
                 entry.app = input.targetName();
@@ -816,7 +813,7 @@ class PaWorker : public QObject
                 entry.pulseChannelVolume = input.channelVolume;
                 entry.volume = input.volume;
 
-                const std::optional<PipeWireNode> node = pipeWireStateFor(input);
+                if (!node) node = pipeWireStateFor(input);
                 if (node)
                 {
                     entry.pipeWireNodeId = node->id;
@@ -926,17 +923,16 @@ class PaWorker : public QObject
         {
             pa_threaded_mainloop_lock(m_mainloop);
             const auto inputs = getSinkInputs();
+            pa_threaded_mainloop_unlock(m_mainloop);
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, aliases)) continue;
+                if (!sinkInputMatches(si, appName, aliases)) continue;
 
-                pa_threaded_mainloop_unlock(m_mainloop);
                 m_appVolumes[appName] = si.volume;
                 m_appMutes[appName] = si.muted;
                 emit volumeChanged(appName, si.volume, si.muted);
                 return;
             }
-            pa_threaded_mainloop_unlock(m_mainloop);
         }
 
         // 2. Stream restore DB (persisted volume for inactive apps)
@@ -1060,10 +1056,7 @@ class PaWorker : public QObject
             {
                 if (!node.mediaClass.contains(QStringLiteral("Output"))) continue;
                 const QStringList candidates = appMatchCandidates(client.binary, aliases);
-                if (!appNameMatchesFields(client.binary, node.name, node.binary, node.mediaName,
-                                          aliases) &&
-                    !candidates.contains(node.nodeName, Qt::CaseInsensitive))
-                    continue;
+                if (!pipeWireNodeMatchesApp(node, candidates)) continue;
                 app.volume = node.visibleVolume();
                 app.muted = node.muted;
                 break;
@@ -1121,7 +1114,7 @@ class PaWorker : public QObject
             for (auto it = pendSinks.begin(); it != pendSinks.end(); ++it)
             {
                 const QString& app = it.key();
-                if (!si.matches(app, aliases)) continue;
+                if (!sinkInputMatches(si, app, aliases)) continue;
 
                 const std::optional<PipeWireNode> beforeMove = pipeWireStateFor(si);
                 if (beforeMove) reportHiddenVolume(si.displayName(), *beforeMove);
@@ -1152,7 +1145,7 @@ class PaWorker : public QObject
             for (auto it = pendChannelVols.begin(); it != pendChannelVols.end(); ++it)
             {
                 const QString& app = it.key();
-                if (!si.matches(app, aliases)) continue;
+                if (!sinkInputMatches(si, app, aliases)) continue;
 
                 QList<double> channels = it.value();
                 const int streamChannels = std::max<int>(1, si.channelVolume.channels);
@@ -1194,7 +1187,7 @@ class PaWorker : public QObject
             for (auto it = pendVols.begin(); it != pendVols.end(); ++it)
             {
                 const QString& app = it.key();
-                if (!si.matches(app, aliases)) continue;
+                if (!sinkInputMatches(si, app, aliases)) continue;
 
                 const bool volumeApplied = setActiveStreamVisibleVolume(si, it.value());
 
@@ -1221,7 +1214,7 @@ class PaWorker : public QObject
                 const QString& app = it.key();
                 if (pendVols.contains(app) || pendChannelVols.contains(app))
                     continue; // already handled above
-                if (!si.matches(app, aliases)) continue;
+                if (!sinkInputMatches(si, app, aliases)) continue;
 
                 pa_threaded_mainloop_lock(m_mainloop);
                 const bool muteApplied = waitForOperation(
@@ -1371,7 +1364,7 @@ class PaWorker : public QObject
             pa_threaded_mainloop_unlock(m_mainloop);
             for (const auto& si : inputs)
             {
-                if (!si.matches(appName, aliases)) continue;
+                if (!sinkInputMatches(si, appName, aliases)) continue;
 
                 const std::optional<PipeWireNode> beforeMove = pipeWireStateFor(si);
                 if (beforeMove) reportHiddenVolume(si.displayName(), *beforeMove);
@@ -1693,6 +1686,23 @@ class PaWorker : public QObject
             return name;
         }
     };
+
+    bool sinkInputMatches(const SinkInputInfo& input, const QString& appName,
+                          const QList<AppAlias>& aliases,
+                          std::optional<PipeWireNode>* pipeWireState = nullptr)
+    {
+        if (m_isPipeWirePulse && input.pipeWireNodeId)
+        {
+            const std::optional<PipeWireNode> node = pipeWireStateFor(input);
+            if (pipeWireState) *pipeWireState = node;
+            if (node && (!node->clientName.isEmpty() || !node->clientBinary.isEmpty()))
+                return pipeWireNodeMatchesApp(*node, appMatchCandidates(appName, aliases));
+        }
+
+        // Fall back to the PulseAudio identity when the PipeWire node or its
+        // owning client is unavailable during a reconnect/race.
+        return input.matches(appName, aliases);
+    }
 
     struct SinkInputListCbData
     {

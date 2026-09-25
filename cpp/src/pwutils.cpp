@@ -263,12 +263,26 @@ struct PipeWireSession
 struct NodeParamReader
 {
     PipeWireSession* session = nullptr;
+    PipeWireNode* state = nullptr;
     double rawVolume = 1.0;
     QList<double> channelVolumes;
     bool muted = false;
     bool hasProps = false;
 
-    static void onNodeInfo(void*, const pw_node_info*) {}
+    static void onNodeInfo(void* data, const pw_node_info* info)
+    {
+        if (!info || !info->props) return;
+
+        auto* self = static_cast<NodeParamReader*>(data);
+        if (!self->state) return;
+        self->state->name = dictValue(info->props, "application.name");
+        self->state->binary = dictValue(info->props, "application.process.binary");
+        self->state->mediaClass = dictValue(info->props, "media.class");
+        self->state->nodeName = dictValue(info->props, "node.name");
+        self->state->objectSerial = dictValue(info->props, "object.serial");
+        self->state->clientId = dictValue(info->props, "client.id");
+        self->state->mediaName = dictValue(info->props, "media.name");
+    }
 
     static void onNodeParam(void* data, int, uint32_t id, uint32_t, uint32_t, const spa_pod* param)
     {
@@ -413,21 +427,20 @@ std::optional<QList<RegistryGlobal>> snapshotObjectInfo(PipeWireSession& session
     return globals;
 }
 
-bool nodeMatchesApp(const RegistryGlobal& global, const QStringList& candidates)
+void populateNodeOwner(const QList<RegistryGlobal>& globals, PipeWireNode& node)
 {
-    if (global.type != QString::fromUtf8(PW_TYPE_INTERFACE_Node)) return false;
-    if (!global.mediaClass.startsWith(QStringLiteral("Stream/"))) return false;
+    if (node.clientId.isEmpty()) return;
 
-    for (const QString& candidate : candidates)
+    for (const RegistryGlobal& global : globals)
     {
-        if (candidate.isEmpty()) continue;
-        if (global.name.compare(candidate, Qt::CaseInsensitive) == 0 ||
-            global.binary.compare(candidate, Qt::CaseInsensitive) == 0 ||
-            global.nodeName.compare(candidate, Qt::CaseInsensitive) == 0 ||
-            global.mediaName.compare(candidate, Qt::CaseInsensitive) == 0)
-            return true;
+        if (global.type != QString::fromUtf8(PW_TYPE_INTERFACE_Client) ||
+            QString::number(global.id) != node.clientId)
+            continue;
+
+        node.clientName = global.name;
+        node.clientBinary = global.binary;
+        return;
     }
-    return false;
 }
 
 bool readNodeProps(PipeWireSession& session, uint32_t nodeId, PipeWireNode* state,
@@ -442,6 +455,7 @@ bool readNodeProps(PipeWireSession& session, uint32_t nodeId, PipeWireNode* stat
     spa_hook nodeListener{};
     NodeParamReader reader;
     reader.session = &session;
+    reader.state = state;
     static const pw_node_events nodeEvents{
         PW_VERSION_NODE_EVENTS,
         &NodeParamReader::onNodeInfo,
@@ -457,6 +471,16 @@ bool readNodeProps(PipeWireSession& session, uint32_t nodeId, PipeWireNode* stat
     if (ok)
     {
         state->id = nodeId;
+        if (state->clientId.isEmpty())
+        {
+            for (const RegistryGlobal& global : session.globals)
+            {
+                if (global.type != QString::fromUtf8(PW_TYPE_INTERFACE_Node) || global.id != nodeId)
+                    continue;
+                state->clientId = global.clientId;
+                break;
+            }
+        }
         state->rawVolume = reader.rawVolume;
         state->channelVolumes = reader.channelVolumes;
         state->muted = reader.muted;
@@ -562,11 +586,37 @@ std::optional<PipeWireSnapshot> inspectSession(PipeWireSession& session,
         const bool read = readNodeProps(session, global.id, &node, &sessionFailed);
         pw_thread_loop_unlock(session.loop);
         if (sessionFailed) return std::nullopt;
-        if (read) snapshot.nodes.append(std::move(node));
+        if (read)
+        {
+            populateNodeOwner(*registryGlobals, node);
+            snapshot.nodes.append(std::move(node));
+        }
     }
     return snapshot;
 }
 } // namespace
+
+bool pipeWireNodeMatchesApp(const PipeWireNode& node, const QStringList& candidates)
+{
+    // An embedded renderer can deliberately use another application's node
+    // identity (for example limusic-app owns a node named mpv).  Once the
+    // PipeWire client is known, it is the canonical app identity: do not let a
+    // profile for the renderer steal a stream from its owning application.
+    const QStringList ownerFields{node.clientName, node.clientBinary};
+    const bool ownerKnown = !node.clientName.isEmpty() || !node.clientBinary.isEmpty();
+    const QStringList fields =
+        ownerKnown ? ownerFields
+                   : QStringList{node.name, node.binary, node.nodeName, node.mediaName};
+    for (const QString& candidate : candidates)
+    {
+        if (candidate.isEmpty()) continue;
+        for (const QString& field : fields)
+        {
+            if (field.compare(candidate, Qt::CaseInsensitive) == 0) return true;
+        }
+    }
+    return false;
+}
 
 double PipeWireNode::visibleVolume() const
 {
@@ -599,6 +649,7 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
     QSet<QString> clientBinaries;
     QMap<QString, QString> clientNameByBinary;
     QMap<QString, QString> clientNameById;
+    QMap<QString, QString> clientBinaryById;
     for (const PipeWireGlobalProps& global : globals)
     {
         if (!global.type.contains(QStringLiteral("Client"))) continue;
@@ -617,7 +668,11 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
         clientNames.insert(displayName);
         clientBinaries.insert(binary);
         clientNameByBinary[binary] = displayName;
-        if (!global.objectId.isEmpty()) clientNameById[global.objectId] = displayName;
+        if (!global.objectId.isEmpty())
+        {
+            clientNameById[global.objectId] = displayName;
+            clientBinaryById[global.objectId] = binary;
+        }
     }
 
     for (const PipeWireGlobalProps& global : globals)
@@ -644,7 +699,8 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
         if (!ownerDisplay.isEmpty())
         {
             const QString ownerId = global.clientId;
-            seen[ownerDisplay] = PipeWireClient{ownerDisplay, target, ownerId};
+            const QString ownerTarget = clientBinaryById.value(ownerId, ownerBinary);
+            seen[ownerDisplay] = PipeWireClient{ownerDisplay, ownerTarget, ownerId};
             continue;
         }
 
@@ -727,18 +783,8 @@ QList<PipeWireNode> PipeWireVolumeBackend::findNodesForApp(const QString& appNam
     const PipeWireSnapshot snapshot = inspect();
     for (const PipeWireNode& node : snapshot.nodes)
     {
-        RegistryGlobal global;
-        global.id = node.id;
-        global.type = QString::fromUtf8(PW_TYPE_INTERFACE_Node);
-        global.name = node.name;
-        global.binary = node.binary;
-        global.mediaClass = node.mediaClass;
-        global.nodeName = node.nodeName;
-        global.objectSerial = node.objectSerial;
-        global.clientId = node.clientId;
-        global.mediaName = node.mediaName;
         if (node.mediaClass.contains(QStringLiteral("Output")) &&
-            nodeMatchesApp(global, candidates))
+            pipeWireNodeMatchesApp(node, candidates))
             result.append(node);
     }
     return result;
@@ -763,8 +809,12 @@ std::optional<PipeWireNode> PipeWireVolumeBackend::readNode(uint32_t nodeId)
         bool sessionFailed = false;
         pw_thread_loop_lock(session->loop);
         const bool ok = readNodeProps(*session, nodeId, &state, &sessionFailed);
+        if (ok) populateNodeOwner(session->globals, state);
         pw_thread_loop_unlock(session->loop);
-        if (ok) return state;
+        if (ok)
+        {
+            return state;
+        }
         if (!sessionFailed) return std::nullopt;
         m_impl->invalidate();
     }
