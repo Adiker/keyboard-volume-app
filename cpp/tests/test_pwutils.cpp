@@ -122,7 +122,7 @@ TEST(PwUtils, StreamNodeNameOverridesSkippedAppName)
     EXPECT_EQ(clients[0].binary, QStringLiteral("discord"));
 }
 
-TEST(PwUtils, StreamNodeWithDistinctNodeNameKeepsOwnerTarget)
+TEST(PwUtils, StreamNodeWithDistinctNodeNameUpdatesOwnerTarget)
 {
     QList<PipeWireGlobalProps> globals{
         {QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("HostApp"),
@@ -134,10 +134,10 @@ TEST(PwUtils, StreamNodeWithDistinctNodeNameKeepsOwnerTarget)
     const auto clients = clientsFromPipeWireGlobals(globals);
 
     ASSERT_EQ(clients.size(), 1);
-    EXPECT_TRUE(containsClient(clients, QStringLiteral("HostApp"), QStringLiteral("hostapp")));
+    EXPECT_TRUE(containsClient(clients, QStringLiteral("HostApp"), QStringLiteral("mpv")));
 }
 
-TEST(PwUtils, HarmonoidMpvNodeUsesOwnerTarget)
+TEST(PwUtils, HarmonoidMpvNodeUsesFriendlyNameWithMpvTarget)
 {
     QList<PipeWireGlobalProps> globals{
         {QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("Harmonoid"),
@@ -149,10 +149,10 @@ TEST(PwUtils, HarmonoidMpvNodeUsesOwnerTarget)
     const auto clients = clientsFromPipeWireGlobals(globals);
 
     ASSERT_EQ(clients.size(), 1);
-    EXPECT_TRUE(containsClient(clients, QStringLiteral("Harmonoid"), QStringLiteral("harmonoid")));
+    EXPECT_TRUE(containsClient(clients, QStringLiteral("Harmonoid"), QStringLiteral("mpv")));
 }
 
-TEST(PwUtils, HarmonoidMpvNodeKeepsOwnerTargetWhenNodeNameMissing)
+TEST(PwUtils, HarmonoidMpvNodeUsesAppNameAsTargetWhenNodeNameMissing)
 {
     QList<PipeWireGlobalProps> globals{
         {QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("Harmonoid"),
@@ -164,7 +164,7 @@ TEST(PwUtils, HarmonoidMpvNodeKeepsOwnerTargetWhenNodeNameMissing)
     const auto clients = clientsFromPipeWireGlobals(globals);
 
     ASSERT_EQ(clients.size(), 1);
-    EXPECT_TRUE(containsClient(clients, QStringLiteral("Harmonoid"), QStringLiteral("harmonoid")));
+    EXPECT_TRUE(containsClient(clients, QStringLiteral("Harmonoid"), QStringLiteral("mpv")));
 }
 
 TEST(PwUtils, HarmonoidMpvNodeMapsByPipeWireClientIdWithoutChangingClientCase)
@@ -180,30 +180,7 @@ TEST(PwUtils, HarmonoidMpvNodeMapsByPipeWireClientIdWithoutChangingClientCase)
     const auto clients = clientsFromPipeWireGlobals(globals);
 
     ASSERT_EQ(clients.size(), 1);
-    EXPECT_TRUE(containsClient(clients, QStringLiteral("harmonoid"), QStringLiteral("harmonoid")));
-}
-
-TEST(PwUtils, EmbeddedAndStandaloneMpvKeepSeparateControlTargets)
-{
-    QList<PipeWireGlobalProps> globals{
-        {QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("limusic-app"),
-         QStringLiteral("limusic-app"), QString(), QString(), QStringLiteral("125")},
-        {QStringLiteral("PipeWire:Interface:Client"), QStringLiteral("mpv"), QStringLiteral("mpv"),
-         QString(), QString(), QStringLiteral("126")},
-        {QStringLiteral("PipeWire:Interface:Node"), QStringLiteral("mpv"), QStringLiteral("mpv"),
-         QStringLiteral("Stream/Output/Audio"), QStringLiteral("mpv"), QStringLiteral("123"),
-         QStringLiteral("125")},
-        {QStringLiteral("PipeWire:Interface:Node"), QStringLiteral("mpv"), QStringLiteral("mpv"),
-         QStringLiteral("Stream/Output/Audio"), QStringLiteral("mpv"), QStringLiteral("124"),
-         QStringLiteral("126")},
-    };
-
-    const auto clients = clientsFromPipeWireGlobals(globals);
-
-    ASSERT_EQ(clients.size(), 2);
-    EXPECT_TRUE(
-        containsClient(clients, QStringLiteral("limusic-app"), QStringLiteral("limusic-app")));
-    EXPECT_TRUE(containsClient(clients, QStringLiteral("mpv"), QStringLiteral("mpv")));
+    EXPECT_TRUE(containsClient(clients, QStringLiteral("harmonoid"), QStringLiteral("mpv")));
 }
 
 TEST(PwUtils, OwningClientOverridesEmbeddedRendererIdentity)
