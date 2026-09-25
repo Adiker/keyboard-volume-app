@@ -649,7 +649,6 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
     QSet<QString> clientBinaries;
     QMap<QString, QString> clientNameByBinary;
     QMap<QString, QString> clientNameById;
-    QMap<QString, QString> clientBinaryById;
     for (const PipeWireGlobalProps& global : globals)
     {
         if (!global.type.contains(QStringLiteral("Client"))) continue;
@@ -668,11 +667,7 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
         clientNames.insert(displayName);
         clientBinaries.insert(binary);
         clientNameByBinary[binary] = displayName;
-        if (!global.objectId.isEmpty())
-        {
-            clientNameById[global.objectId] = displayName;
-            clientBinaryById[global.objectId] = binary;
-        }
+        if (!global.objectId.isEmpty()) clientNameById[global.objectId] = displayName;
     }
 
     for (const PipeWireGlobalProps& global : globals)
@@ -699,8 +694,7 @@ QList<PipeWireClient> clientsFromPipeWireGlobals(const QList<PipeWireGlobalProps
         if (!ownerDisplay.isEmpty())
         {
             const QString ownerId = global.clientId;
-            const QString ownerTarget = clientBinaryById.value(ownerId, ownerBinary);
-            seen[ownerDisplay] = PipeWireClient{ownerDisplay, ownerTarget, ownerId};
+            seen[ownerDisplay] = PipeWireClient{ownerDisplay, target, ownerId};
             continue;
         }
 
@@ -809,10 +803,10 @@ std::optional<PipeWireNode> PipeWireVolumeBackend::readNode(uint32_t nodeId)
         bool sessionFailed = false;
         pw_thread_loop_lock(session->loop);
         const bool ok = readNodeProps(*session, nodeId, &state, &sessionFailed);
-        if (ok) populateNodeOwner(session->globals, state);
         pw_thread_loop_unlock(session->loop);
         if (ok)
         {
+            populateNodeOwner(session->globals, state);
             return state;
         }
         if (!sessionFailed) return std::nullopt;
