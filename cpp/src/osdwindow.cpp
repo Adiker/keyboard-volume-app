@@ -220,7 +220,8 @@ void OSDWindow::buildUi()
     m_albumArt = new QLabel(m_progressRow);
     m_albumArt->setObjectName(QStringLiteral("album_art"));
     m_albumArt->setFixedSize(scaled(36), scaled(36));
-    m_albumArt->setScaledContents(true);
+    m_albumArt->setAlignment(Qt::AlignCenter);
+    m_albumArt->setScaledContents(false);
     m_albumArt->setVisible(false);
 
     m_progressContent = new QWidget(m_progressRow);
@@ -573,7 +574,11 @@ void OSDWindow::rescaleAt(int absX, int absY, bool restartHideTimer)
         m_progressLayout->setContentsMargins(0, 0, 0, 0);
         m_progressLayout->setSpacing(scaled(2));
     }
-    if (m_albumArt) m_albumArt->setFixedSize(scaled(36), scaled(36));
+    if (m_albumArt)
+    {
+        m_albumArt->setFixedSize(scaled(36), scaled(36));
+        refreshAlbumArtPixmap();
+    }
     if (m_progressBar) m_progressBar->setFixedHeight(scaled(8));
     if (m_controlsLayout) m_controlsLayout->setSpacing(scaled(8));
     for (auto* btn : {m_btnPrev, m_btnPlayPause, m_btnNext})
@@ -606,7 +611,11 @@ void OSDWindow::rescaleDuringResize(int absX, int absY, int newW, int newH)
             m_progressLayout->setContentsMargins(0, 0, 0, 0);
             m_progressLayout->setSpacing(scaled(2));
         }
-        if (m_albumArt) m_albumArt->setFixedSize(scaled(36), scaled(36));
+        if (m_albumArt)
+        {
+            m_albumArt->setFixedSize(scaled(36), scaled(36));
+            refreshAlbumArtPixmap();
+        }
         if (m_progressBar) m_progressBar->setFixedHeight(scaled(8));
         if (m_controlsLayout) m_controlsLayout->setSpacing(scaled(8));
         for (auto* btn : {m_btnPrev, m_btnPlayPause, m_btnNext})
@@ -1574,16 +1583,24 @@ void OSDWindow::setPlayerName(const QString& playerName)
 void OSDWindow::setAlbumArt(const QPixmap& pixmap)
 {
     if (!m_albumArt) return;
-    if (pixmap.isNull())
+    m_albumArtSource = pixmap;
+    refreshAlbumArtPixmap();
+}
+
+void OSDWindow::refreshAlbumArtPixmap()
+{
+    if (!m_albumArt) return;
+    if (m_albumArtSource.isNull() || m_albumArt->size().isEmpty())
     {
         m_albumArt->clear();
+        return;
     }
-    else
-    {
-        // setScaledContents handles fitting to fixed size; storing the original
-        // avoids progressively blurring across rescales.
-        m_albumArt->setPixmap(pixmap);
-    }
+
+    // QLabel::setScaledContents(true) stretches non-square artwork. Keep the
+    // source pixmap so a later OSD scale always starts from the original image.
+    const QPixmap fitted =
+        m_albumArtSource.scaled(m_albumArt->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    m_albumArt->setPixmap(fitted);
 }
 
 // static
