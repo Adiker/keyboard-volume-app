@@ -170,6 +170,9 @@ static constexpr int OSD_POS_INSET = 3;
 
 OSDWindow::OSDWindow(Config* config, QWidget* parent) : QWidget(parent), m_config(config)
 {
+    m_dragUpdateTimer.setSingleShot(true);
+    m_dragUpdateTimer.setTimerType(Qt::PreciseTimer);
+    connect(&m_dragUpdateTimer, &QTimer::timeout, this, &OSDWindow::applyPendingDragUpdate);
     buildUi();
     applyStyles();
     const OsdConfig osd = m_config->osd();
@@ -420,11 +423,15 @@ void OSDWindow::applyScaleFonts()
 
 void OSDWindow::applyResizeFontsFast(double scale)
 {
-    const auto setPt = [](QWidget* widget, double basePt, int minPt, double s)
+    const auto setPt = [](QWidget* widget, int basePt, int minPt, double s)
     {
         if (!widget) return;
+        // Match applyScaleFonts(): fractional sizes otherwise invalidate text
+        // layout on every pixel of the drag and jump when styles are restored.
+        const int pointSize = std::max(minPt, qRound(basePt * s));
         QFont font = widget->font();
-        font.setPointSizeF(std::max(static_cast<double>(minPt), basePt * s));
+        if (font.pointSizeF() == pointSize) return;
+        font.setPointSize(pointSize);
         widget->setFont(font);
     };
 
@@ -434,7 +441,7 @@ void OSDWindow::applyResizeFontsFast(double scale)
     if (m_labelTime) setPt(m_labelTime, 8, 4, scale);
     for (auto* btn : {m_btnPrev, m_btnPlayPause, m_btnNext}) setPt(btn, 12, 6, scale);
     for (auto* btn : {m_btnPosUp, m_btnPosDown, m_btnPosLeft, m_btnPosRight})
-        setPt(btn, 11, 6, scale);
+        setPt(btn, 12, 6, scale);
 }
 
 void OSDWindow::enterResizeStyleMode()
@@ -905,11 +912,12 @@ bool OSDWindow::handleResizeMouseEvent(QObject* obj, QMouseEvent* event)
     {
         if (event->type() == QEvent::MouseMove)
         {
-            updateResize(event->globalPosition().toPoint());
+            scheduleDragUpdate(event->globalPosition().toPoint());
             return true;
         }
         if (event->type() == QEvent::MouseButtonRelease && event->button() == Qt::LeftButton)
         {
+            updateResize(event->globalPosition().toPoint());
             finishResize(true);
             return true;
         }
@@ -1017,18 +1025,43 @@ void OSDWindow::startResize(int edges, const QPoint& globalPos)
     grabMouse();
 }
 
+void OSDWindow::scheduleDragUpdate(const QPoint& globalPos)
+{
+    m_pendingDragGlobalPos = globalPos;
+    if (m_dragUpdateTimer.isActive()) return;
+
+    QScreen* screen = m_moving ? m_moveDragScreen : nullptr;
+    if (!screen) screen = QApplication::screenAt(m_currentAbsPos + rect().center());
+    const double rate = screen ? screen->refreshRate() : 60.0;
+    const double refreshRate = std::isfinite(rate) && rate > 0.0 ? rate : 60.0;
+    // Bound layout/platform requests to the display cadence, using the newest
+    // event's global coordinates rather than replaying a backlog of mouse moves.
+    m_dragUpdateTimer.start(std::max(1, qRound(1000.0 / refreshRate)));
+}
+
+void OSDWindow::applyPendingDragUpdate()
+{
+    m_dragUpdateTimer.stop();
+    if (m_resizing)
+        updateResize(m_pendingDragGlobalPos);
+    else if (m_moving)
+        updateMove(m_pendingDragGlobalPos);
+}
+
 void OSDWindow::updateResize(const QPoint& globalPos)
 {
-    setUpdatesEnabled(false);
     const double scale = scaleForResize(globalPos);
     const int newW = qRound(OSD_W * scale);
     const int newH = qRound(m_resizeBaseHeight * scale);
     const QPoint anchored = anchoredResizePos(newW, newH);
     const QPoint pos = clampedResizePos(anchored, newW, newH);
+    if (scale == activeScale() && size() == QSize(newW, newH) && m_resizeLastAppliedPos == pos)
+        return;
     m_previewScale = scale;
     m_resizeCurrentAbsPos = pos;
     rescaleDuringResize(pos.x(), pos.y(), newW, newH);
-    setUpdatesEnabled(true);
+    // Let Qt coalesce dirty regions. Toggling updates recursively schedules a
+    // full repaint of every child, including when geometry did not change.
     update();
 }
 
@@ -1038,8 +1071,9 @@ void OSDWindow::finishResize(bool persist)
 
     const double finalScale = std::clamp(activeScale(), 0.5, 3.0);
     const QPoint finalPos = m_resizeCurrentAbsPos;
-    releaseMouse();
+    m_dragUpdateTimer.stop();
     m_resizing = false;
+    releaseMouse();
     m_resizeEdges = EdgeNone;
     m_resizeCachedLayoutKey = -1;
     m_resizeLastAppliedPos = QPoint(-1, -1);
@@ -1755,11 +1789,12 @@ bool OSDWindow::handleMoveMouseEvent(QObject* obj, QMouseEvent* event)
     {
         if (event->type() == QEvent::MouseMove)
         {
-            updateMove(event->globalPosition().toPoint());
+            scheduleDragUpdate(event->globalPosition().toPoint());
             return true;
         }
         if (event->type() == QEvent::MouseButtonRelease && event->button() == Qt::LeftButton)
         {
+            updateMove(event->globalPosition().toPoint());
             finishMove(true);
             return true;
         }
@@ -1809,19 +1844,19 @@ void OSDWindow::updateMove(const QPoint& eventGlobalPos)
                                    : clampedPos(target.x(), target.y());
     if (m_moveLastAppliedPos == QPoint(x, y)) return;
 
-    setUpdatesEnabled(false);
     m_moveLastAppliedPos = QPoint(x, y);
     m_currentAbsPos = QPoint(x, y);
     positionWindowDuringMove(x, y);
-    setUpdatesEnabled(true);
+    // A move does not change the contents; keep the existing backing store.
 }
 
 void OSDWindow::finishMove(bool persist)
 {
     if (!m_moving) return;
 
-    releaseMouse();
+    m_dragUpdateTimer.stop();
     m_moving = false;
+    releaseMouse();
     m_moveDragScreen = nullptr;
     m_moveLastAppliedPos = QPoint(-1, -1);
     unsetCursor();

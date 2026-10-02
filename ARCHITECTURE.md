@@ -395,6 +395,8 @@ Width is `OSD_W = 220` px. All constants are logical base values — `scaled(int
 
 Mouse resize. Because the OSD is frameless/layer-shell-capable, resizing is custom: `OSDWindow` detects all edges/corners, shows resize cursors, computes a proportional scale for the current height mode, clamps it to `0.5..3.0`, stops the hide timer while dragging, and persists the final `osd_scale` plus the adjusted `screen/x/y` on mouse release. Left/top drags move the OSD so the opposite edge stays anchored. Do not replace this with platform window decorations or compositor resize calls.
 
+Mouse drag updates share a single-shot precise timer paced by the current screen's refresh rate (60 Hz fallback). Each pending update retains only the newest event's global position; release applies its coordinate synchronously before saving and stops the timer, while cancellation discards pending work. Moving reuses the existing backing store rather than toggling `setUpdatesEnabled()` and repainting every child. Resizing skips identical updates and uses the same rounded font sizes as the final styles to avoid repeated fractional font layout and a font-size jump on release. All of this stays on the Qt GUI thread; the LayerShellQt margins and XWayland positioning paths remain in place.
+
 `showVolume(app, volume, muted)` — main display call, starts the auto-hide timer.
 After `show()`, position is also set via `QWindow::setPosition()` for XWayland compatibility. On native Wayland, resize still updates the fixed widget size, but position changes go through LayerShellQt margins.
 
@@ -823,7 +825,7 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_volumecontroller` — 5 smoke tests
 - `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
 - `test_mprisclient` — 15 tests (MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards, `mpris:artUrl` / `xesam:album` parsing, `albumArtChanged` empty-on-disconnect)
-- `test_osdwindow` — OSD progress-row, label-preset, album-art, and mouse-resize regressions (including scale persistence, edge anchoring, clamp, timer, and progress-bar hit testing)
+- `test_osdwindow` — OSD progress-row, label-preset, album-art, and mouse-drag regressions (including all eight resize grips across three height modes, scale persistence, edge anchoring, clamp, hide timer, repaint reuse, font stability, event coalescing, release/cancel handling, and seek/media-button interaction)
 - `test_osdlabelformat` — 9 tests (token substitution, leading/trailing/middle separator trimming, unknown tokens preserved, multi-occurrence, internal whitespace preservation, all-empty)
 - `test_dbusinterface` — 6 tests (Volume/Muted property writers route to absolute `setVolume`/`setMuted` instead of relative delta/toggle, clamping, no-op when no active app, `ToggleMute()` method still toggles)
 - `integration_pipewire_visible_volume` (opt-in) — starts private PipeWire, pipewire-pulse, WirePlumber, D-Bus, null sinks, and silent streams in a temporary XDG tree. It verifies persistent PipeWire connection reuse plus `pw-cli enum-params ... Props`, `wpctl get-volume`, and `pactl` after relative/absolute writes, scene apply, refresh, routing, inactive stream-restore replay, pending apply, per-channel duck/restore, and a pipewire-pulse reconnect. The desktop session, live streams, and user config are inaccessible to the test processes.
