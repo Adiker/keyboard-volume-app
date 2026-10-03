@@ -170,9 +170,9 @@ static constexpr int OSD_POS_INSET = 3;
 
 OSDWindow::OSDWindow(Config* config, QWidget* parent) : QWidget(parent), m_config(config)
 {
-    m_dragUpdateTimer.setSingleShot(true);
-    m_dragUpdateTimer.setTimerType(Qt::PreciseTimer);
-    connect(&m_dragUpdateTimer, &QTimer::timeout, this, &OSDWindow::applyPendingDragUpdate);
+    m_resizeUpdateTimer.setSingleShot(true);
+    m_resizeUpdateTimer.setTimerType(Qt::PreciseTimer);
+    connect(&m_resizeUpdateTimer, &QTimer::timeout, this, &OSDWindow::applyPendingResizeUpdate);
     buildUi();
     applyStyles();
     const OsdConfig osd = m_config->osd();
@@ -831,6 +831,11 @@ void OSDWindow::positionWindowDuringMove(int absX, int absY)
             relY = absY - geo.y();
         }
         m_lsWindow->setMargins(QMargins(relX, relY, 0, 0));
+        // Layer-shell margins are double-buffered. setMargins() alone does not
+        // commit the surface, so a static OSD would move only when another UI
+        // update happens to paint it. A tiny dirty region makes Qt flush and
+        // commit its backing store without repainting the labels and bars.
+        update(QRect(0, 0, 1, 1));
         return;
     }
 #endif
@@ -912,7 +917,7 @@ bool OSDWindow::handleResizeMouseEvent(QObject* obj, QMouseEvent* event)
     {
         if (event->type() == QEvent::MouseMove)
         {
-            scheduleDragUpdate(event->globalPosition().toPoint());
+            scheduleResizeUpdate(event->globalPosition().toPoint());
             return true;
         }
         if (event->type() == QEvent::MouseButtonRelease && event->button() == Qt::LeftButton)
@@ -1025,27 +1030,24 @@ void OSDWindow::startResize(int edges, const QPoint& globalPos)
     grabMouse();
 }
 
-void OSDWindow::scheduleDragUpdate(const QPoint& globalPos)
+void OSDWindow::scheduleResizeUpdate(const QPoint& globalPos)
 {
-    m_pendingDragGlobalPos = globalPos;
-    if (m_dragUpdateTimer.isActive()) return;
+    if (!m_resizing) return;
+    m_pendingResizeGlobalPos = globalPos;
+    if (m_resizeUpdateTimer.isActive()) return;
 
-    QScreen* screen = m_moving ? m_moveDragScreen : nullptr;
-    if (!screen) screen = QApplication::screenAt(m_currentAbsPos + rect().center());
+    QScreen* screen = QApplication::screenAt(m_currentAbsPos + rect().center());
     const double rate = screen ? screen->refreshRate() : 60.0;
     const double refreshRate = std::isfinite(rate) && rate > 0.0 ? rate : 60.0;
     // Bound layout/platform requests to the display cadence, using the newest
     // event's global coordinates rather than replaying a backlog of mouse moves.
-    m_dragUpdateTimer.start(std::max(1, qRound(1000.0 / refreshRate)));
+    m_resizeUpdateTimer.start(std::max(1, qRound(1000.0 / refreshRate)));
 }
 
-void OSDWindow::applyPendingDragUpdate()
+void OSDWindow::applyPendingResizeUpdate()
 {
-    m_dragUpdateTimer.stop();
-    if (m_resizing)
-        updateResize(m_pendingDragGlobalPos);
-    else if (m_moving)
-        updateMove(m_pendingDragGlobalPos);
+    m_resizeUpdateTimer.stop();
+    if (m_resizing) updateResize(m_pendingResizeGlobalPos);
 }
 
 void OSDWindow::updateResize(const QPoint& globalPos)
@@ -1071,7 +1073,7 @@ void OSDWindow::finishResize(bool persist)
 
     const double finalScale = std::clamp(activeScale(), 0.5, 3.0);
     const QPoint finalPos = m_resizeCurrentAbsPos;
-    m_dragUpdateTimer.stop();
+    m_resizeUpdateTimer.stop();
     m_resizing = false;
     releaseMouse();
     m_resizeEdges = EdgeNone;
@@ -1789,7 +1791,9 @@ bool OSDWindow::handleMoveMouseEvent(QObject* obj, QMouseEvent* event)
     {
         if (event->type() == QEvent::MouseMove)
         {
-            scheduleDragUpdate(event->globalPosition().toPoint());
+            // Qt/compositor already coalesce surface updates. An extra timer
+            // adds pointer lag and an independent, unsynchronised frame cadence.
+            updateMove(event->globalPosition().toPoint());
             return true;
         }
         if (event->type() == QEvent::MouseButtonRelease && event->button() == Qt::LeftButton)
@@ -1854,7 +1858,6 @@ void OSDWindow::finishMove(bool persist)
 {
     if (!m_moving) return;
 
-    m_dragUpdateTimer.stop();
     m_moving = false;
     releaseMouse();
     m_moveDragScreen = nullptr;

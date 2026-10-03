@@ -606,7 +606,7 @@ TEST(OSDWindowResize, ReleaseCoordinateIsPersistedWithoutLastMoveEvent)
     EXPECT_NEAR(config.osd().osdScale, 1.2, 0.001);
 }
 
-TEST(OSDWindowDrag, MouseBurstAppliesNewestPositionOnce)
+TEST(OSDWindowDrag, MoveIsImmediateWhileResizeCoalesces)
 {
     for (bool resize : {false, true})
     {
@@ -629,18 +629,23 @@ TEST(OSDWindowDrag, MouseBurstAppliesNewestPositionOnce)
             QMouseEvent move(QEvent::MouseMove, local, start + QPoint(i, 0), Qt::NoButton,
                              Qt::LeftButton, Qt::NoModifier);
             QApplication::sendEvent(&window, &move);
+            if (!resize)
+            {
+                EXPECT_EQ(window.m_currentAbsPos, origin + QPoint(i, 0));
+                EXPECT_FALSE(window.m_resizeUpdateTimer.isActive());
+            }
         }
         EXPECT_EQ(window.size(), initialSize);
-        EXPECT_EQ(window.m_currentAbsPos, origin);
-        ASSERT_TRUE(window.m_dragUpdateTimer.isActive());
-
-        QEventLoop loop;
-        QObject::connect(&window.m_dragUpdateTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
-        QTimer::singleShot(1000, &loop, &QEventLoop::quit);
-        loop.exec();
-        EXPECT_FALSE(window.m_dragUpdateTimer.isActive());
         if (resize)
         {
+            EXPECT_EQ(window.m_currentAbsPos, origin);
+            ASSERT_TRUE(window.m_resizeUpdateTimer.isActive());
+            QEventLoop loop;
+            QObject::connect(&window.m_resizeUpdateTimer, &QTimer::timeout, &loop,
+                             &QEventLoop::quit);
+            QTimer::singleShot(1000, &loop, &QEventLoop::quit);
+            loop.exec();
+            EXPECT_FALSE(window.m_resizeUpdateTimer.isActive());
             EXPECT_EQ(window.width(), initialSize.width() + 40);
             window.finishResize(true);
         }
@@ -669,22 +674,27 @@ TEST(OSDWindowDrag, CancelDiscardsPendingUpdate)
             window.startResize(OSDWindow::EdgeRight, start);
         else
             window.startMove(start);
-        window.scheduleDragUpdate(start + QPoint(40, 20));
-        ASSERT_TRUE(window.m_dragUpdateTimer.isActive());
+        if (resize)
+        {
+            window.scheduleResizeUpdate(start + QPoint(40, 20));
+            ASSERT_TRUE(window.m_resizeUpdateTimer.isActive());
+        }
+        else
+            window.updateMove(start + QPoint(40, 20));
         QEvent ungrab(QEvent::UngrabMouse);
         window.handleResizeEvent(&window, &ungrab);
         EXPECT_FALSE(window.m_moving);
         EXPECT_FALSE(window.m_resizing);
-        EXPECT_FALSE(window.m_dragUpdateTimer.isActive());
-        window.applyPendingDragUpdate();
-        EXPECT_EQ(window.m_currentAbsPos, origin);
+        EXPECT_FALSE(window.m_resizeUpdateTimer.isActive());
+        window.applyPendingResizeUpdate();
+        EXPECT_EQ(window.m_currentAbsPos, resize ? origin : origin + QPoint(40, 20));
         EXPECT_EQ(window.size(), initialSize);
         EXPECT_EQ(screenRelativeToAbs(config.osd()), origin);
         EXPECT_DOUBLE_EQ(config.osd().osdScale, 1.0);
     }
 }
 
-TEST(OSDWindowDrag, ReleaseOverridesPendingMoveAndStopsTimer)
+TEST(OSDWindowDrag, ReleaseUsesFinalCoordinateAndStopsResizeTimer)
 {
     for (bool resize : {false, true})
     {
@@ -701,11 +711,14 @@ TEST(OSDWindowDrag, ReleaseOverridesPendingMoveAndStopsTimer)
         QMouseEvent press(QEvent::MouseButtonPress, local, start, Qt::LeftButton, Qt::LeftButton,
                           Qt::NoModifier);
         QApplication::sendEvent(&window, &press);
-        window.scheduleDragUpdate(start + QPoint(10, 0));
+        if (resize)
+            window.scheduleResizeUpdate(start + QPoint(10, 0));
+        else
+            window.updateMove(start + QPoint(10, 0));
         QMouseEvent release(QEvent::MouseButtonRelease, local, start + QPoint(44, 0),
                             Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
         QApplication::sendEvent(&window, &release);
-        EXPECT_FALSE(window.m_dragUpdateTimer.isActive());
+        EXPECT_FALSE(window.m_resizeUpdateTimer.isActive());
         EXPECT_FALSE(window.m_moving);
         EXPECT_FALSE(window.m_resizing);
         if (resize)
@@ -714,7 +727,7 @@ TEST(OSDWindowDrag, ReleaseOverridesPendingMoveAndStopsTimer)
             EXPECT_EQ(screenRelativeToAbs(config.osd()), origin + QPoint(44, 0));
         const QPoint finalPos = window.m_currentAbsPos;
         const QSize finalSize = window.size();
-        window.applyPendingDragUpdate();
+        window.applyPendingResizeUpdate();
         EXPECT_EQ(window.m_currentAbsPos, finalPos);
         EXPECT_EQ(window.size(), finalSize);
         EXPECT_TRUE(window.m_hideTimer->isActive());
@@ -814,7 +827,7 @@ TEST(OSDWindowDrag, SeekAndMediaButtonsRemainInteractive)
     EXPECT_FALSE(window.m_moving);
     EXPECT_FALSE(window.m_resizing);
     EXPECT_FALSE(window.m_seeking);
-    EXPECT_FALSE(window.m_dragUpdateTimer.isActive());
+    EXPECT_FALSE(window.m_resizeUpdateTimer.isActive());
 }
 
 int main(int argc, char** argv)
