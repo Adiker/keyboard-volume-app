@@ -208,6 +208,8 @@ class OSDWindow : public QWidget
     QPoint m_moveStartAbsPos;
     QScreen* m_moveDragScreen = nullptr;
     QPoint m_moveLastAppliedPos{-1, -1};
+    bool m_moveFramePending = false;
+    QPoint m_pendingMoveGlobalPos;
 
     // ── Progress row ─────────────────────────────────────────────────────────
     QWidget* m_progressRow = nullptr; // container — show/hide as a unit
@@ -315,6 +317,7 @@ class OSDWindow : public QWidget
     bool handleMoveMouseEvent(QObject* obj, QMouseEvent* event);
     void startMove(const QPoint& globalPos);
     void updateMove(const QPoint& globalPos);
+    void scheduleMoveUpdate(const QPoint& globalPos);
     void finishMove(bool persist);
 
     // Update m_labelName text based on progressLabelMode + cached track info.

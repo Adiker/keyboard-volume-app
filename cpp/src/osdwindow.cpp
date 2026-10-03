@@ -698,6 +698,7 @@ void OSDWindow::initLayerShell()
     m_lsWindow->setScope(QStringLiteral("keyboard-volume-app-osd"));
 
     m_layerShellActive = true;
+    win->installEventFilter(this);
     qDebug() << "[OSDWindow] layer-shell initialised (native Wayland OSD)";
 #endif
 }
@@ -832,10 +833,10 @@ void OSDWindow::positionWindowDuringMove(int absX, int absY)
         }
         m_lsWindow->setMargins(QMargins(relX, relY, 0, 0));
         // Layer-shell margins are double-buffered. setMargins() alone does not
-        // commit the surface, so a static OSD would move only when another UI
-        // update happens to paint it. A tiny dirty region makes Qt flush and
-        // commit its backing store without repainting the labels and bars.
-        update(QRect(0, 0, 1, 1));
+        // commit the surface. Repaint the whole translucent buffer at the
+        // compositor's frame cadence, including its transparent corners;
+        // tiny damage can leave stale content/trails during movement.
+        update();
         return;
     }
 #endif
@@ -1368,6 +1369,18 @@ void OSDWindow::updatePosition(qint64 positionUs)
 
 bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
 {
+    if (obj == windowHandle())
+    {
+        if (event->type() == QEvent::UpdateRequest && m_moveFramePending)
+        {
+            m_moveFramePending = false;
+            if (m_moving && isVisible()) updateMove(m_pendingMoveGlobalPos);
+            return true;
+        }
+        // Let QWidgetWindow route pointer events to the actual child widget
+        // first, preserving seek/media controls and resize hit-testing.
+        return QWidget::eventFilter(obj, event);
+    }
     if (handleResizeEvent(obj, event)) return true;
     if (obj != m_progressBar) return QWidget::eventFilter(obj, event);
 
@@ -1791,9 +1804,7 @@ bool OSDWindow::handleMoveMouseEvent(QObject* obj, QMouseEvent* event)
     {
         if (event->type() == QEvent::MouseMove)
         {
-            // Qt/compositor already coalesce surface updates. An extra timer
-            // adds pointer lag and an independent, unsynchronised frame cadence.
-            updateMove(event->globalPosition().toPoint());
+            scheduleMoveUpdate(event->globalPosition().toPoint());
             return true;
         }
         if (event->type() == QEvent::MouseButtonRelease && event->button() == Qt::LeftButton)
@@ -1851,13 +1862,33 @@ void OSDWindow::updateMove(const QPoint& eventGlobalPos)
     m_moveLastAppliedPos = QPoint(x, y);
     m_currentAbsPos = QPoint(x, y);
     positionWindowDuringMove(x, y);
-    // A move does not change the contents; keep the existing backing store.
+    // XWayland keeps its backing store; native Wayland repaints on each frame.
+}
+
+void OSDWindow::scheduleMoveUpdate(const QPoint& globalPos)
+{
+#ifdef HAVE_LAYER_SHELL_QT
+    if (m_layerShellActive && m_lsWindow && windowHandle())
+    {
+        m_pendingMoveGlobalPos = globalPos;
+        if (!m_moveFramePending)
+        {
+            m_moveFramePending = true;
+            // Native Wayland delivers this after the previous frame callback,
+            // avoiding a second, unsynchronised application timer.
+            windowHandle()->requestUpdate();
+        }
+        return;
+    }
+#endif
+    updateMove(globalPos);
 }
 
 void OSDWindow::finishMove(bool persist)
 {
     if (!m_moving) return;
 
+    m_moveFramePending = false;
     m_moving = false;
     releaseMouse();
     m_moveDragScreen = nullptr;
