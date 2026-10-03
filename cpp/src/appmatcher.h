@@ -81,6 +81,13 @@ inline QStringList appMatchCandidates(const QString& appName, const QList<AppAli
     };
 
     add(appName);
+    // LiMusic's PipeWire client identifies itself as either limusic-app or
+    // limusic, depending on the build. Both names refer to the same app; the
+    // embedded mpv renderer remains a separate control target.
+    if (appName.compare(QStringLiteral("limusic-app"), Qt::CaseInsensitive) == 0)
+        add(QStringLiteral("limusic"));
+    else if (appName.compare(QStringLiteral("limusic"), Qt::CaseInsensitive) == 0)
+        add(QStringLiteral("limusic-app"));
     if (aliases.isEmpty() || appName.isEmpty()) return out;
 
     const QString lower = appName.toLower();
