@@ -8,6 +8,8 @@
 #include <QPair>
 #include <QMutex>
 #include <atomic>
+#include <optional>
+#include <QBitArray>
 #include <linux/input.h>
 
 struct libevdev;
@@ -24,8 +26,15 @@ QList<QString> findSiblingDevices(const QString& primaryPath);
 //   siblings of primaryPath + all other EV_KEY / scroll-capable EV_REL devices
 QList<QString> findCaptureDevices(const QString& primaryPath);
 
+// Kernel input sysfs bitmap format: high words first, native/compat word width.
+// Malformed data returns nullopt so enumeration can fall back to libevdev.
+std::optional<QBitArray> parseInputCapabilityBitmap(const QByteArray& text, int wordBits);
+
+// True if the device exposes at least one assigned key/relative binding.
+bool deviceHasConfiguredHotkey(const libevdev* dev, const QSet<HotkeyBinding>& hotkeys);
+
 // Returns (path, exclusiveGrab) pairs for runtime hotkey handling:
-//   siblings of primaryPath → exclusive grab + uinput re-injection
+//   siblings without configured bindings → passive modifier observation
 //   other devices exposing at least one configured hotkey binding → exclusive
 //   grab + uinput re-injection, so global hotkeys are swallowed everywhere.
 QList<std::pair<QString, bool>> findHotkeyDevices(const QString& primaryPath,
@@ -165,14 +174,14 @@ class KeyCaptureThread : public QThread
 // Reads evdev events from the selected device and its siblings.
 // Hotkey events from any configured profile are intercepted and dispatched
 // as Qt signals carrying the matched profile id. Modifier keys are tracked
-// internally for profile selection but always forwarded to uinput so the
-// desktop sees them. All other events are re-injected through a UInput
-// virtual device. Supports key repeat (ev.value == 2).
-// Debounce is per-(code, profileId) — Ctrl+VolUp and bare VolUp don't
-// suppress each other.
+// internally for profile selection. Captured events are forwarded to uinput;
+// passive sibling events reach the desktop directly. Mirrors are prepared
+// before grabbing, and nodes with held keys/buttons defer their handoff. Supports key repeat
+// (ev.value == 2). Debounce is per-(code, profileId) — Ctrl+VolUp and bare VolUp don't suppress
+// each other.
 //
 // v1 limitation: modifier state is observed only on devices that InputHandler
-// already grabs (siblings of the primary device + devices exposing any
+// already reads (siblings of the primary device + devices exposing any
 // configured hotkey binding). A modifier held on a separate keyboard with no
 // matching hotkey is NOT tracked. TODO(v2): passive read-only open of
 // modifier-bearing devices.
