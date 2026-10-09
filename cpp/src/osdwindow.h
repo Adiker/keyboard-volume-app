@@ -178,6 +178,8 @@ class OSDWindow : public QWidget
     int m_previewTimeoutMs = 1500;
     double m_previewScale = -1.0; // overrides config scale during settings preview; -1 = inactive
     QPoint m_currentAbsPos;       // last clamped position applied through positionWindow()
+    QTimer m_resizeUpdateTimer;
+    QPoint m_pendingResizeGlobalPos;
 
     // ── Mouse resize ─────────────────────────────────────────────────────────
     bool m_resizing = false;
@@ -206,6 +208,8 @@ class OSDWindow : public QWidget
     QPoint m_moveStartAbsPos;
     QScreen* m_moveDragScreen = nullptr;
     QPoint m_moveLastAppliedPos{-1, -1};
+    bool m_moveFramePending = false;
+    QPoint m_pendingMoveGlobalPos;
 
     // ── Progress row ─────────────────────────────────────────────────────────
     QWidget* m_progressRow = nullptr; // container — show/hide as a unit
@@ -290,6 +294,8 @@ class OSDWindow : public QWidget
     Qt::CursorShape resizeCursorForEdges(int edges) const;
     void updateResizeCursor(QObject* obj, int edges);
     void startResize(int edges, const QPoint& globalPos);
+    void scheduleResizeUpdate(const QPoint& globalPos);
+    void applyPendingResizeUpdate();
     void updateResize(const QPoint& globalPos);
     void finishResize(bool persist);
     double scaleForResize(const QPoint& globalPos) const;
@@ -311,6 +317,7 @@ class OSDWindow : public QWidget
     bool handleMoveMouseEvent(QObject* obj, QMouseEvent* event);
     void startMove(const QPoint& globalPos);
     void updateMove(const QPoint& globalPos);
+    void scheduleMoveUpdate(const QPoint& globalPos);
     void finishMove(bool persist);
 
     // Update m_labelName text based on progressLabelMode + cached track info.

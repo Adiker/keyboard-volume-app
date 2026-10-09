@@ -87,6 +87,8 @@ Qt skips stylesheet background painting for translucent top-level windows (`WA_T
 
 After `show()`, the X11/XWayland path also sets position via `QWindow::setPosition()` on `windowHandle()`. The native Wayland path updates layer-shell margins instead of calling `move()`.
 
+Layer-shell margins are double-buffered: `setMargins()` alone does not submit the new position. Keep a full-surface update at Qt frame opportunities in `positionWindowDuringMove()` so Qt clears translucent content and commits the surface even with static content; tiny dirty regions can leave movement trails. A test that checks only cached margins/coordinates or zero repaints can miss a visually stationary OSD; use the opt-in native regression and Wayland protocol trace described in `ARCHITECTURE.md`.
+
 Mouse resizing of the OSD is custom too: it updates the fixed widget size proportionally, persists `osd_scale` (and adjusted `screen`/`x`/`y` for left/top drags) on mouse release, and restarts the hide timer. Keep resize hit-testing separate from the progress-bar seek path so center clicks on the progress bar are not swallowed as resize gestures.
 
 ## D-Bus / MPRIS
