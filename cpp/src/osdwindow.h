@@ -217,6 +217,7 @@ class OSDWindow : public QWidget
     QWidget* m_progressContent = nullptr;
     QVBoxLayout* m_progressLayout = nullptr;
     QLabel* m_albumArt = nullptr;
+    QPixmap m_albumArtSource;
     QLabel* m_labelTrack = nullptr;
     QProgressBar* m_progressBar = nullptr;
     QLabel* m_labelTime = nullptr;
@@ -325,6 +326,9 @@ class OSDWindow : public QWidget
     void finishSeeking();
     // Refresh m_albumArt visibility based on progressLabelMode / custom toggle.
     void refreshAlbumArtVisibility();
+    // Fit the original album art into the current square widget without
+    // changing its aspect ratio. Re-run after OSD scaling changes.
+    void refreshAlbumArtPixmap();
 
     // Format microseconds → "m:ss".
     static QString formatTime(qint64 us);
