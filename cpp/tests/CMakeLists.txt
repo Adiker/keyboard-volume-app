@@ -198,6 +198,30 @@ target_link_libraries(test_osdwindow PRIVATE
 )
 add_test(NAME test_osdwindow COMMAND test_osdwindow)
 
+# Exercise the production layer-shell path only on an explicitly selected
+# compositor. Normal headless test runs skip this case.
+if(LayerShellQt_FOUND)
+    add_executable(test_osdwindow_wayland
+        test_osdwindow_wayland.cpp
+        ../src/osdwindow.cpp
+        ../src/osdlabelformat.cpp
+        ../src/config.cpp
+        ../src/appaudiofilters.cpp
+        ../src/i18n.cpp
+    )
+    target_include_directories(test_osdwindow_wayland PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+    )
+    target_compile_definitions(test_osdwindow_wayland PRIVATE HAVE_LAYER_SHELL_QT)
+    target_link_libraries(test_osdwindow_wayland PRIVATE
+        GTest::gtest
+        Qt6::Widgets
+        Qt6::Test
+        LayerShellQt::Interface
+    )
+    add_test(NAME test_osdwindow_wayland COMMAND test_osdwindow_wayland)
+endif()
+
 # ─── test_osdlabelformat ─────────────────────────────────────────────────────
 add_executable(test_osdlabelformat
     test_osdlabelformat.cpp
