@@ -60,7 +60,9 @@ Thumbs.db
 pkg/arch/pkg/
 pkg/arch/src/
 pkg/arch/keyboard-volume-app-git/
+pkg/arch/keyboard-volume-app/
 pkg/arch/*.pkg.tar.*
+pkg/arch/*.tar.gz
 
 # Claude Code local settings
 .claude/

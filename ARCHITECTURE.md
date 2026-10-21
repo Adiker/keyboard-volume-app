@@ -74,7 +74,9 @@ keyboard-volume-app/
 │       └── waylandstate.h       # Declares global extern bool g_nativeWayland for LayerShellQt OSD routing
 ├── pkg/
 │   └── arch/
-│       └── PKGBUILD             # Arch Linux package (keyboard-volume-app-git)
+│       ├── PKGBUILD             # AUR package (keyboard-volume-app-git, tracks main)
+│       ├── PKGBUILD.stable      # Tagged release package (keyboard-volume-app)
+│       └── build-release-package.sh  # Builds .pkg.tar.zst for GitHub Releases
 ├── resources/
 │   ├── icon.png
 │   └── keyboard-volume-app.desktop  # Desktop entry (distribution copy, no hardcoded paths)
@@ -710,9 +712,9 @@ dbus-send --session --dest=org.keyboardvolumeapp --type=method_call --print-repl
 
 ---
 
-### `pkg/arch/PKGBUILD` — Arch Linux package
+### `pkg/arch/` — Arch Linux packaging
 
-`keyboard-volume-app-git` package for Arch Linux / AUR:
+**AUR (`PKGBUILD` / `keyboard-volume-app-git`):**
 https://aur.archlinux.org/packages/keyboard-volume-app-git
 
 The AUR package builds from the upstream `main` branch via `git clone`. The GitHub source tree keeps `pkg/arch/PKGBUILD` and `pkg/arch/.SRCINFO` as the source-controlled publishing files; regenerate `.SRCINFO` whenever `PKGBUILD` changes. The AUR git repository should contain only those publishing files (`PKGBUILD`, `.SRCINFO`, and any future required patch/install files), not the full upstream source tree.
@@ -722,6 +724,11 @@ The AUR package builds from the upstream `main` branch via `git clone`. The GitH
 - `makedepends`: `cmake gcc pkg-config git wayland layer-shell-qt`
 - CMake Release build with `BUILD_TESTING=OFF` and `DESTDIR` install
 - Installs: binary → `/usr/bin/`, `.desktop` → `/usr/share/applications/`, icon → `/usr/share/pixmaps/`, systemd user service → `/usr/lib/systemd/user/`
+
+**GitHub Release (`PKGBUILD.stable` / `keyboard-volume-app`):** tagged `.pkg.tar.zst`
+assets are built by `pkg/arch/build-release-package.sh` (used from
+`.github/workflows/release.yml`). It archives the release tag, fills `pkgver` /
+`sha256sums`, and runs `makepkg`. Conflicts with `keyboard-volume-app-git`.
 
 Local validation from the project checkout:
 
@@ -845,11 +852,12 @@ On Release builds it also runs CPack (`DEB`/`RPM`) and uploads the packages as
 workflow artifacts.
 
 Tagged releases use `.github/workflows/release.yml` (`on.push.tags: v*`). That
-workflow builds a Release binary with `BUILD_TESTING=OFF`, runs CPack for
-`.deb`/`.rpm`, writes `SHA256SUMS.txt`, and publishes a GitHub Release with those
-assets. Project version comes from `project(... VERSION ...)` in
-`cpp/CMakeLists.txt` (injected as `APP_VERSION` / `CPACK_PACKAGE_VERSION`).
-User-facing history lives in `CHANGELOG.md`.
+workflow builds CPack `.deb`/`.rpm` on Ubuntu, builds an Arch `.pkg.tar.zst` in
+an `archlinux:base-devel` container, writes combined `SHA256SUMS.txt`, and
+publishes a GitHub Release whose body is the matching section of `CHANGELOG.md`
+(no auto-generated PR dump). Project version comes from
+`project(... VERSION ...)` in `cpp/CMakeLists.txt` (injected as `APP_VERSION` /
+`CPACK_PACKAGE_VERSION`).
 `clang-tidy` runs in CI as a warning-only job ("Clang-Tidy changed C++ files") on
 changed `.cpp`/`.cc`/`.cxx` files under `cpp/src` and `cpp/tests`. It does **not**
 block merge (`continue-on-error: true`). Configuration lives in `.clang-tidy` at
