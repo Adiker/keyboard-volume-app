@@ -5,10 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+GitHub Release notes are generated from the matching section below (this file is
+the single source of truth).
+
 ## [0.2.0] - 2026-10-21
 
-First tagged C++ release on the `main` line after the rewrite. Install `.deb` /
-`.rpm` assets from the GitHub Release, or use AUR `keyboard-volume-app-git`.
+First tagged C++ release on the `main` line after the rewrite.
+
+**Install:** download `.deb`, `.rpm`, or Arch `.pkg.tar.zst` from the
+[GitHub Release](https://github.com/Adiker/keyboard-volume-app/releases/tag/v0.2.0).
+Arch users who prefer rolling builds can keep using AUR
+`keyboard-volume-app-git`.
 
 ### Added
 
@@ -29,7 +36,8 @@ First tagged C++ release on the `main` line after the rewrite. Install `.deb` /
 - `kv-ctl` CLI client and session D-Bus `org.keyboardvolumeapp.VolumeControl`
 - App aliases, configurable audio-app filters, PipeWire client identity mapping
 - Config import/export in Settings; About dialog
-- Arch AUR package `keyboard-volume-app-git`, CPack `.deb`/`.rpm`, systemd user unit
+- Packaging: AUR `keyboard-volume-app-git`, CPack `.deb`/`.rpm`, Arch
+  `.pkg.tar.zst` on GitHub Releases, systemd user unit
 - CI (build, CTest, clang-format; clang-tidy warning-only) and tag-triggered
   GitHub Release publishing
 
@@ -49,6 +57,9 @@ First tagged C++ release on the `main` line after the rewrite. Install `.deb` /
 - Follow Focus needs `zwlr_foreign_toplevel_management_unstable_v1` or X11/XWayland
 - Ducking applies instantly (no fade yet)
 - OSD still uses absolute X/Y (anchors / custom QSS planned)
+
+Full commit history since the rewrite snapshot:
+https://github.com/Adiker/keyboard-volume-app/compare/cpp-rewrite-v0.1.0...v0.2.0
 
 ## [0.1.0] - 2026-04-25
 

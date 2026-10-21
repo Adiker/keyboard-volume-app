@@ -25,6 +25,10 @@ and shows the result in a configurable OSD overlay.
 
 ### Arch Linux / AUR
 
+Install a tagged Arch package from the
+[latest release](https://github.com/Adiker/keyboard-volume-app/releases/latest)
+(`.pkg.tar.zst`), or track `main` via AUR:
+
 ```bash
 yay -S keyboard-volume-app-git
 ```
@@ -40,8 +44,8 @@ makepkg -si
 
 ### Packages or source
 
-GitHub Releases publish `.deb` and `.rpm` packages for each tagged version.
-Download the package for your distribution from the
+GitHub Releases publish `.deb`, `.rpm` and Arch `.pkg.tar.zst` packages for each
+tagged version. Download the package for your distribution from the
 [latest release](https://github.com/Adiker/keyboard-volume-app/releases/latest)
 and install it with the system package manager. Full package and dependency
 details are in the [installation guide](docs/en/installation.md).

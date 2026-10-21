@@ -8,9 +8,16 @@ globalnego przechwytywania wejścia.
 
 ## Wybór sposobu instalacji
 
-### Arch Linux / AUR
+### Arch Linux
 
-Pakiet `keyboard-volume-app-git` śledzi gałąź upstream `main`:
+Otagowane [wydania GitHub](https://github.com/Adiker/keyboard-volume-app/releases)
+zawierają paczkę Arch (`.pkg.tar.zst`):
+
+```bash
+sudo pacman -U ./keyboard-volume-app-0.2.0-1-x86_64.pkg.tar.zst
+```
+
+Dla buildu śledzącego `main` użyj AUR `keyboard-volume-app-git`:
 
 ```bash
 yay -S keyboard-volume-app-git
@@ -25,7 +32,7 @@ cd keyboard-volume-app-git
 makepkg -si
 ```
 
-Aby zbudować pakiet bezpośrednio z tego checkoutu:
+Aby zbudować paczkę `-git` bezpośrednio z tego checkoutu:
 
 ```bash
 cd pkg/arch
@@ -37,8 +44,8 @@ user unit systemd w `/usr`.
 
 ### Pakiety Debian i RPM
 
-Otagowane [wydania GitHub](https://github.com/Adiker/keyboard-volume-app/releases)
-publikują assety `.deb` i `.rpm` (CPack). Pobierz właściwy pakiet z
+Te same wydania GitHub publikują także assety `.deb` i `.rpm` (CPack). Pobierz
+właściwy pakiet z
 [najnowszego wydania](https://github.com/Adiker/keyboard-volume-app/releases/latest)
 i zainstaluj go menedżerem pakietów:
 

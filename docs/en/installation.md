@@ -8,9 +8,16 @@ and evdev for global input capture.
 
 ## Choose an installation method
 
-### Arch Linux / AUR
+### Arch Linux
 
-The `keyboard-volume-app-git` package follows the upstream `main` branch:
+Tagged [GitHub Releases](https://github.com/Adiker/keyboard-volume-app/releases)
+include an Arch package (`.pkg.tar.zst`):
+
+```bash
+sudo pacman -U ./keyboard-volume-app-0.2.0-1-x86_64.pkg.tar.zst
+```
+
+For a rolling build from `main`, use AUR `keyboard-volume-app-git`:
 
 ```bash
 yay -S keyboard-volume-app-git
@@ -25,7 +32,7 @@ cd keyboard-volume-app-git
 makepkg -si
 ```
 
-To build the package from this checkout instead:
+To build the `-git` package from this checkout instead:
 
 ```bash
 cd pkg/arch
@@ -37,9 +44,8 @@ and systemd user unit under `/usr`.
 
 ### Debian and RPM packages
 
-Tagged [GitHub Releases](https://github.com/Adiker/keyboard-volume-app/releases)
-publish `.deb` and `.rpm` assets (built with CPack). Download the matching
-package from the
+The same GitHub Releases publish `.deb` and `.rpm` assets (CPack). Download the
+matching package from the
 [latest release](https://github.com/Adiker/keyboard-volume-app/releases/latest),
 then install it with the native package manager:
 
