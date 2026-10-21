@@ -41,9 +41,11 @@ makepkg -si
 
 ### Pakiety lub źródła
 
-CI publikuje artefakty `.deb` i `.rpm`. Pobierz pakiet dla swojej dystrybucji
-z ostatniego udanego uruchomienia GitHub Actions i zainstaluj go menedżerem
-pakietów. Pełne informacje są w [przewodniku instalacji](docs/pl/installation.md).
+GitHub Releases publikują pakiety `.deb` i `.rpm` dla każdej otagowanej wersji.
+Pobierz pakiet dla swojej dystrybucji z
+[najnowszego wydania](https://github.com/Adiker/keyboard-volume-app/releases/latest)
+i zainstaluj go menedżerem pakietów. Pełne informacje są w
+[przewodniku instalacji](docs/pl/installation.md).
 
 Aby zbudować bieżące źródła:
 

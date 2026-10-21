@@ -45,6 +45,10 @@ config.json
 # Logs
 *.log
 
+# Crash dumps
+core
+core.*
+
 # OS
 .DS_Store
 Thumbs.db
