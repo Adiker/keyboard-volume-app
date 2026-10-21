@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+jobs:
+  release:
+    name: Build packages and publish GitHub Release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            pkg-config \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            libqt6dbus6 \
+            libevdev-dev \
+            libpulse-dev \
+            libpipewire-0.3-dev \
+            libtag1-dev \
+            libwayland-dev \
+            rpm
+
+      - name: Configure
+        run: >
+          cmake
+          -S cpp
+          -B cpp/build-Release
+          -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=OFF
+
+      - name: Build
+        run: cmake --build cpp/build-Release
+
+      - name: Package
+        run: |
+          cd cpp/build-Release
+          cpack -G "DEB;RPM"
+          sha256sum keyboard-volume-app_*.deb keyboard-volume-app-*.rpm > SHA256SUMS.txt
+          ls -la *.deb *.rpm SHA256SUMS.txt
+
+      - name: Extract CHANGELOG section for this tag
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          awk -v ver="$TAG" '
+            $0 ~ "^## \\[" ver "\\]" {flag=1; print; next}
+            /^## \[/ {flag=0}
+            flag {print}
+          ' CHANGELOG.md > release-notes.md
+          if [[ ! -s release-notes.md ]]; then
+            echo "No CHANGELOG section for ${TAG}; using placeholder." >&2
+            printf '## %s\n\nSee CHANGELOG.md in the repository.\n' "$GITHUB_REF_NAME" > release-notes.md
+          fi
+          cat release-notes.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          generate_release_notes: true
+          body_path: release-notes.md
+          fail_on_unmatched_files: true
+          files: |
+            cpp/build-Release/*.deb
+            cpp/build-Release/*.rpm
+            cpp/build-Release/SHA256SUMS.txt

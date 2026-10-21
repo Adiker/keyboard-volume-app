@@ -210,12 +210,12 @@ Projekt jest w pełni funkcjonalny (C++20/Qt6, 6 dni od startu), ale brakuje inf
 **Pliki:** `cpp/src/config.h`, `cpp/src/config.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/tests/test_config.cpp`
 **Status:** Planowane.
 
-### 27. Pakietowanie .deb i .rpm przez CPack
+### 27. Pakietowanie .deb i .rpm przez CPack ✓
 
 **Problem:** Dystrybucja dla użytkowników Debiana, Ubuntu, Fedory i openSUSE wymaga samodzielnego budowania ze źródeł. Istniejący PKGBUILD obsługuje tylko Arch Linux. Wzmianka o `.deb/.rpm` w pozycji #1 nigdy niezrealizowana. Istniejące reguły `install()` w `CMakeLists.txt` są już kompletne.
 **Rekomendacja:** Dodać plik `cmake/cpack.cmake` z konfiguracją CPack dla generatorów `DEB` i `RPM`. Zdefiniować `CPACK_DEBIAN_PACKAGE_DEPENDS` (`libqt6core6, libevdev2, libpulse0, libpipewire-0.3-0`) i `CPACK_RPM_PACKAGE_REQUIRES` analogicznie. Włączyć `include(cmake/cpack.cmake)` w `CMakeLists.txt`. Opcjonalnie: job `release` w CI wyzwalany tagiem `v*`, archiwizujący paczki jako artefakty GitHub Actions.
-**Pliki:** Nowy `cmake/cpack.cmake`, `cpp/CMakeLists.txt`, `.github/workflows/ci.yml`
-**Status:** Planowane.
+**Pliki:** `cpp/cmake/cpack.cmake`, `cpp/CMakeLists.txt`, `.github/workflows/ci.yml`, `.github/workflows/release.yml`
+**Status:** Zrealizowane. CPack DEB/RPM w drzewie i w CI (artefakty Actions). Workflow `release.yml` na tagach `v*` publikuje `.deb`/`.rpm` + `SHA256SUMS.txt` jako assety GitHub Release.
 
 ### 28. Natywne pozycjonowanie OSD na Waylandzie (wlr-layer-shell) ✓
 

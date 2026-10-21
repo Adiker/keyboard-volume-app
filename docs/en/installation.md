@@ -37,13 +37,15 @@ and systemd user unit under `/usr`.
 
 ### Debian and RPM packages
 
-Release CI builds `.deb` and `.rpm` artifacts. Download the matching artifact
-from the latest successful GitHub Actions run, then install it with the native
-package manager:
+Tagged [GitHub Releases](https://github.com/Adiker/keyboard-volume-app/releases)
+publish `.deb` and `.rpm` assets (built with CPack). Download the matching
+package from the
+[latest release](https://github.com/Adiker/keyboard-volume-app/releases/latest),
+then install it with the native package manager:
 
 ```bash
-sudo apt install ./keyboard-volume-app_0.1.0-1_amd64.deb
-sudo dnf install ./keyboard-volume-app-0.1.0-1.x86_64.rpm
+sudo apt install ./keyboard-volume-app_0.2.0-1_amd64.deb
+sudo dnf install ./keyboard-volume-app-0.2.0-1.x86_64.rpm
 ```
 
 The exact filename contains the project version. Packages install the binary,

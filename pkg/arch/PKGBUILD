@@ -15,7 +15,7 @@ sha256sums=('SKIP')
 
 pkgver() {
     cd "${pkgname}"
-    printf "r%s" "$(git describe --tags --long | sed 's/cpp-rewrite-v//;s/-/./g')"
+    printf "r%s" "$(git describe --tags --long | sed -E 's/^(cpp-rewrite-)?v//;s/-/./g')"
 }
 
 build() {

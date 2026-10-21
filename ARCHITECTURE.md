@@ -717,7 +717,7 @@ https://aur.archlinux.org/packages/keyboard-volume-app-git
 
 The AUR package builds from the upstream `main` branch via `git clone`. The GitHub source tree keeps `pkg/arch/PKGBUILD` and `pkg/arch/.SRCINFO` as the source-controlled publishing files; regenerate `.SRCINFO` whenever `PKGBUILD` changes. The AUR git repository should contain only those publishing files (`PKGBUILD`, `.SRCINFO`, and any future required patch/install files), not the full upstream source tree.
 
-- `pkgver()` uses `git describe --tags --long` to generate a version like `r0.1.0.24.gc2cd813`
+- `pkgver()` uses `git describe --tags --long` to generate a version like `r0.2.0.24.gc2cd813` (strips a leading `v` or legacy `cpp-rewrite-v` prefix)
 - `depends`: `qt6-base libevdev libpulse libpipewire taglib pipewire layer-shell-qt`
 - `makedepends`: `cmake gcc pkg-config git wayland layer-shell-qt`
 - CMake Release build with `BUILD_TESTING=OFF` and `DESTDIR` install
@@ -841,6 +841,15 @@ GitHub Actions CI is enabled in `.github/workflows/ci.yml` for PRs and pushes to
 The CI workflow is path-filtered: docs-only changes such as Markdown updates do
 not run CI, while changes under `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake
 files, or `.github/workflows/ci.yml` do.
+On Release builds it also runs CPack (`DEB`/`RPM`) and uploads the packages as
+workflow artifacts.
+
+Tagged releases use `.github/workflows/release.yml` (`on.push.tags: v*`). That
+workflow builds a Release binary with `BUILD_TESTING=OFF`, runs CPack for
+`.deb`/`.rpm`, writes `SHA256SUMS.txt`, and publishes a GitHub Release with those
+assets. Project version comes from `project(... VERSION ...)` in
+`cpp/CMakeLists.txt` (injected as `APP_VERSION` / `CPACK_PACKAGE_VERSION`).
+User-facing history lives in `CHANGELOG.md`.
 `clang-tidy` runs in CI as a warning-only job ("Clang-Tidy changed C++ files") on
 changed `.cpp`/`.cc`/`.cxx` files under `cpp/src` and `cpp/tests`. It does **not**
 block merge (`continue-on-error: true`). Configuration lives in `.clang-tidy` at

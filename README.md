@@ -40,10 +40,11 @@ makepkg -si
 
 ### Packages or source
 
-Release CI publishes `.deb` and `.rpm` artifacts. Download the package for
-your distribution from the latest successful GitHub Actions run and install it
-with the system package manager. Full package and dependency details are in
-the [installation guide](docs/en/installation.md).
+GitHub Releases publish `.deb` and `.rpm` packages for each tagged version.
+Download the package for your distribution from the
+[latest release](https://github.com/Adiker/keyboard-volume-app/releases/latest)
+and install it with the system package manager. Full package and dependency
+details are in the [installation guide](docs/en/installation.md).
 
 To build the current source tree:
 

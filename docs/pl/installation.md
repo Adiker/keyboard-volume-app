@@ -37,12 +37,14 @@ user unit systemd w `/usr`.
 
 ### Pakiety Debian i RPM
 
-CI buduje artefakty `.deb` i `.rpm`. Pobierz właściwy artefakt z ostatniego
-udanego uruchomienia GitHub Actions i zainstaluj go menedżerem pakietów:
+Otagowane [wydania GitHub](https://github.com/Adiker/keyboard-volume-app/releases)
+publikują assety `.deb` i `.rpm` (CPack). Pobierz właściwy pakiet z
+[najnowszego wydania](https://github.com/Adiker/keyboard-volume-app/releases/latest)
+i zainstaluj go menedżerem pakietów:
 
 ```bash
-sudo apt install ./keyboard-volume-app_0.1.0-1_amd64.deb
-sudo dnf install ./keyboard-volume-app-0.1.0-1.x86_64.rpm
+sudo apt install ./keyboard-volume-app_0.2.0-1_amd64.deb
+sudo dnf install ./keyboard-volume-app-0.2.0-1.x86_64.rpm
 ```
 
 Dokładna nazwa zawiera wersję projektu. Pakiety instalują binarkę, `kv-ctl`,
