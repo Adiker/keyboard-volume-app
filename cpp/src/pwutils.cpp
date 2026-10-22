@@ -809,12 +809,11 @@ std::optional<PipeWireNode> PipeWireVolumeBackend::readNode(uint32_t nodeId)
         bool sessionFailed = false;
         pw_thread_loop_lock(session->loop);
         const bool ok = readNodeProps(*session, nodeId, &state, &sessionFailed);
+        // Registry callbacks mutate globals on the PipeWire loop thread. Keep
+        // owner lookup under the same lock so iteration cannot race hot-plug.
+        if (ok) populateNodeOwner(session->globals, state);
         pw_thread_loop_unlock(session->loop);
-        if (ok)
-        {
-            populateNodeOwner(session->globals, state);
-            return state;
-        }
+        if (ok) return state;
         if (!sessionFailed) return std::nullopt;
         m_impl->invalidate();
     }

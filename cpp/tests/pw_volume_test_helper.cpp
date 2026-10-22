@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QTextStream>
+#include <QThread>
 
 int main(int argc, char** argv)
 {
@@ -37,10 +38,19 @@ int main(int argc, char** argv)
     if (args[1] == QStringLiteral("reuse"))
     {
         const uint64_t firstGeneration = backend.connectionGeneration();
-        const auto secondRead = backend.readNode(nodeId);
-        const uint64_t secondGeneration = backend.connectionGeneration();
-        if (!secondRead || firstGeneration == 0 || secondGeneration != firstGeneration) return 1;
-        QTextStream(stdout) << "connection_generation=" << firstGeneration << " reused=true\n";
+        constexpr int reads = 256;
+        for (int i = 0; i < reads; ++i)
+        {
+            QThread::msleep(2); // let concurrent registry churn overlap the reads
+            const auto next = backend.readNode(nodeId);
+            if (!next || firstGeneration == 0 ||
+                backend.connectionGeneration() != firstGeneration || next->id != node->id ||
+                next->objectSerial != node->objectSerial || next->clientId != node->clientId ||
+                next->clientName != node->clientName || next->clientBinary != node->clientBinary)
+                return 1;
+        }
+        QTextStream(stdout) << "connection_generation=" << firstGeneration
+                            << " reused=true owner_reads=" << reads << '\n';
         return 0;
     }
 

@@ -340,8 +340,21 @@ wait_for_daemon()
 start_stream kv-active
 ACTIVE_NODE=$(wait_for_node kv-active)
 assert_node_state "initial stream readiness" kv-active 1.0 "1.0,1.0"
-"$PW_HELPER" reuse "$ACTIVE_NODE" | tee "$TEST_ROOT/connection-reuse.log"
-grep -q "reused=true" "$TEST_ROOT/connection-reuse.log"
+# Churn unrelated registry clients while repeatedly reading the stable node's
+# owner with one persistent backend. Reuse STREAM_PIDS so EXIT cleanup also
+# reaps the helper if a churn command fails.
+"$PW_HELPER" reuse "$ACTIVE_NODE" >"$TEST_ROOT/connection-reuse.log" 2>&1 &
+STREAM_PIDS[owner-reader]=$!
+for _ in $(seq 1 12); do
+    start_stream kv-owner-churn
+    wait_for_node kv-owner-churn >/dev/null
+    stop_stream kv-owner-churn
+    wait_for_no_node kv-owner-churn
+done
+wait "${STREAM_PIDS[owner-reader]}"
+unset 'STREAM_PIDS[owner-reader]'
+cat "$TEST_ROOT/connection-reuse.log"
+grep -q "reused=true owner_reads=256" "$TEST_ROOT/connection-reuse.log"
 pw-cli set-param "$ACTIVE_NODE" Props '{ volume: 0.250000 }' >/dev/null
 assert_node_state "pre-existing hidden multiplier" kv-active 0.25 "1.0,1.0"
 "$PW_HELPER" inspect "$ACTIVE_NODE" | tee "$TEST_ROOT/production-parser.log"

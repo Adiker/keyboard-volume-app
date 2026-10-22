@@ -253,6 +253,8 @@ Legacy `progress_label_mode` values are migrated on load and persisted: `"track"
 
 ### `cpp/src/pwutils.h/cpp` — PipeWire utility
 
+`PipeWireVolumeBackend::readNode()` holds the PipeWire loop lock through owner lookup in the live registry list, as registry callbacks can add/remove clients concurrently. Do not release it between reading node properties and `populateNodeOwner(session->globals, ...)`. The opt-in integration test churns unrelated streams while the helper performs 256 reads of a stable node, checking identity/owner consistency and connection reuse; a passing stress run alone does not prove the absence of data races.
+
 Shared utility for listing idle PipeWire audio clients and controlling PipeWire stream nodes via libpipewire. Used by both `VolumeController` (via `PaWorker`) and the first-run wizard (`AppPage`).
 
 - **`PipeWireClient` struct** — `{ QString name; QString binary; QString id; }`
