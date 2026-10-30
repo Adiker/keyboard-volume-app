@@ -5,6 +5,15 @@
 #include <QList>
 
 #include <linux/input.h>
+#include <libevdev/libevdev.h>
+#include <libevdev/libevdev-uinput.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cerrno>
+#include <cstring>
+
+#include "evdevdevice.h"
+#include "inputpoll.h"
 
 #include "inputhandler.h"
 #include "config.h"
@@ -611,4 +620,70 @@ int main(int argc, char** argv)
     QCoreApplication app(argc, argv);
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+// Exercise the same epoll removal path with a real evdev disconnect. A uinput
+// device is private to this test; no physical input devices are grabbed.
+TEST(InputPoll, DisconnectedEvdevIsRetiredWithoutStoppingOtherSources)
+{
+    libevdev* spec = libevdev_new();
+    ASSERT_NE(spec, nullptr);
+    libevdev_set_name(spec, "keyboard-volume-app disconnect test");
+    ASSERT_EQ(libevdev_enable_event_code(spec, EV_KEY, KEY_F24, nullptr), 0);
+    libevdev_uinput* ui = nullptr;
+    int result = libevdev_uinput_create_from_device(spec, LIBEVDEV_UINPUT_OPEN_MANAGED, &ui);
+    libevdev_free(spec);
+    if (result < 0) GTEST_SKIP() << "uinput unavailable: " << strerror(-result);
+    ASSERT_NE(ui, nullptr);
+    const char* node = libevdev_uinput_get_devnode(ui);
+    ASSERT_NE(node, nullptr);
+    EvdevDevice disconnected;
+    for (int attempt = 0; attempt < 100 && !disconnected.isOpen(); ++attempt)
+    {
+        disconnected.open(QString::fromLocal8Bit(node));
+        if (!disconnected.isOpen()) usleep(10000);
+    }
+    if (!disconnected.isOpen())
+    {
+        libevdev_uinput_destroy(ui);
+        GTEST_SKIP() << "Cannot open test evdev node (device permissions unavailable)";
+    }
+    int pipefd[2];
+    ASSERT_EQ(pipe2(pipefd, O_NONBLOCK | O_CLOEXEC), 0);
+    int otherPipe[2];
+    ASSERT_EQ(pipe2(otherPipe, O_NONBLOCK | O_CLOEXEC), 0);
+    int epfd = epoll_create1(EPOLL_CLOEXEC);
+    ASSERT_GE(epfd, 0);
+    EvdevDevice other;
+    std::vector<PollSource> sources{
+        {PollSource::Type::EvdevInput, &disconnected, disconnected.fd()},
+        {PollSource::Type::UinputOutput, &disconnected, pipefd[0]},
+        {PollSource::Type::EvdevInput, &other, otherPipe[0]}};
+    for (int i = 0; i < 3; ++i)
+    {
+        epoll_event event{};
+        event.events = EPOLLIN;
+        event.data.ptr = &sources[i];
+        ASSERT_EQ(epoll_ctl(epfd, EPOLL_CTL_ADD, sources[i].fd, &event), 0);
+    }
+    libevdev_uinput_destroy(ui);
+    epoll_event event{};
+    ASSERT_EQ(epoll_wait(epfd, &event, 1, 1000), 1);
+    EXPECT_NE(event.events & (EPOLLHUP | EPOLLERR), 0U);
+    input_event ev{};
+    EXPECT_EQ(libevdev_next_event(disconnected.dev(), LIBEVDEV_READ_FLAG_NORMAL, &ev), -ENODEV);
+    retirePollSources(epfd, sources, &disconnected);
+    disconnected.close();
+    EXPECT_EQ(sources[0].dev, nullptr);
+    EXPECT_EQ(sources[1].dev, nullptr);
+    EXPECT_EQ(sources[2].dev, &other);
+    EXPECT_EQ(epoll_wait(epfd, &event, 1, 50), 0);
+    ASSERT_EQ(write(otherPipe[1], "x", 1), 1);
+    ASSERT_EQ(epoll_wait(epfd, &event, 1, 100), 1);
+    EXPECT_EQ(event.data.ptr, &sources[2]);
+    close(otherPipe[0]);
+    close(otherPipe[1]);
+    close(epfd);
+    close(pipefd[0]);
+    close(pipefd[1]);
 }
