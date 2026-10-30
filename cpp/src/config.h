@@ -362,6 +362,7 @@ class Config
     void save() const;
 
     bool isFirstRun() const;
+    bool isSaveBlocked() const;
     QString configFilePath() const;
     bool exportToFile(const QString& destination, QString* error = nullptr) const;
     bool importFromFile(const QString& source, QString* backupPath = nullptr,
@@ -477,6 +478,7 @@ class Config
     QJsonObject m_data;
     QString m_configDir; // empty → use XDG default
     bool m_firstRun = false;
+    bool m_saveBlocked = false; // preserve an unreadable config or one we could not back up
 };
 
 Q_DECLARE_METATYPE(HotkeyBinding)

@@ -23,6 +23,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QCursor>
+#include <QLocale>
 #include <QMessageBox>
 #include <QObject>
 #include <QProcess>
@@ -839,6 +840,15 @@ int main(int argc, char* argv[])
     }
 
     App app;
+
+    if (app.config()->isSaveBlocked())
+    {
+        setLanguage(QLocale::system().language() == QLocale::Polish ? QStringLiteral("pl")
+                                                                    : QStringLiteral("en"));
+        QMessageBox::warning(
+            nullptr, ::tr(QStringLiteral("warn.config_blocked.title")),
+            ::tr(QStringLiteral("warn.config_blocked.text")).arg(app.config()->configFilePath()));
+    }
 
     // First-run wizard: guide the user through language and device selection.
     if (app.config()->isFirstRun())

@@ -126,7 +126,7 @@ Reads/writes `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (via `QStandardP
 
 Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`. All public methods lock.
 
-`isFirstRun()` returns `true` when the config file did not exist at load time — used by `main()` to decide whether to show the first-run wizard.
+`isFirstRun()` returns `true` for a missing file or after invalid JSON has been successfully preserved in a unique `config.json.corrupt-*` backup. Invalid includes non-object JSON roots. Only then may defaults replace the file and `main()` show first-run setup. An open/read error or backup failure instead keeps defaults in memory, leaves `isFirstRun()` false, and sets the mutex-protected `m_saveBlocked` flag: all ordinary saves remain disabled until a successful reload or explicit import. A successful import already preserves the destination through its existing backup path before clearing the flag.
 
 **Config schema:**
 ```json
@@ -823,7 +823,7 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 40 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / scroll hotkeys / show hotkey / id uniqueification / per-profile vol_min and vol_max, legacy label-mode migration, custom-label defaults)
+- `test_config` — load/save regressions (merge, corrupt-file recovery, read/backup failure write protection, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / scroll hotkeys / show hotkey / id uniqueification / per-profile vol_min and vol_max, legacy label-mode migration, custom-label defaults)
 - `test_i18n` — 7 tests (lookup, fallback)
 - `test_aboutdialog` — 3 offscreen GUI tests (EN/PL content, author/project links, version, close action, and byte-identical embedded GPL text)
 - `test_kvctlcommand` — 10 tests (subcommand parser, profile option, get/set fields, per-profile set volume, show command, invalid input)

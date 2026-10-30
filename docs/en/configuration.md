@@ -12,6 +12,18 @@ When `XDG_CONFIG_HOME` is unset, this is
 `~/.config/keyboard-volume-app/config.json`. Settings writes are atomic: a
 failed save leaves the previous file intact.
 
+
+If the file contains invalid JSON or its top-level value is not an object, the
+app preserves its exact contents in a unique `config.json.corrupt-*` file
+before saving defaults and showing first-run setup again. Keep that backup
+when recovering your profiles and hotkeys. The backup path is logged.
+
+If reading the existing file or creating its backup fails, a warning appears at
+startup and the original is
+left untouched. The app uses defaults in memory and disables configuration
+writes for that session, including later settings changes. Fix the file or
+directory permissions and restart, or explicitly import a valid configuration.
+
 ## Import and export
 
 Settings can export the current JSON or import another valid configuration.
