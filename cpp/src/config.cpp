@@ -681,7 +681,7 @@ void Config::load()
     m_data = defaultJson();
     QDir().mkpath(configDir());
     QFile f(configFile());
-    struct stat fileStatus{};
+    struct stat fileStatus = {};
     const int status = ::lstat(QFile::encodeName(configFile()).constData(), &fileStatus);
     if (status < 0 && errno != ENOENT)
     {
