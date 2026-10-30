@@ -7,6 +7,8 @@
 #include <linux/input.h>
 
 #include "inputhandler.h"
+#include <libevdev/libevdev.h>
+#include <memory>
 #include "config.h"
 
 // ─── Construction / API ───────────────────────────────────────────────────────
@@ -611,4 +613,57 @@ int main(int argc, char** argv)
     QCoreApplication app(argc, argv);
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+// Capabilities, not physical siblings, determine which devices need a mirror.
+TEST(InputDevices, OnlyConfiguredCapabilitiesNeedExclusiveGrab)
+{
+    std::unique_ptr<libevdev, decltype(&libevdev_free)> keyboard(libevdev_new(), libevdev_free);
+    libevdev_enable_event_code(keyboard.get(), EV_KEY, KEY_LEFTSHIFT, nullptr);
+    libevdev_enable_event_code(keyboard.get(), EV_KEY, KEY_A, nullptr);
+    EXPECT_FALSE(deviceHasConfiguredHotkey(keyboard.get(), {KEY_VOLUMEUP, KEY_VOLUMEDOWN}));
+    EXPECT_TRUE(deviceHasConfiguredHotkey(keyboard.get(), {KEY_A}));
+    EXPECT_FALSE(deviceHasConfiguredHotkey(keyboard.get(), {0}));
+    EXPECT_FALSE(deviceHasConfiguredHotkey(nullptr, {KEY_A}));
+
+    libevdev_enable_event_code(keyboard.get(), EV_KEY, KEY_VOLUMEUP, nullptr);
+    EXPECT_TRUE(deviceHasConfiguredHotkey(keyboard.get(), {KEY_VOLUMEUP}));
+    EXPECT_FALSE(
+        deviceHasConfiguredHotkey(keyboard.get(), {HotkeyBinding::relative(REL_WHEEL, 1)}));
+}
+
+TEST(InputDevices, WheelBindingsRequireMatchingAxisButEitherDirection)
+{
+    std::unique_ptr<libevdev, decltype(&libevdev_free)> mouse(libevdev_new(), libevdev_free);
+    libevdev_enable_event_code(mouse.get(), EV_REL, REL_WHEEL, nullptr);
+    EXPECT_TRUE(deviceHasConfiguredHotkey(mouse.get(), {HotkeyBinding::relative(REL_WHEEL, 1)}));
+    EXPECT_TRUE(deviceHasConfiguredHotkey(mouse.get(), {HotkeyBinding::relative(REL_WHEEL, -1)}));
+    EXPECT_FALSE(deviceHasConfiguredHotkey(mouse.get(), {HotkeyBinding::relative(REL_HWHEEL, 1)}));
+    EXPECT_FALSE(deviceHasConfiguredHotkey(mouse.get(), {HotkeyBinding::key(REL_WHEEL)}));
+}
+
+TEST(InputDevices, SysfsBitmapNativeAndCompatWordOrder)
+{
+    const auto native = parseInputCapabilityBitmap("1000000000000000 0 8000000000000001\n", 64);
+    ASSERT_TRUE(native);
+    EXPECT_TRUE(native->testBit(0));
+    EXPECT_TRUE(native->testBit(63));
+    EXPECT_FALSE(native->testBit(64));
+    EXPECT_TRUE(native->testBit(188));
+    const auto compat = parseInputCapabilityBitmap("10000000 0 0 0 80000000 1", 32);
+    ASSERT_TRUE(compat);
+    EXPECT_EQ(*native, *compat);
+    const auto zero = parseInputCapabilityBitmap("0\n", 64);
+    ASSERT_TRUE(zero);
+    EXPECT_EQ(zero->count(true), 0);
+}
+
+TEST(InputDevices, InvalidSysfsBitmapFallsBack)
+{
+    for (const QByteArray text :
+         {QByteArray{}, QByteArray("garbage"), QByteArray("-1"), QByteArray("+1"),
+          QByteArray("0x10"), QByteArray("10000000000000000")})
+        EXPECT_FALSE(parseInputCapabilityBitmap(text, 64));
+    EXPECT_FALSE(parseInputCapabilityBitmap("100000000", 32));
+    EXPECT_FALSE(parseInputCapabilityBitmap("1", 16));
 }

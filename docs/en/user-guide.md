@@ -32,10 +32,22 @@ temporary disappearance from a refresh does not replace the configured choice.
 - The tray remains available for selection and settings while the global input
   handler is running.
 
-The input handler grabs sibling event nodes of the chosen keyboard, such as a
-separate Consumer Control interface, and any other device advertising a
-configured key or wheel binding. This prevents the desktop from also acting on
-the same event.
+The input handler exclusively captures nodes advertising a configured key or
+wheel binding, including separate Consumer Control interfaces. Other sibling
+nodes remain passive readers for modifier tracking. This avoids creating a
+virtual mouse or keyboard for nodes without assigned shortcuts.
+
+At startup and after changing bindings, the app prepares virtual input devices
+before capturing physical input. A short discovery period (at least 500 ms per
+mirror, overlapping preparation of later devices) keeps the physical mouse and
+keyboard operating directly.
+Static capability discovery uses kernel metadata, so startup does not need to
+open and close every input node just to find devices with assigned shortcuts.
+A node with a held key or mouse button switches only after release. Until that
+node is captured, its shortcuts retain the desktop's normal behavior.
+Keyboard LED synchronization reuses its state-query descriptors and prevents
+physical LED feedback from circulating through the virtual devices, reducing
+startup stalls and unnecessary CPU work.
 
 Configured hotkeys are captured at the evdev level. The desktop and Qt do not
 see those exact events while the app is running. To replace an active binding,

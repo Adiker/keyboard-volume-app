@@ -3,7 +3,9 @@
 
 #include <QDir>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QDebug>
+#include <QFile>
 
 #include <libevdev/libevdev.h>
 #include <libevdev/libevdev-uinput.h>
@@ -12,6 +14,7 @@
 #include <unistd.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <linux/input.h>
 #include <algorithm>
 #include <array>
@@ -106,44 +109,140 @@ QList<QString> findCaptureDevices(const QString& primaryPath)
     return result;
 }
 
-QList<std::pair<QString, bool>> findHotkeyDevices(const QString& primaryPath,
-                                                  const QSet<HotkeyBinding>& hotkeys)
+bool deviceHasConfiguredHotkey(const libevdev* dev, const QSet<HotkeyBinding>& hotkeys)
 {
-    QList<std::pair<QString, bool>> result;
-    QSet<QString> seen;
-
-    if (!primaryPath.isEmpty())
+    if (!dev) return false;
+    for (const HotkeyBinding& binding : hotkeys)
     {
-        for (const QString& p : findSiblingDevices(primaryPath))
+        if (!binding.isAssigned()) continue;
+        const unsigned int type = binding.type == HotkeyBindingType::Relative ? EV_REL : EV_KEY;
+        if (libevdev_has_event_code(dev, type, static_cast<unsigned int>(binding.code)))
+            return true;
+    }
+    return false;
+}
+
+std::optional<QBitArray> parseInputCapabilityBitmap(const QByteArray& text, int wordBits)
+{
+    if (wordBits != 32 && wordBits != 64) return std::nullopt;
+    const QByteArray clean = text.simplified();
+    if (clean.isEmpty()) return std::nullopt;
+    const auto words = clean.split(' ');
+    if (words.size() > (KEY_CNT + wordBits - 1) / wordBits) return std::nullopt;
+    QBitArray bits(static_cast<int>(words.size()) * wordBits);
+    for (qsizetype i = 0; i < words.size(); ++i)
+    {
+        const auto& word = words[words.size() - 1 - i];
+        if (word.isEmpty() || word.size() > wordBits / 4) return std::nullopt;
+        for (char c : word)
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+                return std::nullopt;
+        bool ok = false;
+        const quint64 value = word.toULongLong(&ok, 16);
+        if (!ok) return std::nullopt;
+        for (int bit = 0; bit < wordBits; ++bit)
+            if ((value & (quint64{1} << bit)) != 0)
+                bits.setBit(static_cast<int>(i) * wordBits + bit);
+    }
+    return bits;
+}
+
+namespace
+{
+struct RuntimeDeviceInfo
+{
+    QString phys;
+    bool usefulInput;
+    bool exclusive;
+};
+
+std::optional<QByteArray> readInputAttribute(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return std::nullopt;
+    const QByteArray data = file.readAll();
+    if (file.error() != QFileDevice::NoError) return std::nullopt;
+    return data;
+}
+
+std::optional<RuntimeDeviceInfo> runtimeDeviceInfo(const QString& path,
+                                                   const QSet<HotkeyBinding>& hotkeys)
+{
+    if (::access(path.toLocal8Bit().constData(), R_OK) != 0) return std::nullopt;
+    struct stat st = {};
+    // Synthetic nodes, missing sysfs or unexpected metadata use libevdev.
+    // sysfs input bitmaps print words for the reader's ABI, including compat32.
+    const QByteArray encoded = path.toLocal8Bit();
+    if (::lstat(encoded.constData(), &st) == 0 && (S_ISCHR(st.st_mode) || S_ISLNK(st.st_mode)))
+    {
+        const QString canonical = S_ISLNK(st.st_mode) ? QFileInfo(path).canonicalFilePath() : path;
+        if (canonical.startsWith(QLatin1String("/dev/input/event")))
         {
-            if (!seen.contains(p))
+            const QString root =
+                QStringLiteral("/sys/class/input/%1/device/").arg(QFileInfo(canonical).fileName());
+            const auto phys = readInputAttribute(root + QStringLiteral("phys"));
+            const auto ev = readInputAttribute(root + QStringLiteral("capabilities/ev"));
+            const auto key = readInputAttribute(root + QStringLiteral("capabilities/key"));
+            const auto rel = readInputAttribute(root + QStringLiteral("capabilities/rel"));
+            if (phys && ev && key && rel)
             {
-                seen.insert(p);
-                result.append({p, true});
+                constexpr int wordBits = sizeof(unsigned long) * 8;
+                const auto types = parseInputCapabilityBitmap(*ev, wordBits);
+                const auto keys = parseInputCapabilityBitmap(*key, wordBits);
+                const auto relative = parseInputCapabilityBitmap(*rel, wordBits);
+                if (types && keys && relative)
+                {
+                    auto has = [](const QBitArray& bits, int code)
+                    { return code >= 0 && code < bits.size() && bits.testBit(code); };
+                    bool exclusive = false;
+                    for (const HotkeyBinding& binding : hotkeys)
+                    {
+                        if (!binding.isAssigned()) continue;
+                        const bool scroll = binding.type == HotkeyBindingType::Relative;
+                        if (has(*types, scroll ? EV_REL : EV_KEY) &&
+                            has(scroll ? *relative : *keys, binding.code))
+                        {
+                            exclusive = true;
+                            break;
+                        }
+                    }
+                    QByteArray physical = *phys;
+                    if (physical.endsWith('\n')) physical.chop(1);
+                    return RuntimeDeviceInfo{QString::fromLocal8Bit(physical),
+                                             has(*types, EV_KEY) || has(*types, EV_REL), exclusive};
+                }
             }
         }
     }
+    EvdevDevice dev(path);
+    if (!dev.isOpen()) return std::nullopt;
+    const char* phys = dev.phys();
+    return RuntimeDeviceInfo{phys ? QString::fromLocal8Bit(phys) : QString{},
+                             dev.hasEventType(EV_KEY) || dev.hasEventType(EV_REL),
+                             deviceHasConfiguredHotkey(dev.dev(), hotkeys)};
+}
+} // namespace
 
+QList<std::pair<QString, bool>> findHotkeyDevices(const QString& primaryPath,
+                                                  const QSet<HotkeyBinding>& hotkeys)
+{
+    QString physPrefix;
+    if (const auto primary = runtimeDeviceInfo(primaryPath, hotkeys)) physPrefix = primary->phys;
+    const qsizetype slash = physPrefix.lastIndexOf(QLatin1String("/input"));
+    if (slash >= 0) physPrefix.truncate(slash);
+
+    // Read static sysfs metadata without opening/closing every evdev node.
+    // Useful siblings still contribute modifiers without an exclusive mirror.
+    QList<std::pair<QString, bool>> result;
     for (const QString& path : listEvdevDevices())
     {
-        if (seen.contains(path)) continue;
-        EvdevDevice dev(path);
-        if (!dev.isOpen()) continue;
-        bool hasHotkey = false;
-        for (const HotkeyBinding& binding : hotkeys)
-        {
-            const unsigned int type = binding.type == HotkeyBindingType::Relative ? EV_REL : EV_KEY;
-            if (dev.hasEventCode(type, static_cast<unsigned int>(binding.code)))
-            {
-                hasHotkey = true;
-                break;
-            }
-        }
-        if (hasHotkey)
-        {
-            seen.insert(path);
-            result.append({path, true});
-        }
+        const auto info = runtimeDeviceInfo(path, hotkeys);
+        if (!info) continue;
+        const bool sibling =
+            path == primaryPath ||
+            (!physPrefix.isEmpty() && !info->phys.isEmpty() && info->phys.startsWith(physPrefix));
+        if (info->exclusive || (sibling && info->usefulInput))
+            result.append({path, info->exclusive});
     }
     return result;
 }
@@ -304,7 +403,8 @@ bool setFdNonBlocking(int fd)
 
 void mirrorLedToPhysical(EvdevDevice* dev, unsigned int code, bool enabled)
 {
-    if (!dev || !isMirroredLedCode(code) || !dev->hasEventCode(EV_LED, code)) return;
+    if (!dev || !dev->isGrabbed() || !isMirroredLedCode(code) || !dev->hasEventCode(EV_LED, code))
+        return;
 
     if (!dev->setLedValue(code, enabled))
     {
@@ -348,31 +448,22 @@ void drainUinputOutput(EvdevDevice* dev)
 
 void syncPhysicalLedsFromUinput(EvdevDevice* dev)
 {
-    if (!dev || !dev->uinput() || !dev->hasEventType(EV_LED)) return;
+    if (!dev || !dev->uinput() || !dev->isWritable() || !dev->hasEventType(EV_LED)) return;
 
-    const char* devnode = libevdev_uinput_get_devnode(dev->uinput());
-    if (!devnode)
-    {
-        qWarning() << "[InputHandler] Cannot query uinput devnode for initial LED sync";
-        return;
-    }
-
-    const int fd = ::open(devnode, O_RDONLY | O_NONBLOCK);
+    const int fd = dev->uinputLedStateFd();
     if (fd < 0)
     {
-        qWarning() << "[InputHandler] Cannot open" << devnode
-                   << "for initial LED sync:" << strerror(errno);
+        qWarning() << "[InputHandler] Cannot open uinput node for initial LED sync";
         return;
     }
 
     std::array<unsigned long, kLedStateWords> bits{};
     const int rc = ioctl(fd, EVIOCGLED(sizeof(bits)), bits.data());
     const int savedErrno = errno;
-    ::close(fd);
 
     if (rc < 0)
     {
-        qWarning() << "[InputHandler] Cannot query initial LED state for" << devnode << ":"
+        qWarning() << "[InputHandler] Cannot query initial LED state for" << dev->name() << ":"
                    << strerror(savedErrno);
         return;
     }
@@ -388,7 +479,10 @@ void syncPhysicalLedsFromUinput(EvdevDevice* dev)
 
 static inline void forwardUinputEvent(EvdevDevice* dev, const input_event& ev)
 {
-    if (dev->isGrabbed() && dev->uinput())
+    // EV_LED read from a physical node is output-state feedback, including
+    // echoes of our own LED writes. Reinjecting it makes uinput emit another
+    // output event and can keep the same LED bouncing through this loop.
+    if (ev.type != EV_LED && dev->isGrabbed() && dev->uinput())
         libevdev_uinput_write_event(dev->uinput(), ev.type, ev.code, ev.value);
 }
 
@@ -658,6 +752,9 @@ void InputHandler::stop()
 void InputHandler::run()
 {
     if (m_devicePath.isEmpty()) return;
+    QElapsedTimer startupTimer;
+    startupTimer.start();
+    constexpr qint64 kMirrorWarmupMs = 500;
 
     // Snapshot current profiles + media config for the lifetime of this run.
     // Caller (App) restarts the thread on profile/media changes, so this
@@ -792,44 +889,31 @@ void InputHandler::run()
     };
 
     const auto candidates = findHotkeyDevices(m_devicePath, hotkeys);
+    qDebug() << "[InputHandler] Device discovery took" << startupTimer.elapsed() << "ms";
 
     std::vector<std::unique_ptr<EvdevDevice>> devices;
+    QMap<EvdevDevice*, qint64> mirrorReadyAfter;
 
     for (const auto& [path, exclusive] : candidates)
     {
-        auto dev = std::make_unique<EvdevDevice>(path);
-        if (!dev->isOpen())
+        if (!m_running) break;
+        // Open writable once for LED-capable keyboards instead of reopening
+        // after libevdev initialization (evdev close can wait for kernel RCU).
+        auto dev = std::make_unique<EvdevDevice>();
+        const auto mode =
+            exclusive ? EvdevDevice::OpenMode::ReadWrite : EvdevDevice::OpenMode::ReadOnly;
+        if (!dev->open(path, mode) && (!exclusive || !dev->open(path)))
         {
             qDebug() << "[InputHandler] Cannot open" << path;
             continue;
         }
 
-        if (exclusive && dev->hasEventType(EV_LED))
-        {
-            dev->close();
-            if (!dev->open(path, EvdevDevice::OpenMode::ReadWrite))
-            {
-                qWarning() << "[InputHandler] Cannot open" << path
-                           << "read/write for LED sync — retrying read-only";
-                if (!dev->open(path))
-                {
-                    qDebug() << "[InputHandler] Cannot reopen" << path << "read-only";
-                    continue;
-                }
-            }
-        }
-
         if (exclusive)
         {
-            if (!dev->grab())
-            {
-                qDebug() << "[InputHandler] Cannot grab" << path << "— skipping";
-                continue;
-            }
             if (!dev->createUinput())
             {
                 qDebug() << "[InputHandler] Cannot create uinput for" << path
-                         << "— releasing grab and skipping";
+                         << "— leaving physical input untouched";
                 continue;
             }
             if (dev->hasEventType(EV_LED) && dev->isWritable())
@@ -846,10 +930,11 @@ void InputHandler::run()
                 qWarning() << "[InputHandler] LED sync disabled for" << path
                            << "because the device is not writable";
             }
+            mirrorReadyAfter.insert(dev.get(), startupTimer.elapsed() + kMirrorWarmupMs);
             qDebug() << "[InputHandler] Created uinput for" << path;
         }
         qDebug() << "[InputHandler] Opened" << path
-                 << (dev->isGrabbed() ? "[grabbed+uinput]" : "[passive]");
+                 << (dev->uinput() ? "[prepared uinput]" : "[passive]");
         devices.push_back(std::move(dev));
     }
 
@@ -876,12 +961,23 @@ void InputHandler::run()
             epoll_event evnt{};
             evnt.events = EPOLLIN;
             evnt.data.ptr = &source;
-            epoll_ctl(epfd, EPOLL_CTL_ADD, source.fd, &evnt);
+            if (epoll_ctl(epfd, EPOLL_CTL_ADD, source.fd, &evnt) < 0)
+            {
+                qWarning() << "[InputHandler] Cannot register input polling:" << strerror(errno);
+                ::close(epfd);
+                epfd = -1;
+                break;
+            }
         }
     }
 
-    // Modifier state — observed only on grabbed devices (v1 limitation).
+    // Modifier state — observed on hotkey devices and passive siblings.
     QSet<int> heldModifiers;
+    for (const auto& dev : devices)
+        for (int code : {KEY_LEFTCTRL, KEY_RIGHTCTRL, KEY_LEFTSHIFT, KEY_RIGHTSHIFT})
+            if (libevdev_get_event_value(dev->dev(), EV_KEY, code) != 0) heldModifiers.insert(code);
+    // Mirrors created early can settle while later nodes are prepared.
+    // Drain pre-grab input without replay, then activate each ready mirror.
     qint64 startupLedSyncUntilMs = QDateTime::currentMSecsSinceEpoch() + 2000;
     qint64 nextStartupLedSyncMs = QDateTime::currentMSecsSinceEpoch();
 
@@ -889,7 +985,8 @@ void InputHandler::run()
     {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         if (now > startupLedSyncUntilMs || now < nextStartupLedSyncMs) return;
-        for (auto& dev : devices) syncPhysicalLedsFromUinput(dev.get());
+        for (auto& dev : devices)
+            if (dev->isGrabbed()) syncPhysicalLedsFromUinput(dev.get());
         nextStartupLedSyncMs = now + 250;
     };
 
@@ -909,8 +1006,6 @@ void InputHandler::run()
             break;
         }
         syncStartupLedsIfDue();
-        if (n == 0) continue;
-
         for (int i = 0; i < n; ++i)
         {
             auto* source = static_cast<PollSource*>(events[i].data.ptr);
@@ -949,6 +1044,10 @@ void InputHandler::run()
                         forwardUinputEvent(e, ev);
                         continue;
                     }
+
+                    // Passive siblings and warming mirrors must not dispatch
+                    // events that the desktop is still receiving directly.
+                    if (!e->isGrabbed()) continue;
 
                     const HotkeyBinding binding = HotkeyBinding::key(code);
                     if (hotkeys.contains(binding))
@@ -1015,6 +1114,7 @@ void InputHandler::run()
                 }
                 else
                 {
+                    if (!e->isGrabbed()) continue;
                     if (ev.type == EV_REL)
                     {
                         // Suppress hi-res companion events when the standard wheel
@@ -1103,13 +1203,47 @@ void InputHandler::run()
                 break;
             }
         }
+
+        if (!mirrorReadyAfter.isEmpty() && m_running)
+        {
+            for (auto& dev : devices)
+            {
+                const auto ready = mirrorReadyAfter.constFind(dev.get());
+                if (ready == mirrorReadyAfter.cend() || startupTimer.elapsed() < ready.value())
+                    continue;
+                // Never switch a held key/button between physical and virtual
+                // devices: its release must reach the device that sent the press.
+                std::array<unsigned long, (KEY_CNT + kLedBitsPerWord - 1) / kLedBitsPerWord> keys{};
+                if (ioctl(dev->fd(), EVIOCGKEY(sizeof(keys)), keys.data()) < 0) continue;
+                if (std::any_of(keys.begin(), keys.end(),
+                                [](unsigned long bits) { return bits != 0; }))
+                    continue;
+                // Retry after the next poll if events arrived after the drain.
+                // This avoids replaying a pre-grab backlog as duplicate input.
+                if (libevdev_has_event_pending(dev->dev()) != 0) continue;
+                mirrorReadyAfter.remove(dev.get());
+                if (!dev->grab())
+                {
+                    qWarning() << "[InputHandler] Cannot activate mirror for" << dev->name()
+                               << "— leaving physical input untouched";
+                    dev->destroyUinput();
+                    continue;
+                }
+                qDebug() << "[InputHandler] Activated mirror for" << dev->name() << "after"
+                         << startupTimer.elapsed() << "ms";
+                // Each device can activate later (e.g. while a key is held).
+                startupLedSyncUntilMs = QDateTime::currentMSecsSinceEpoch() + 2000;
+                nextStartupLedSyncMs = QDateTime::currentMSecsSinceEpoch();
+            }
+        }
     }
 
     if (epfd >= 0) ::close(epfd);
 
     if (!devices.empty())
     {
-        for (auto& dev : devices) dev->preserveLedStateFromUinput();
+        for (auto& dev : devices)
+            if (dev->isGrabbed()) dev->preserveLedStateFromUinput();
         for (auto& dev : devices) dev->destroyUinput();
         for (auto& dev : devices) dev->ungrab();
         QThread::msleep(750);
