@@ -169,7 +169,7 @@ std::optional<RuntimeDeviceInfo> runtimeDeviceInfo(const QString& path,
                                                    const QSet<HotkeyBinding>& hotkeys)
 {
     if (::access(path.toLocal8Bit().constData(), R_OK) != 0) return std::nullopt;
-    struct stat st{};
+    struct stat st = {};
     // Synthetic nodes, missing sysfs or unexpected metadata use libevdev.
     // sysfs input bitmaps print words for the reader's ABI, including compat32.
     const QByteArray encoded = path.toLocal8Bit();

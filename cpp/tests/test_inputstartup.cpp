@@ -628,7 +628,7 @@ int main(int argc, char** argv)
 {
     for (const char* path : {"/dev/input/event0", "/dev/input/event1", "/dev/input/event2"})
     {
-        struct stat st{};
+        struct stat st = {};
         if (stat(path, &st) != 0 || !S_ISFIFO(st.st_mode))
         {
             std::cerr << "Run through run_inputstartup_test.sh in a private input namespace\n";
