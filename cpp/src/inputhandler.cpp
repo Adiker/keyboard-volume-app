@@ -1,5 +1,6 @@
 #include "inputhandler.h"
 #include "evdevdevice.h"
+#include "inputpoll.h"
 
 #include <QDir>
 #include <QDateTime>
@@ -231,6 +232,13 @@ void KeyCaptureThread::run()
         for (int i = 0; i < n; ++i)
         {
             auto* e = static_cast<EvdevDevice*>(events[i].data.ptr);
+            if (!e->isOpen()) continue;
+            if (events[i].events & (EPOLLERR | EPOLLHUP))
+            {
+                epoll_ctl(epfd, EPOLL_CTL_DEL, e->fd(), nullptr);
+                e->close();
+                continue;
+            }
             input_event ev{};
             int rc;
             while ((rc = libevdev_next_event(e->dev(), LIBEVDEV_READ_FLAG_NORMAL, &ev)) >= 0)
@@ -255,6 +263,11 @@ void KeyCaptureThread::run()
                     goto done;
                 }
             }
+            if (rc < 0 && rc != -EAGAIN && rc != -EINTR)
+            {
+                epoll_ctl(epfd, EPOLL_CTL_DEL, e->fd(), nullptr);
+                e->close();
+            }
         }
     }
 done:
@@ -269,19 +282,6 @@ namespace
 constexpr std::array<unsigned int, 3> kMirroredLedCodes{LED_NUML, LED_CAPSL, LED_SCROLLL};
 constexpr int kLedBitsPerWord = static_cast<int>(sizeof(unsigned long) * 8);
 constexpr int kLedStateWords = (LED_CNT + kLedBitsPerWord - 1) / kLedBitsPerWord;
-
-struct PollSource
-{
-    enum class Type
-    {
-        EvdevInput,
-        UinputOutput,
-    };
-
-    Type type;
-    EvdevDevice* dev;
-    int fd;
-};
 
 bool isMirroredLedCode(unsigned int code)
 {
@@ -319,10 +319,10 @@ void handleUinputOutputEvent(EvdevDevice* dev, const input_event& ev)
     mirrorLedToPhysical(dev, ev.code, ev.value != 0);
 }
 
-void drainUinputOutput(EvdevDevice* dev)
+bool drainUinputOutput(EvdevDevice* dev)
 {
     const int fd = dev ? dev->uinputFd() : -1;
-    if (fd < 0) return;
+    if (fd < 0) return false;
 
     while (true)
     {
@@ -336,13 +336,11 @@ void drainUinputOutput(EvdevDevice* dev)
         if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
         {
             if (errno == EINTR) continue;
-            break;
+            return true;
         }
         if (n < 0)
-        {
             qWarning() << "[InputHandler] Cannot read uinput output event:" << strerror(errno);
-        }
-        break;
+        return false;
     }
 }
 
@@ -915,9 +913,25 @@ void InputHandler::run()
         {
             auto* source = static_cast<PollSource*>(events[i].data.ptr);
             if (!source || !source->dev) continue;
+            if (events[i].events & (EPOLLERR | EPOLLHUP))
+            {
+                auto* dev = source->dev;
+                qWarning()
+                    << "[InputHandler] Input source disconnected or failed; releasing device";
+                retirePollSources(epfd, pollSources, dev);
+                dev->close();
+                heldModifiers.clear();
+                continue;
+            }
             if (source->type == PollSource::Type::UinputOutput)
             {
-                drainUinputOutput(source->dev);
+                if (!drainUinputOutput(source->dev))
+                {
+                    auto* dev = source->dev;
+                    retirePollSources(epfd, pollSources, dev);
+                    dev->close();
+                    heldModifiers.clear();
+                }
                 continue;
             }
 
@@ -1097,10 +1111,12 @@ void InputHandler::run()
                     forwardUinputEvent(e, ev);
                 }
             }
-            if (rc == -EIO)
+            if (rc < 0 && rc != -EAGAIN && rc != -EINTR)
             {
-                m_running = false;
-                break;
+                qWarning() << "[InputHandler] Cannot read input device:" << strerror(-rc);
+                retirePollSources(epfd, pollSources, e);
+                e->close();
+                heldModifiers.clear();
             }
         }
     }

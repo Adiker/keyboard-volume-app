@@ -35,6 +35,11 @@ Handler przechwytuje także sąsiednie węzły wybranej klawiatury, np. osobny
 interfejs Consumer Control, oraz każde inne urządzenie zgłaszające skonfigurowany
 klawisz lub kierunek kółka. Dzięki temu pulpit nie obsługuje tego samego zdarzenia.
 
+Po odłączeniu przechwytywanego urządzenia aplikacja zwalnia jego stary uchwyt,
+a pozostałe urządzenia nadal działają. Ponownie podłączone urządzenie nie jest
+przechwytywane automatycznie: uruchom aplikację ponownie, a jeśli zmieniła się
+jego ścieżka `/dev/input/event*`, wybierz urządzenie ponownie.
+
 Skonfigurowane skróty są przechwytywane na poziomie evdev. Pulpit i Qt nie
 widzą tych konkretnych zdarzeń podczas pracy aplikacji. Aby zastąpić aktywny
 skrót, kliknij prawym przyciskiem jego pole w Ustawienia → Profile, wybierz

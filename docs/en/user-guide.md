@@ -37,6 +37,11 @@ separate Consumer Control interface, and any other device advertising a
 configured key or wheel binding. This prevents the desktop from also acting on
 the same event.
 
+If a captured device disconnects, the app releases its old handle and keeps
+other devices working. Reconnected devices are not captured automatically;
+restart the app to detect them again, and select the input device again if its
+`/dev/input/event*` path has changed.
+
 Configured hotkeys are captured at the evdev level. The desktop and Qt do not
 see those exact events while the app is running. To replace an active binding,
 right-click its field in Settings → Profiles, choose **Unassign**, save, reopen
