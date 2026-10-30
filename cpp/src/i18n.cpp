@@ -290,6 +290,15 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("wizard.app_no_apps"), QStringLiteral("No audio applications found")},
              {QStringLiteral("wizard.app_refresh"), QStringLiteral("Refresh")},
              // warnings
+             {QStringLiteral("warn.config_blocked.title"),
+              QStringLiteral("Configuration not saved")},
+             {QStringLiteral("warn.config_blocked.text"),
+              QStringLiteral(
+                  "The configuration could not be read or backed up:\n%1\n\n"
+                  "The app will use defaults and will not save settings in this session. "
+                  "Settings changes will be lost when the app closes.\n\n"
+                  "Check the file and directory permissions, then restart the app, "
+                  "or import a valid configuration in Settings.")},
              {QStringLiteral("warn.hidden_volume.title"),
               QStringLiteral("Hidden PipeWire volume detected")},
              {QStringLiteral("warn.hidden_volume.text"),
@@ -649,6 +658,14 @@ static const QMap<QString, QMap<QString, QString>>& strings()
                   "zmieniono. "
                   "Nast\u0119pna jawna zmiana g\u0142o\u015bno\u015bci bezpiecznie znormalizuje "
                   "stan.")},
+             {QStringLiteral("warn.config_blocked.title"),
+              QStringLiteral("Konfiguracja nie będzie zapisywana")},
+             {QStringLiteral("warn.config_blocked.text"),
+              QStringLiteral("Nie można odczytać konfiguracji lub utworzyć jej kopii:\n%1\n\n"
+                             "Aplikacja użyje ustawień domyślnych i nie zapisze ustawień w tej "
+                             "sesji. Zmiany zostaną utracone po zamknięciu aplikacji.\n\n"
+                             "Sprawdź uprawnienia pliku i katalogu, a następnie uruchom aplikację "
+                             "ponownie albo zaimportuj poprawną konfigurację w ustawieniach.")},
              {QStringLiteral("warn.no_device.title"), QStringLiteral("Brak urz\u0105dzenia")},
              {QStringLiteral("warn.no_device.text"),
               QStringLiteral("Nie wybrano urz\u0105dzenia wej\u015bciowego.\n"

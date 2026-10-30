@@ -9,11 +9,14 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QSaveFile>
+#include <QTemporaryFile>
 #include <QStandardPaths>
 #include <QDebug>
 #include <QDateTime>
 #include <QStringList>
 #include <algorithm>
+#include <cerrno>
+#include <sys/stat.h>
 
 namespace
 {
@@ -673,22 +676,65 @@ bool Config::applyLoadedJsonUnlocked(const QJsonObject& loaded)
 void Config::load()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
+    m_firstRun = false;
+    m_saveBlocked = false;
+    m_data = defaultJson();
     QDir().mkpath(configDir());
     QFile f(configFile());
-    if (f.exists() && f.open(QIODevice::ReadOnly))
+    struct stat fileStatus{};
+    const int status = ::lstat(QFile::encodeName(configFile()).constData(), &fileStatus);
+    if (status < 0 && errno != ENOENT)
     {
-        QJsonParseError err;
-        QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+        qWarning() << "[Config] Cannot inspect" << configFile()
+                   << "— configuration writes disabled until reload or successful import";
+        m_saveBlocked = true;
+        return;
+    }
+    if (status == 0)
+    {
+        if (!f.open(QIODevice::ReadOnly))
+        {
+            qWarning() << "[Config] Cannot read" << configFile() << f.errorString()
+                       << "— configuration writes disabled until reload or successful import";
+            m_saveBlocked = true;
+            return;
+        }
+        const QByteArray bytes = f.readAll();
+        const bool readFailed = f.error() != QFile::NoError;
         f.close();
+        if (readFailed)
+        {
+            qWarning() << "[Config] Incomplete read" << configFile()
+                       << "— configuration writes disabled until reload or successful import";
+            m_saveBlocked = true;
+            return;
+        }
+
+        QJsonParseError err;
+        const QJsonDocument doc = QJsonDocument::fromJson(bytes, &err);
         if (err.error == QJsonParseError::NoError && doc.isObject())
         {
             if (applyLoadedJsonUnlocked(doc.object())) saveUnlocked();
             return;
         }
-        qWarning() << "[Config] Parse error:" << err.errorString();
+        qWarning() << "[Config] Invalid config:" << configFile()
+                   << (err.error == QJsonParseError::NoError
+                           ? QStringLiteral("Expected a JSON object")
+                           : err.errorString());
+        // Retain the exact bytes before any defaults or later setters can replace
+        // the file. Unique names also preserve backups from earlier recoveries.
+        QTemporaryFile backup(configFile() + QStringLiteral(".corrupt-XXXXXX"));
+        if (!backup.open() || backup.write(bytes) != bytes.size() || !backup.flush())
+        {
+            qWarning() << "[Config] Cannot back up invalid config:" << backup.errorString()
+                       << "— configuration writes disabled until reload or successful import";
+            m_saveBlocked = true;
+            return;
+        }
+        backup.setAutoRemove(false);
+        qWarning() << "[Config] Original config preserved at" << backup.fileName();
     }
     m_firstRun = true;
-    m_data = defaultJson();
     saveUnlocked();
 }
 
@@ -696,6 +742,12 @@ bool Config::isFirstRun() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_firstRun;
+}
+
+bool Config::isSaveBlocked() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_saveBlocked;
 }
 
 QString Config::configFilePath() const
@@ -712,6 +764,11 @@ void Config::save() const
 
 void Config::saveUnlocked() const
 {
+    if (m_saveBlocked)
+    {
+        qWarning() << "[Config] Save skipped to preserve unreadable or unbacked-up config";
+        return;
+    }
     QDir().mkpath(configDir());
     QSaveFile f(configFile());
     f.setDirectWriteFallback(false);
@@ -863,6 +920,8 @@ bool Config::importFromFile(const QString& source, QString* backupPath, QString*
                      QStringLiteral("Cannot save imported config: %1").arg(out.errorString()));
             return false;
         }
+        m_saveBlocked = false;
+        m_firstRun = false;
         if (applyLoadedJsonUnlocked(doc.object())) saveUnlocked();
     }
     return true;

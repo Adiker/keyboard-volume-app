@@ -12,6 +12,19 @@ Gdy `XDG_CONFIG_HOME` nie jest ustawione, używane jest
 `~/.config/keyboard-volume-app/config.json`. Zapisy są atomowe: nieudany zapis
 pozostawia poprzedni plik bez zmian.
 
+
+Jeśli plik zawiera niepoprawny JSON lub jego główna wartość nie jest obiektem,
+aplikacja zachowuje dokładną zawartość w unikalnym pliku `config.json.corrupt-*`
+przed zapisaniem ustawień domyślnych i ponownym uruchomieniem konfiguratora.
+Zachowaj tę kopię do odzyskania profili i skrótów. Jej ścieżka trafia do logu.
+
+Jeśli nie można odczytać istniejącego pliku lub utworzyć jego kopii, przy
+uruchomieniu pojawia się ostrzeżenie, a oryginał
+pozostaje bez zmian. Aplikacja korzysta z ustawień domyślnych w pamięci i blokuje
+zapis konfiguracji w tej sesji, także po późniejszych zmianach w ustawieniach.
+Popraw uprawnienia pliku lub katalogu i uruchom aplikację ponownie albo jawnie
+zaimportuj poprawną konfigurację.
+
 ## Import i eksport
 
 Ustawienia mogą wyeksportować bieżący JSON albo zaimportować poprawny plik.
