@@ -2,7 +2,7 @@
 # Stable/release PKGBUILD used for GitHub Release .pkg.tar.zst assets.
 # AUR tracking package remains PKGBUILD (keyboard-volume-app-git).
 pkgname=keyboard-volume-app
-pkgver=0.2.0
+pkgver=0.2.1
 pkgrel=1
 pkgdesc="Per-app volume control via keyboard with OSD overlay (Qt6)"
 arch=('x86_64')
