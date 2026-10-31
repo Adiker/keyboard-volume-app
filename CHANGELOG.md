@@ -8,6 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 GitHub Release notes are generated from the matching section below (this file is
 the single source of truth).
 
+## [0.2.1] - 2026-10-31
+
+**Install:** download `.deb`, `.rpm`, or Arch `.pkg.tar.zst` from the
+[GitHub Release](https://github.com/Adiker/keyboard-volume-app/releases/tag/v0.2.1).
+Arch users who prefer rolling builds can keep using AUR
+`keyboard-volume-app-git`.
+
+### Fixed
+
+- Stop input-thread CPU spinning when a captured device is disconnected; release
+  its resources while other devices continue to work (#192).
+- Prepare virtual input devices before grabbing the physical devices, preserve
+  held-key handoff, and prevent LED feedback loops that could flood the journal
+  or saturate a HID output queue (#193).
+- Preserve invalid configuration exactly in a `config.json.corrupt-*` backup
+  before using defaults. If an existing configuration cannot be read or backed
+  up, warn the user and block configuration writes for that session (#194).
+
+### Changed
+
+- Release automation builds an Arch `.pkg.tar.zst` alongside DEB and RPM
+  packages and publishes checksums for all three (#181).
+
+### Known limitations
+
+- After an input device is disconnected and reconnected, restart the app; if
+  its `/dev/input/event*` path changed, select the device again.
+- On some Linux desktop setups, registering a keyboard can make a lock LED
+  disagree with the desktop's logical state. Toggling the affected lock key
+  twice can resynchronize it; this release does not fix that system interaction.
+
+Full changes: https://github.com/Adiker/keyboard-volume-app/compare/v0.2.0...v0.2.1
+
 ## [0.2.0] - 2026-10-21
 
 First tagged C++ release on the `main` line after the rewrite.
@@ -67,5 +100,6 @@ https://github.com/Adiker/keyboard-volume-app/compare/cpp-rewrite-v0.1.0...v0.2.
 - Earlier `main-v0.1.0` tagged the archived Python application — do not use for
   current installs
 
+[0.2.1]: https://github.com/Adiker/keyboard-volume-app/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Adiker/keyboard-volume-app/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Adiker/keyboard-volume-app/releases/tag/cpp-rewrite-v0.1.0

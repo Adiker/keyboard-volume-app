@@ -14,7 +14,7 @@ Tagged [GitHub Releases](https://github.com/Adiker/keyboard-volume-app/releases)
 include an Arch package (`.pkg.tar.zst`):
 
 ```bash
-sudo pacman -U ./keyboard-volume-app-0.2.0-1-x86_64.pkg.tar.zst
+sudo pacman -U ./keyboard-volume-app-0.2.1-1-x86_64.pkg.tar.zst
 ```
 
 For a rolling build from `main`, use AUR `keyboard-volume-app-git`:
@@ -50,8 +50,8 @@ matching package from the
 then install it with the native package manager:
 
 ```bash
-sudo apt install ./keyboard-volume-app_0.2.0-1_amd64.deb
-sudo dnf install ./keyboard-volume-app-0.2.0-1.x86_64.rpm
+sudo apt install ./keyboard-volume-app_0.2.1-1_amd64.deb
+sudo dnf install ./keyboard-volume-app-0.2.1-1.x86_64.rpm
 ```
 
 The exact filename contains the project version. Packages install the binary,
