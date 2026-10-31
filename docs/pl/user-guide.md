@@ -50,6 +50,11 @@ Synchronizacja diod klawiatury korzysta z utrzymywanych deskryptorów do odczytu
 stanu i nie odsyła zwrotnych zdarzeń diod do urządzeń wirtualnych. Ogranicza to
 przerwy przy starcie oraz zbędne obciążenie CPU.
 
+Po odłączeniu przechwytywanego urządzenia aplikacja zwalnia jego stary uchwyt,
+a pozostałe urządzenia nadal działają. Ponownie podłączone urządzenie nie jest
+przechwytywane automatycznie: uruchom aplikację ponownie, a jeśli zmieniła się
+jego ścieżka `/dev/input/event*`, wybierz urządzenie ponownie.
+
 Skonfigurowane skróty są przechwytywane na poziomie evdev. Pulpit i Qt nie
 widzą tych konkretnych zdarzeń podczas pracy aplikacji. Aby zastąpić aktywny
 skrót, kliknij prawym przyciskiem jego pole w Ustawienia → Profile, wybierz
