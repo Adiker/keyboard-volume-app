@@ -72,11 +72,6 @@ jobs:
       options: --privileged
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
       - name: Install build dependencies
         run: |
           pacman-key --init
@@ -96,6 +91,13 @@ jobs:
             wayland \
             layer-shell-qt \
             base-devel
+
+      # The base-devel image may not include git. Install it before checkout so
+      # checkout creates a repository rather than downloading an archive.
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Build Arch package
         run: |

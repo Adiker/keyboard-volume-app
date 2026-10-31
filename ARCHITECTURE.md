@@ -759,7 +759,9 @@ The AUR package builds from the upstream `main` branch via `git clone`. The GitH
 
 **GitHub Release (`PKGBUILD.stable` / `keyboard-volume-app`):** tagged `.pkg.tar.zst`
 assets are built by `pkg/arch/build-release-package.sh` (used from
-`.github/workflows/release.yml`). It archives the release tag, fills `pkgver` /
+`.github/workflows/release.yml`). The Arch container installs Git before
+checkout so the package script can archive the tagged commit from a real Git
+repository. It archives the release tag, fills `pkgver` /
 `sha256sums`, and runs `makepkg`. Conflicts with `keyboard-volume-app-git`.
 
 Local validation from the project checkout:
