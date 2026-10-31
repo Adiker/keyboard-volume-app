@@ -297,3 +297,25 @@ if(Qt6DBus_FOUND)
 else()
     message(STATUS "test_mprisclient: SKIPPED (Qt6::DBus not found)")
 endif()
+
+# Startup handoff uses the production thread with simulated evdev/uinput and
+# real epoll. The runner requires Linux user/mount namespaces to hide hardware.
+option(ENABLE_INPUT_STARTUP_TESTS "Run isolated input startup handoff tests" OFF)
+if(ENABLE_INPUT_STARTUP_TESTS)
+    add_executable(test_inputstartup
+        test_inputstartup.cpp
+        ../src/inputhandler.cpp
+        ../src/evdevdevice.cpp
+    )
+    target_include_directories(test_inputstartup PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+    target_link_libraries(test_inputstartup PRIVATE GTest::gtest Qt6::Core PkgConfig::LIBEVDEV)
+    foreach(symbol open close ioctl epoll_ctl libevdev_kernel_set_led_value libevdev_new_from_fd libevdev_free
+            libevdev_grab libevdev_next_event libevdev_has_event_pending
+            libevdev_uinput_create_from_device libevdev_uinput_destroy
+            libevdev_uinput_get_fd libevdev_uinput_get_devnode libevdev_uinput_write_event)
+        target_link_options(test_inputstartup PRIVATE "LINKER:--wrap=${symbol}")
+    endforeach()
+    add_test(NAME test_inputstartup COMMAND bash
+        ${CMAKE_CURRENT_SOURCE_DIR}/run_inputstartup_test.sh $<TARGET_FILE:test_inputstartup>)
+    set_tests_properties(test_inputstartup PROPERTIES TIMEOUT 30 LABELS "integration;input")
+endif()

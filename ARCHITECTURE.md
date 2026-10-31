@@ -126,7 +126,7 @@ Reads/writes `$XDG_CONFIG_HOME/keyboard-volume-app/config.json` (via `QStandardP
 
 Thread-safe — uses `std::mutex` (`m_mutex`) guarding `m_data` and `m_firstRun`. All public methods lock.
 
-`isFirstRun()` returns `true` when the config file did not exist at load time — used by `main()` to decide whether to show the first-run wizard.
+`isFirstRun()` returns `true` for a missing file or after invalid JSON has been successfully preserved in a unique `config.json.corrupt-*` backup. Invalid includes non-object JSON roots. Only then may defaults replace the file and `main()` show first-run setup. An open/read error or backup failure instead keeps defaults in memory, leaves `isFirstRun()` false, and sets the mutex-protected `m_saveBlocked` flag: all ordinary saves remain disabled until a successful reload or explicit import. A successful import already preserves the destination through its existing backup path before clearing the flag.
 
 **Config schema:**
 ```json
@@ -350,7 +350,7 @@ App/binary filter defaults (`SYSTEM_BINARIES`, `SKIP_APP_NAMES`) live in `appaud
 
 ### `cpp/src/inputhandler.h/cpp` — `InputHandler`, `KeyCaptureThread`
 
-**`InputHandler`** (extends `QThread`): reads evdev events from the selected device and all other devices advertising any configured hotkey binding (`EV_KEY` keys or scroll `EV_REL` codes). All such devices are grabbed exclusively and mirrored via uinput so non-hotkey events pass through transparently. Hotkey events that resolve to a profile are swallowed (never re-injected); hotkey events with no matching profile are forwarded so typing/scrolling isn't blocked.
+**`InputHandler`** (extends `QThread`): reads evdev events from the selected device and all other devices advertising any configured hotkey binding (`EV_KEY` keys or scroll `EV_REL` codes). Only nodes advertising a configured binding are grabbed exclusively and mirrored via uinput so non-hotkey events pass through transparently. Other useful siblings remain passive readers for modifier tracking, without creating virtual devices. Hotkey events that resolve to a profile are swallowed (never re-injected); hotkey events with no matching profile are forwarded so typing/scrolling isn't blocked.
 
 On `EPOLLERR`/`EPOLLHUP` or a fatal evdev read error, retire both poll sources for the affected device before closing it; keep the source storage stable until the current event batch is complete. Clear tracked modifiers because a release may have been lost. Other devices remain active. Reconnection is not detected automatically; restarting the handler rescans devices, and the configured event path may need reselection if it changed. `KeyCaptureThread` similarly removes disconnected devices. The `InputPoll` regression uses an isolated uinput device and skips when uinput is unavailable.
 
@@ -364,7 +364,7 @@ void volume_mute(const QString &profileId);
 void ducking_toggle(const QString &profileId);
 ```
 
-**Modifier tracking.** `m_heldModifiers` holds raw evdev modifier codes (`KEY_LEFTCTRL`, `KEY_RIGHTCTRL`, `KEY_LEFTSHIFT`, `KEY_RIGHTSHIFT`) updated on press/release events from grabbed devices. Modifier press/release events are **forwarded to uinput** so the rest of the desktop sees them. Free helpers (testable, no Qt event loop required):
+**Modifier tracking.** `m_heldModifiers` holds raw evdev modifier codes (`KEY_LEFTCTRL`, `KEY_RIGHTCTRL`, `KEY_LEFTSHIFT`, `KEY_RIGHTSHIFT`) updated on press/release events from captured devices and passive siblings. Captured modifier events are **forwarded to uinput**; passive sibling events reach the desktop directly. Free helpers (testable, no Qt event loop required):
 - `bool isTrackedModifierCode(int code)`
 - `QSet<Modifier> normalizeHeldModifiers(const QSet<int> &raw)` — collapses L/R variants
 - `QString resolveProfile(HotkeyBinding binding, const QSet<Modifier> &held, const QList<Profile> &profiles)` — picks the profile whose `modifiers` set is a subset of `held` and whose binding matches; tie-broken by **specificity** (most required modifiers wins), then first-in-list. Returns empty string when no profile matches. `int` overloads treat the value as an `EV_KEY` binding.
@@ -373,7 +373,7 @@ void ducking_toggle(const QString &profileId);
 **Debounce** is keyed per `(HotkeyBinding, profileId)` so key and scroll bindings with the same numeric code don't block each other (100ms window).
 
 **v1 limitations** (TODO comments in source):
-- A modifier key on a separate keyboard with no hotkey bindings won't be observed (`findHotkeyDevices` only opens devices with at least one hotkey binding).
+- A modifier key on a separate keyboard with no hotkey bindings won't be observed unless it is a sibling of the selected device.
 - `m_heldModifiers` can go stale on focus loss (rare with grabbed devices) — accepted in v1.
 
 Key repeat events (`ev.value == 2`) are handled alongside regular press events (`ev.value == 1`).
@@ -384,7 +384,37 @@ Key repeat events (`ev.value == 2`) are handled alongside regular press events (
 
 **Device selection logic:**
 - `findSiblingDevices(path)` — finds all nodes sharing the same `phys` prefix
-- `findHotkeyDevices(path, bindings)` — siblings + every other device exposing at least one hotkey binding; all marked exclusive (grabbed + uinput mirror)
+- `findHotkeyDevices(path, bindings)` — one capability scan using sysfs metadata (libevdev fallback if unavailable or malformed); siblings remain passive unless they expose a configured binding, and every other device exposing a configured binding is exclusive (grabbed + uinput mirror)
+
+Startup prepares all mirrors and checks every `epoll` registration before any
+exclusive grab. The input loop then drains events that the desktop already
+received, leaving each physical node active for its mirror's 500 ms discovery
+period. Earlier mirrors settle while later ones are prepared, rather than
+adding a global delay after the entire device list is ready. Each mirror
+activates only after its physical node has no held keys or buttons and no
+queued events. A held key postpones only that node's handoff;
+its release still reaches the original desktop device. Configured hotkeys use
+the desktop's normal behavior until their node activates. This grace period
+allows compositor discovery but is not a compositor readiness acknowledgement;
+physical typing/pointer testing is still required for startup changes.
+Static `phys` / `ev` / `key` / `rel` capabilities are read from sysfs, without
+opening and closing every evdev node (evdev close can wait for kernel RCU).
+The parser handles both 32-bit compat and native 64-bit bitmap word layouts;
+unavailable or malformed metadata falls back to libevdev. Runtime nodes are
+opened writable once, with a read-only retry, so LED keyboards do not need a
+second initialization and close/reopen cycle.
+Preparation, polling or grab failures leave the affected physical input
+ungrabbed. Cancelled startup must not restore LED defaults from mirrors that
+never activated. LED output forwarding and startup LED polling begin only for
+activated mirrors. Each writable mirror keeps one read-only LED-state fd
+instead of opening/closing its evdev node on each 250 ms startup poll; ownership
+moves with `EvdevDevice` and cleanup closes it with the uinput mirror. Held
+Ctrl/Shift state is seeded from libevdev before the first event, including
+passive siblings. The existing shutdown LED restoration order is preserved.
+Physical `EV_LED` feedback is never reinjected into uinput, including during
+resynchronization: the desktop owns the virtual LED state. Reinjecting echoes
+of physical LED writes can make uinput emit another output event and keep the
+input thread busy forwarding LED state indefinitely.
 
 **`KeyCaptureThread`** (extends `QThread`): used in the settings dialog to capture a single keypress or wheel scroll for hotkey rebinding. Grabs all candidate devices, emits `hotkey_captured(binding)` or `cancelled()`.
 
@@ -825,22 +855,30 @@ OSD background is not set via stylesheet (Qt skips it for translucent top-level 
 ## Tests
 
 Unit tests are in `cpp/tests/`, integrated with CTest:
-- `test_config` — 40 tests (merge, load/save, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / scroll hotkeys / show hotkey / id uniqueification / per-profile vol_min and vol_max, legacy label-mode migration, custom-label defaults)
+- `test_config` — load/save regressions (merge, corrupt-file recovery, read/backup failure write protection, atomic save failure, thread-safety, profile migration / round-trip / mirror / ducking / scroll hotkeys / show hotkey / id uniqueification / per-profile vol_min and vol_max, legacy label-mode migration, custom-label defaults)
 - `test_i18n` — 7 tests (lookup, fallback)
 - `test_aboutdialog` — 3 offscreen GUI tests (EN/PL content, author/project links, version, close action, and byte-identical embedded GPL text)
 - `test_kvctlcommand` — 10 tests (subcommand parser, profile option, get/set fields, per-profile set volume, show command, invalid input)
 - `test_pwutils` — PipeWire client filtering/ownership plus raw, mixer-visible, and effective volume regressions
 - `test_appmatcher` — 11 tests (focused-window → AudioApp lookup, including empty-field regression)
 - `test_volumecontroller` — 5 smoke tests
-- `test_inputhandler` — 26 tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
+- `test_inputhandler` — API and capability tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
 - `test_mprisclient` — 15 tests (MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards, `mpris:artUrl` / `xesam:album` parsing, `albumArtChanged` empty-on-disconnect)
 - `test_osdwindow` — OSD progress-row, label-preset, album-art, and mouse-drag regressions (including all eight resize grips across three height modes, scale persistence, edge anchoring, clamp, hide timer, repaint reuse, font stability, event coalescing, release/cancel handling, and seek/media-button interaction)
 - `test_osdwindow_wayland` — optional production layer-shell regression, built when LayerShellQt is available. Normal headless runs skip its compositor case. On a compositor advertising `zwlr_layer_shell_v1`, opt in with `QT_QPA_PLATFORM=wayland KVA_TEST_NATIVE_WAYLAND=1 cpp/build/tests/test_osdwindow_wayland`. It creates only an isolated OSD with temporary configuration and checks full-surface damage, latest-target frame coalescing, release/cancellation, and a model of repeated surface-relative coordinates despite forward pointer movement. The modeled pointer events do not establish physical-pointer frame pacing. Add `WAYLAND_DEBUG=client` to verify changed margins are followed by full buffer damage and a `wl_surface.commit`; checking only Qt's cached margin/position values cannot detect an uncommitted move.
 - `test_osdlabelformat` — 9 tests (token substitution, leading/trailing/middle separator trimming, unknown tokens preserved, multi-occurrence, internal whitespace preservation, all-empty)
 - `test_dbusinterface` — 6 tests (Volume/Muted property writers route to absolute `setVolume`/`setMuted` instead of relative delta/toggle, clamping, no-op when no active app, `ToggleMute()` method still toggles)
+- `test_inputstartup` (opt-in) — runs the production input thread and real `epoll` with pipe-backed evdev/uinput wrappers inside a private user/mount namespace. No physical nodes or desktop-visible uinput devices are opened. Covers prepare-before-grab, pre-grab backlog, normal forwarding/hotkey swallowing, passive sibling modifiers, held-key handoff, stop during preparation, overlapping discovery periods, LED descriptor reuse/moves/cancellation, desktop LED output with physical feedback, read-only fallback, and mirror/poll setup failures. Requires Linux with unprivileged user namespaces and `unshare`.
 - `integration_pipewire_visible_volume` (opt-in) — starts private PipeWire, pipewire-pulse, WirePlumber, D-Bus, null sinks, and silent streams in a temporary XDG tree. It verifies persistent PipeWire connection reuse plus `pw-cli enum-params ... Props`, `wpctl get-volume`, and `pactl` after relative/absolute writes, scene apply, refresh, routing, inactive stream-restore replay, pending apply, per-channel duck/restore, and a pipewire-pulse reconnect. The desktop session, live streams, and user config are inaccessible to the test processes.
 
 Run locally: `cd cpp/build && ctest -E test_mprisclient --output-on-failure` and `cd cpp/build && dbus-run-session -- ctest -R test_mprisclient --output-on-failure`.
+
+Enable the isolated startup handoff regression with
+`-DENABLE_INPUT_STARTUP_TESTS=ON`, build normally, then run
+`ctest --test-dir cpp/build -R test_inputstartup --output-on-failure`.
+The fake backend verifies ordering and forwarding, not compositor discovery
+or physical mouse/keyboard responsiveness. Never invoke its binary directly
+against the desktop's `/dev/input`.
 
 Run the isolated PipeWire regression with `-DENABLE_PIPEWIRE_INTEGRATION_TESTS=ON`, then `ctest --test-dir cpp/build -R integration_pipewire_visible_volume --output-on-failure`. Its key invariant after every application volume write is `Props:volume == 1.0`, with the intended user-visible value cubed in `Props:channelVolumes` and independently confirmed through `wpctl` and PulseAudio.
 

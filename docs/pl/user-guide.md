@@ -31,9 +31,24 @@ lub PipeWire. Jej chwilowe zniknięcie przy odświeżaniu nie nadpisuje wyboru.
 - Powiązania kółka myszy mogą działać równolegle ze zwykłymi skrótami evdev.
 - Zasobnik pozostaje dostępny podczas działania globalnego przechwytywania.
 
-Handler przechwytuje także sąsiednie węzły wybranej klawiatury, np. osobny
-interfejs Consumer Control, oraz każde inne urządzenie zgłaszające skonfigurowany
-klawisz lub kierunek kółka. Dzięki temu pulpit nie obsługuje tego samego zdarzenia.
+Handler przechwytuje wyłącznie węzły zgłaszające skonfigurowany klawisz lub
+oś kółka, w tym osobne interfejsy Consumer Control. Pozostałe sąsiednie węzły
+odczytuje pasywnie, aby śledzić modyfikatory. Dzięki temu nie tworzy wirtualnej
+myszy ani klawiatury dla węzłów bez przypisanych skrótów.
+
+Przy starcie i po zmianie skrótów aplikacja przygotowuje urządzenia wirtualne
+przed przechwyceniem wejścia fizycznego. Krótki czas na wykrycie każdego
+urządzenia przez pulpit (co najmniej 500 ms,
+równolegle z przygotowaniem kolejnych urządzeń) pozostawia mysz i klawiaturę
+działające bezpośrednio. Wykrywanie możliwości korzysta z metadanych kernela,
+więc start nie wymaga otwierania i zamykania każdego węzła wejścia tylko po to,
+aby znaleźć urządzenia z przypisanymi skrótami.
+Węzeł z wciśniętym klawiszem lub przyciskiem myszy przełącza się dopiero po jego
+zwolnieniu. Do czasu przechwycenia węzła jego skróty zachowują normalne działanie
+na pulpicie.
+Synchronizacja diod klawiatury korzysta z utrzymywanych deskryptorów do odczytu
+stanu i nie odsyła zwrotnych zdarzeń diod do urządzeń wirtualnych. Ogranicza to
+przerwy przy starcie oraz zbędne obciążenie CPU.
 
 Po odłączeniu przechwytywanego urządzenia aplikacja zwalnia jego stary uchwyt,
 a pozostałe urządzenia nadal działają. Ponownie podłączone urządzenie nie jest
