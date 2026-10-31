@@ -39,6 +39,8 @@ class EvdevDevice
     void destroyUinput();
     libevdev_uinput* uinput() const;
     int uinputFd() const;
+    // Persistent read-only evdev fd for LED state; avoids repeated close/RCU waits.
+    int uinputLedStateFd();
 
     const char* name() const;
     const char* phys() const;
@@ -52,6 +54,7 @@ class EvdevDevice
     int m_fd = -1;
     libevdev* m_dev = nullptr;
     libevdev_uinput* m_ui = nullptr;
+    int m_uinputLedStateFd = -1;
     bool m_writable = false;
     bool m_grabbed = false;
     bool m_hasPreservedLedState = false;

@@ -32,21 +32,13 @@ bool ledBitIsSet(const std::array<unsigned long, kLedStateWords>& bits, unsigned
     return (bits[code / kLedBitsPerWord] & (1UL << (code % kLedBitsPerWord))) != 0;
 }
 
-LedSnapshot readUinputLedSnapshot(libevdev* dev, libevdev_uinput* ui)
+LedSnapshot readUinputLedSnapshot(libevdev* dev, int fd)
 {
     LedSnapshot snapshot;
-    if (!dev || !ui || !libevdev_has_event_type(dev, EV_LED)) return snapshot;
-
-    const char* devnode = libevdev_uinput_get_devnode(ui);
-    if (!devnode) return snapshot;
-
-    const int fd = ::open(devnode, O_RDONLY | O_NONBLOCK);
-    if (fd < 0) return snapshot;
+    if (!dev || fd < 0 || !libevdev_has_event_type(dev, EV_LED)) return snapshot;
 
     std::array<unsigned long, kLedStateWords> bits{};
     const int rc = ioctl(fd, EVIOCGLED(sizeof(bits)), bits.data());
-    ::close(fd);
-
     if (rc < 0) return snapshot;
 
     snapshot.valid = true;
@@ -92,7 +84,9 @@ EvdevDevice::~EvdevDevice()
 
 EvdevDevice::EvdevDevice(EvdevDevice&& other) noexcept
     : m_fd(std::exchange(other.m_fd, -1)), m_dev(std::exchange(other.m_dev, nullptr)),
-      m_ui(std::exchange(other.m_ui, nullptr)), m_writable(std::exchange(other.m_writable, false)),
+      m_ui(std::exchange(other.m_ui, nullptr)),
+      m_uinputLedStateFd(std::exchange(other.m_uinputLedStateFd, -1)),
+      m_writable(std::exchange(other.m_writable, false)),
       m_grabbed(std::exchange(other.m_grabbed, false)),
       m_hasPreservedLedState(std::exchange(other.m_hasPreservedLedState, false)),
       m_preservedLedMask(std::exchange(other.m_preservedLedMask, 0U))
@@ -107,6 +101,7 @@ EvdevDevice& EvdevDevice::operator=(EvdevDevice&& other) noexcept
         m_fd = std::exchange(other.m_fd, -1);
         m_dev = std::exchange(other.m_dev, nullptr);
         m_ui = std::exchange(other.m_ui, nullptr);
+        m_uinputLedStateFd = std::exchange(other.m_uinputLedStateFd, -1);
         m_writable = std::exchange(other.m_writable, false);
         m_grabbed = std::exchange(other.m_grabbed, false);
         m_hasPreservedLedState = std::exchange(other.m_hasPreservedLedState, false);
@@ -213,6 +208,11 @@ void EvdevDevice::destroyUinput()
         libevdev_uinput_destroy(m_ui);
         m_ui = nullptr;
     }
+    if (m_uinputLedStateFd >= 0)
+    {
+        ::close(m_uinputLedStateFd);
+        m_uinputLedStateFd = -1;
+    }
 }
 
 libevdev_uinput* EvdevDevice::uinput() const
@@ -223,6 +223,16 @@ libevdev_uinput* EvdevDevice::uinput() const
 int EvdevDevice::uinputFd() const
 {
     return m_ui ? libevdev_uinput_get_fd(m_ui) : -1;
+}
+
+int EvdevDevice::uinputLedStateFd()
+{
+    if (m_uinputLedStateFd < 0 && m_ui && m_writable && hasEventType(EV_LED))
+    {
+        const char* path = libevdev_uinput_get_devnode(m_ui);
+        if (path) m_uinputLedStateFd = ::open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    }
+    return m_uinputLedStateFd;
 }
 
 const char* EvdevDevice::name() const
@@ -261,7 +271,7 @@ void EvdevDevice::preserveLedStateFromUinput()
         return;
     }
 
-    const LedSnapshot snapshot = readUinputLedSnapshot(m_dev, m_ui);
+    const LedSnapshot snapshot = readUinputLedSnapshot(m_dev, uinputLedStateFd());
     m_hasPreservedLedState = snapshot.valid;
     m_preservedLedMask = snapshot.mask;
 }
