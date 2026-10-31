@@ -6,6 +6,7 @@
 #include <QTemporaryDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QDir>
 
 #include <sys/stat.h>
 #include <unistd.h>
@@ -182,6 +183,138 @@ TEST(Config, SaveFailureKeepsExistingFile)
 
     Config reloaded(tmp.path());
     EXPECT_EQ(reloaded.language().toStdString(), "pl");
+}
+
+TEST(Config, InvalidConfigIsBackedUpBeforeDefaultsAreSaved)
+{
+    for (const QByteArray& invalid :
+         {QByteArray("{ truncated config"), QByteArray("[]"), QByteArray("null"), QByteArray{}})
+    {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString path = tmp.path() + "/config.json";
+        QFile file(path);
+        ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+        ASSERT_EQ(file.write(invalid), invalid.size());
+        file.close();
+
+        Config config(tmp.path());
+        EXPECT_TRUE(config.isFirstRun());
+        EXPECT_FALSE(config.isSaveBlocked());
+        const QStringList backups =
+            QDir(tmp.path()).entryList({"config.json.corrupt-*"}, QDir::Files);
+        ASSERT_EQ(backups.size(), 1);
+        QFile backup(tmp.path() + '/' + backups.first());
+        ASSERT_TRUE(backup.open(QIODevice::ReadOnly));
+        EXPECT_EQ(backup.readAll(), invalid);
+
+        ASSERT_TRUE(file.open(QIODevice::ReadOnly));
+        EXPECT_TRUE(QJsonDocument::fromJson(file.readAll()).isObject());
+        file.close();
+        config.setLanguage("pl");
+        Config reloaded(tmp.path());
+        EXPECT_FALSE(reloaded.isFirstRun());
+        EXPECT_EQ(reloaded.language(), "pl");
+        EXPECT_EQ(QDir(tmp.path()).entryList({"config.json.corrupt-*"}, QDir::Files), backups);
+    }
+}
+
+TEST(Config, BackupFailureBlocksLaterSavesUntilExplicitImport)
+{
+    if (geteuid() == 0) GTEST_SKIP() << "Directory permissions do not block root writes";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + "/config.json";
+    const QByteArray invalid = "{ preserve this config";
+    QFile file(path);
+    ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+    ASSERT_EQ(file.write(invalid), invalid.size());
+    file.close();
+    const QByteArray dirPath = QFile::encodeName(tmp.path());
+    ASSERT_EQ(chmod(dirPath.constData(), 0555), 0);
+    Config config(tmp.path());
+    const int restored = chmod(dirPath.constData(), 0755);
+    ASSERT_EQ(restored, 0);
+
+    EXPECT_FALSE(config.isFirstRun());
+    EXPECT_TRUE(config.isSaveBlocked());
+    config.setLanguage("pl");
+    config.save();
+    ASSERT_TRUE(file.open(QIODevice::ReadOnly));
+    EXPECT_EQ(file.readAll(), invalid);
+    file.close();
+    EXPECT_TRUE(QDir(tmp.path()).entryList({"config.json.corrupt-*"}, QDir::Files).isEmpty());
+
+    QFile source(tmp.path() + "/import.json");
+    ASSERT_TRUE(source.open(QIODevice::WriteOnly));
+    ASSERT_GT(source.write(R"({"language":"pl","volume_step":17})"), 0);
+    source.close();
+    QString backupPath;
+    ASSERT_TRUE(config.importFromFile(source.fileName(), &backupPath));
+    EXPECT_FALSE(config.isFirstRun());
+    EXPECT_FALSE(config.isSaveBlocked());
+    EXPECT_EQ(config.volumeStep(), 17);
+    QFile backup(backupPath);
+    ASSERT_TRUE(backup.open(QIODevice::ReadOnly));
+    EXPECT_EQ(backup.readAll(), invalid);
+    config.setVolumeStep(18);
+    Config reloaded(tmp.path());
+    EXPECT_EQ(reloaded.volumeStep(), 18);
+}
+
+TEST(Config, UnreadableConfigBlocksLaterSavesUntilReload)
+{
+    if (geteuid() == 0) GTEST_SKIP() << "File permissions do not block root reads";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + "/config.json";
+    const QByteArray original = R"({"language":"pl","volume_step":17})";
+    QFile file(path);
+    ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+    ASSERT_EQ(file.write(original), original.size());
+    file.close();
+    const QByteArray encodedPath = QFile::encodeName(path);
+    ASSERT_EQ(chmod(encodedPath.constData(), 0000), 0);
+    Config config(tmp.path());
+    const int restored = chmod(encodedPath.constData(), 0600);
+    ASSERT_EQ(restored, 0);
+
+    EXPECT_FALSE(config.isFirstRun());
+    EXPECT_TRUE(config.isSaveBlocked());
+    config.setLanguage("en");
+    config.save();
+    ASSERT_TRUE(file.open(QIODevice::ReadOnly));
+    EXPECT_EQ(file.readAll(), original);
+    file.close();
+    EXPECT_TRUE(QDir(tmp.path()).entryList({"config.json.corrupt-*"}, QDir::Files).isEmpty());
+
+    config.load();
+    EXPECT_FALSE(config.isFirstRun());
+    EXPECT_FALSE(config.isSaveBlocked());
+    EXPECT_EQ(config.language(), "pl");
+    EXPECT_EQ(config.volumeStep(), 17);
+    config.setVolumeStep(18);
+    Config reloaded(tmp.path());
+    EXPECT_EQ(reloaded.volumeStep(), 18);
+}
+
+TEST(Config, InaccessibleDirectoryDoesNotBecomeFirstRunOrAllowLaterOverwrite)
+{
+    if (geteuid() == 0) GTEST_SKIP() << "Directory permissions do not block root reads";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config original(tmp.path());
+    original.setLanguage("pl");
+    const QByteArray dirPath = QFile::encodeName(tmp.path());
+    ASSERT_EQ(chmod(dirPath.constData(), 0000), 0);
+    Config config(tmp.path());
+    const int restored = chmod(dirPath.constData(), 0755);
+    ASSERT_EQ(restored, 0);
+    EXPECT_FALSE(config.isFirstRun());
+    EXPECT_TRUE(config.isSaveBlocked());
+    config.setLanguage("en");
+    Config reloaded(tmp.path());
+    EXPECT_EQ(reloaded.language(), "pl");
 }
 
 TEST(Config, VolumeStepClamp)
