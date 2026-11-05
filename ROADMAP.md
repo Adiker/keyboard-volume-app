@@ -192,7 +192,7 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 
 ### 18. Tryb "Audio Ducking" (Izolacja dźwiękowa / Focus Mode)
 
-**Status:** Zrealizowane jako ręczny Focus Audio per profil. Profil ma `ducking.enabled`, `ducking.volume` i `ducking.hotkey`; `InputHandler` emituje `ducking_toggle(profileId)`, `PaWorker` zapisuje snapshot głośności innych aplikacji i przywraca go przy kolejnym toggle. D-Bus ma `ToggleDuckingProfile(id)`, a CLI `kv-ctl duck [--profile id]`. Ryzyko/rollback: zmiana dotyka evdev, D-Bus i libpulse/PipeWire hot path; rollback to wyłączenie duckingu w profilach lub revert PR.
+**Status:** Zrealizowane jako ręczny Focus Audio per profil. Hotkey zmniejsza głośność innych aplikacji i przy kolejnym użyciu przywraca zapisany stan. Funkcja jest dostępna także przez D-Bus i `kv-ctl duck [--profile id]`.
 
 ### 19. Wbudowane CLI (Sub-komendy dla skryptów / Tiling WM)
 
@@ -204,7 +204,7 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 
 ### 24. Hotkey „Pokaż głośność" (OSD bez zmiany głośności)
 
-**Status:** Zrealizowane. Dodano pole `hotkeys.show` jako `HotkeyBinding` (`0` = nieprzypisany; obsługiwane też scroll bindingi) do `HotkeyConfig` i schematu JSON profilu. `InputHandler` zbiera przypisane bindingi `show` spośród wszystkich profili, dopasowuje przez `resolveProfileHotkey()` i emituje nowy sygnał `show_volume(profileId)` dla klawiszy oraz scrolla. `App::onShowVolume()` wywołuje `VolumeController::queryVolume(app)`, które asynchronicznie szuka głośności w aktywnym sink-input PA, stream-restore, idle PipeWire node, a na końcu cache — i emituje `volumeChanged` bez żadnej modyfikacji. OSD pojawia się bez zmiany głośności. D-Bus dostał metody `ShowVolume()` i `ShowVolumeProfile(id)`. `kv-ctl show [--profile id]` mapuje na te metody. UI (`ProfileEditDialog`) ma nowe pole `HotkeyCapture` dla hotkey `show` z etykietą `settings.hotkey.show` oraz obsługą unassign. Dodano testy config/inputhandler/kvctlcommand dla show hotkey. Ryzyko/rollback: zmiana dotyka evdev dispatch, PA hot path i D-Bus; rollback to usunięcie pola `show` z konfigu i revert sygnałów.
+**Status:** Zrealizowane. Opcjonalny hotkey `show` wyświetla aktualną głośność profilu na OSD bez jej zmiany. Funkcja jest dostępna w ustawieniach, przez D-Bus oraz `kv-ctl show [--profile id]`.
 
 ### 25. Limity głośności per profil (minimalny / maksymalny poziom)
 
