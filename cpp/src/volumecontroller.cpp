@@ -913,8 +913,15 @@ class PaWorker : public QObject
         m_duckingSnapshot = snapshot;
     }
 
-    void doQueryVolume(const QString& appName)
+    void doQueryVolume(const QString& appName, bool silent)
     {
+        const auto report = [this, silent](const QString& app, double volume, bool muted)
+        {
+            if (silent)
+                emit volumeQueriedSilently(app, volume, muted);
+            else
+                emit volumeChanged(app, volume, muted);
+        };
         if (m_stopping) return;
         const QList<AppAlias> aliases = currentAliases();
 
@@ -930,7 +937,7 @@ class PaWorker : public QObject
 
                 m_appVolumes[appName] = si.volume;
                 m_appMutes[appName] = si.muted;
-                emit volumeChanged(appName, si.volume, si.muted);
+                report(appName, si.volume, si.muted);
                 return;
             }
         }
@@ -941,7 +948,7 @@ class PaWorker : public QObject
             const auto [muted, volume] = *restored;
             m_appVolumes[appName] = volume;
             m_appMutes[appName] = muted;
-            emit volumeChanged(appName, volume, muted);
+            report(appName, volume, muted);
             return;
         }
 
@@ -951,13 +958,12 @@ class PaWorker : public QObject
         {
             m_appVolumes[appName] = node->visibleVolume();
             m_appMutes[appName] = node->muted;
-            emit volumeChanged(appName, node->visibleVolume(), node->muted);
+            report(appName, node->visibleVolume(), node->muted);
             return;
         }
 
         // 4. Cache fallback (app not currently present in PA or PW)
-        emit volumeChanged(appName, m_appVolumes.value(appName, 1.0),
-                           m_appMutes.value(appName, false));
+        report(appName, m_appVolumes.value(appName, 1.0), m_appMutes.value(appName, false));
     }
 
     void doListApps(bool forceRefresh)
@@ -1409,6 +1415,7 @@ class PaWorker : public QObject
 
   signals:
     void volumeChanged(const QString& app, double newVol, bool muted);
+    void volumeQueriedSilently(const QString& app, double newVol, bool muted);
     void appsReady(QList<AudioApp> apps);
     void sinksReady(QList<SinkInfo> sinks);
     void sinkChanged(const QString& app, const QString& sinkName);
@@ -2352,6 +2359,8 @@ VolumeController::VolumeController(QObject* parent) : QObject(parent)
 
     // Forward worker signals to our own signals (runs in main thread via queued)
     connect(m_worker, &PaWorker::volumeChanged, this, &VolumeController::volumeChanged);
+    connect(m_worker, &PaWorker::volumeQueriedSilently, this,
+            &VolumeController::volumeQueriedSilently);
     connect(m_worker, &PaWorker::appsReady, this,
             [this](const QList<AudioApp>& apps)
             {
@@ -2569,7 +2578,14 @@ void VolumeController::queryVolume(const QString& appName)
     if (m_closing || !m_worker) return;
 
     QMetaObject::invokeMethod(m_worker, "doQueryVolume", Qt::QueuedConnection,
-                              Q_ARG(QString, appName));
+                              Q_ARG(QString, appName), Q_ARG(bool, false));
+}
+
+void VolumeController::queryVolumeSilently(const QString& appName)
+{
+    if (m_closing || !m_worker) return;
+    QMetaObject::invokeMethod(m_worker, "doQueryVolume", Qt::QueuedConnection,
+                              Q_ARG(QString, appName), Q_ARG(bool, true));
 }
 
 void VolumeController::replayHiddenVolumeWarnings()

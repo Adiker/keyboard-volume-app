@@ -590,6 +590,12 @@ Runs in a dedicated `QThread` with two runtime-selected backends. On Wayland com
 
 Thread-safety: `WindowTracker::start()` sets `m_running = true` (atomic) before calling `QThread::start()`, avoiding a race where `stop()`'s `m_running = false` could be overwritten if `run()` hadn't yet entered its polling loop.
 
+The optional `focus_updates_active_app` mode also mirrors the sticky focus target
+to the tray and D-Bus without changing the stored default profile. A separate
+silent asynchronous volume query updates D-Bus volume/mute without opening OSD;
+D-Bus operations use the focused target profile. Disabling the mode restores the
+manual selection.
+
 **Limitation:** Wayland focus tracking depends on `zwlr_foreign_toplevel_management_unstable_v1` (wlroots-compatible compositors). On unsupported pure Wayland sessions without XWayland, the tracker fails gracefully with an error log — the app continues to work normally, just without auto-switching.
 
 ### `cpp/src/i18n.h/cpp`

@@ -82,6 +82,7 @@ class VolumeController : public QObject
     // Async read of the app's current volume — result arrives via volumeChanged().
     // Does NOT modify any volume. Falls back to cached value when PA is unavailable.
     void queryVolume(const QString& appName);
+    void queryVolumeSilently(const QString& appName);
 
     // Re-emit startup detections that may have arrived before the tray connected.
     // This is notification-only and never changes the audio graph.
@@ -92,6 +93,7 @@ class VolumeController : public QObject
   signals:
     // Emitted in the main thread after a volume/mute change completes.
     void volumeChanged(const QString& app, double newVol, bool muted);
+    void volumeQueriedSilently(const QString& app, double newVol, bool muted);
 
     // Emitted in the main thread after an async app-list refresh finishes.
     void appsReady(QList<AudioApp> apps);

@@ -87,6 +87,7 @@ class DbusInterface : public QObject
     // Update the cached active-app state when the tray (or any other source)
     // changes the selected application. Wired up by main.cpp.
     void onActiveAppChanged(const QString& name);
+    void setFocusedApp(const QString& name);
 
   public slots:
     Q_SCRIPTABLE void VolumeUp();
@@ -131,6 +132,7 @@ class DbusInterface : public QObject
     void sinksChanged(const QVariantList& sinks);
     void progressEnabledChanged(bool on);
     void autoProfileSwitchChanged(bool on);
+    void manualAppSelected(const QString& name);
 
   private:
     // Build the QVariantList wire representation from current Config profiles.
@@ -138,8 +140,10 @@ class DbusInterface : public QObject
     QVariantList buildScenesProp() const;
     // Resolve a profile id to a Profile (or empty Profile if unknown).
     Profile findProfile(const QString& id) const;
+    Profile activeProfile() const;
     // Route profile apps to its configured sink (no-op if sink empty or ctrl null).
     void applyProfileSink(const Profile& p);
+    void applyActiveProfileSink(const Profile& p);
 
     Config* m_config = nullptr;
     VolumeController* m_volumeCtrl = nullptr;
@@ -152,6 +156,7 @@ class DbusInterface : public QObject
     int m_volumeStep = 5;
     bool m_progressEnabled = false;
     bool m_autoProfileSwitch = false;
+    bool m_focusedAppActive = false;
     QVariantList m_profilesProp;
     QVariantList m_scenesProp;
     QVariantList m_sinksProp;

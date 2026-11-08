@@ -192,6 +192,7 @@ class SettingsDialog : public QDialog
     ColorButton* m_colorBar = nullptr;
     QSpinBox* m_opacity = nullptr;
     QCheckBox* m_autoProfile = nullptr;
+    QCheckBox* m_focusActiveApp = nullptr;
 
     // OSD position controls
     QCheckBox* m_positionControlsEnabled = nullptr;
