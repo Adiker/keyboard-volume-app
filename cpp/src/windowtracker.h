@@ -7,7 +7,10 @@ class WindowTracker : public QThread
 {
     Q_OBJECT
   public:
-    explicit WindowTracker(QObject* parent = nullptr);
+    explicit WindowTracker(
+        QObject* parent = nullptr,
+        const QString& serviceName = QStringLiteral("org.keyboardvolumeapp"),
+        const QString& pluginName = QStringLiteral("keyboard-volume-app-focus-tracker"));
     ~WindowTracker() override;
 
     void stop();
@@ -34,6 +37,9 @@ class WindowTracker : public QThread
     bool runKWinScript();
     bool runWayland();
 
+    QString m_token;
+    QString m_serviceName;
+    QString m_pluginName;
     QObject* m_kwinReceiver = nullptr;
     bool m_kwinReceiverRegistered = false;
     std::atomic<bool> m_running{false};
