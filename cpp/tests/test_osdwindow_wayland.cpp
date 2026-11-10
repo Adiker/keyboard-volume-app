@@ -62,66 +62,70 @@ TEST(OSDWindowWayland, StaticContentMoveRepaintsWholeSurfaceAtFrameCadence)
     ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
     QTest::qWait(50);
 
-    const QPoint local = window.rect().center();
-    const QPoint start = window.mapToGlobal(local);
-    QMouseEvent press(QEvent::MouseButtonPress, local, start, Qt::LeftButton, Qt::LeftButton,
+    const QPoint grabLocal = window.rect().center();
+    const QPoint start = window.mapToGlobal(grabLocal);
+    QMouseEvent press(QEvent::MouseButtonPress, grabLocal, start, Qt::LeftButton, Qt::LeftButton,
                       Qt::NoModifier);
     QApplication::sendEvent(&window, &press);
     QTest::qWait(50);
+    ASSERT_TRUE(window.m_dragOverlayActive);
+    ASSERT_NE(window.m_panel, nullptr);
 
     window.paints = 0;
     for (int i = 1; i <= 8; ++i)
     {
         const int before = window.paints;
-        QMouseEvent move(QEvent::MouseMove, local, start + QPoint(i * 12, 0), Qt::NoButton,
+        // Overlay mode uses fullscreen-local coordinates: panelPos + grab.
+        const QPoint local = window.m_panel->pos() + grabLocal + QPoint(i * 12, 0);
+        QMouseEvent move(QEvent::MouseMove, local, window.mapToGlobal(local), Qt::NoButton,
                          Qt::LeftButton, Qt::NoModifier);
         QApplication::sendEvent(&window, &move);
         QTRY_VERIFY_WITH_TIMEOUT(window.paints > before, 500);
-        EXPECT_EQ(window.lastDamage, window.rect());
+        EXPECT_EQ(window.m_currentAbsPos.x(), osd.x + i * 12);
     }
-    // With no unrelated content updates, the broken margin-only path paints
-    // nothing and never submits the new positions to the compositor.
     EXPECT_GT(window.paints, 0);
 
     auto* layer = LayerShellQt::Window::get(window.windowHandle());
     ASSERT_NE(layer, nullptr);
-    const QMargins beforeBurst = layer->margins();
     const int paintsBeforeBurst = window.paints;
     for (int i = 1; i <= 40; ++i)
     {
-        QMouseEvent move(QEvent::MouseMove, local, start + QPoint(96 + i, 0), Qt::NoButton,
+        const QPoint local = window.m_panel->pos() + grabLocal + QPoint(i, 0);
+        QMouseEvent move(QEvent::MouseMove, local, window.mapToGlobal(local), Qt::NoButton,
                          Qt::LeftButton, Qt::NoModifier);
         QApplication::sendEvent(&window, &move);
     }
-    // A whole burst stays pending until Qt delivers one frame opportunity.
-    EXPECT_EQ(layer->margins(), beforeBurst);
+    // Overlay applies panel moves immediately; grab stays under the pointer.
+    EXPECT_EQ(window.m_currentAbsPos.x(), osd.x + 40);
     QTRY_VERIFY_WITH_TIMEOUT(window.paints > paintsBeforeBurst, 500);
-    EXPECT_EQ(window.paints, paintsBeforeBurst + 1);
     EXPECT_EQ(window.lastDamage, window.rect());
-    EXPECT_EQ(layer->margins().left(), osd.x + 136);
 
-    // Release must override even a newer pending frame immediately, then
-    // discard that callback so it cannot restore an older position afterward.
-    QMouseEvent pending(QEvent::MouseMove, local, start + QPoint(150, 0), Qt::NoButton,
-                        Qt::LeftButton, Qt::NoModifier);
+    QMouseEvent pending(QEvent::MouseMove, window.m_panel->pos() + grabLocal + QPoint(150, 0),
+                        window.mapToGlobal(window.m_panel->pos() + grabLocal + QPoint(150, 0)),
+                        Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
     QApplication::sendEvent(&window, &pending);
-    QMouseEvent release(QEvent::MouseButtonRelease, local, start + QPoint(160, 0), Qt::LeftButton,
-                        Qt::NoButton, Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        window.m_panel->pos() + grabLocal + QPoint(160, 0),
+                        window.mapToGlobal(window.m_panel->pos() + grabLocal + QPoint(160, 0)),
+                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
     QApplication::sendEvent(&window, &release);
+    EXPECT_FALSE(window.m_dragOverlayActive);
     EXPECT_EQ(layer->margins().left(), osd.x + 160);
     EXPECT_EQ(config.osd().x, osd.x + 160);
     EXPECT_EQ(config.osd().y, osd.y);
     QTest::qWait(50);
     EXPECT_EQ(layer->margins().left(), osd.x + 160);
 
-    QMouseEvent nextPress(QEvent::MouseButtonPress, local, start, Qt::LeftButton, Qt::LeftButton,
-                          Qt::NoModifier);
-    QApplication::sendEvent(&window, &nextPress);
-    QMouseEvent cancelled(QEvent::MouseMove, local, start + QPoint(50, 0), Qt::NoButton,
+    QMouseEvent nextPress(QEvent::MouseButtonPress, grabLocal, start, Qt::LeftButton,
                           Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&window, &nextPress);
+    QMouseEvent cancelled(QEvent::MouseMove, window.m_panel->pos() + grabLocal + QPoint(50, 0),
+                          window.mapToGlobal(window.m_panel->pos() + grabLocal + QPoint(50, 0)),
+                          Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
     QApplication::sendEvent(&window, &cancelled);
     window.hide();
     QTest::qWait(50);
+    EXPECT_FALSE(window.m_dragOverlayActive);
     EXPECT_EQ(layer->margins().left(), osd.x + 160);
     EXPECT_EQ(config.osd().x, osd.x + 160);
 }
@@ -149,23 +153,25 @@ TEST(OSDWindowWayland, FrameMovesFollowSurfaceRelativeCoordinates)
     ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
     QTest::qWait(50);
     auto* layer = LayerShellQt::Window::get(window.windowHandle());
-    const QPoint local = window.rect().center();
-    const QPoint start = window.mapToGlobal(local);
-    window.startMove(start);
+    const QPoint grabLocal = QPoint(window.osdWidth() / 2, window.osdHeight() / 2);
+    const QPoint start = window.mapToGlobal(grabLocal);
+    window.startMove(start, grabLocal);
+    ASSERT_TRUE(window.m_dragOverlayActive);
     for (int i = 1; i <= 8; ++i)
     {
-        // Model an actual forward pointer movement after each surface move:
-        // its surface-relative position repeats, despite its screen movement.
-        const QPoint surfaceLocal = local + QPoint(12, 0);
-        QMouseEvent move(QEvent::MouseMove, surfaceLocal, window.mapToGlobal(surfaceLocal),
-                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+        const QPoint local = window.m_panel->pos() + grabLocal + QPoint(12, 0);
+        QMouseEvent move(QEvent::MouseMove, local, window.mapToGlobal(local), Qt::NoButton,
+                         Qt::LeftButton, Qt::NoModifier);
         QApplication::sendEvent(&window, &move);
-        QTRY_COMPARE_WITH_TIMEOUT(layer->margins().left(), osd.x + i * 12, 500);
-        QTRY_COMPARE_WITH_TIMEOUT(window.lastDamage, window.rect(), 500);
+        QTRY_COMPARE_WITH_TIMEOUT(window.m_currentAbsPos.x(), osd.x + i * 12, 500);
+        // Grab stays locked: panelPos + grabLocal == pointer local.
+        EXPECT_EQ(window.m_panel->pos() + grabLocal, local);
     }
-    QMouseEvent release(QEvent::MouseButtonRelease, local, start, Qt::LeftButton, Qt::NoButton,
-                        Qt::NoModifier);
+    QMouseEvent release(QEvent::MouseButtonRelease, window.m_panel->pos() + grabLocal,
+                        window.mapToGlobal(window.m_panel->pos() + grabLocal), Qt::LeftButton,
+                        Qt::NoButton, Qt::NoModifier);
     QApplication::sendEvent(&window, &release);
+    EXPECT_FALSE(window.m_dragOverlayActive);
     EXPECT_EQ(config.osd().x, osd.x + 96);
     EXPECT_EQ(config.osd().y, osd.y);
     QTest::qWait(50);
@@ -180,8 +186,6 @@ TEST(OSDWindowWayland, FrameMovesFollowSurfaceRelativeCoordinates)
     int plays = 0;
     QObject::connect(&window, &OSDWindow::seekRequested, [&seeks] { ++seeks; });
     QObject::connect(&window, &OSDWindow::playPauseRequested, [&plays] { ++plays; });
-    // Send through QWidgetWindow, whose frame-event filter must allow normal
-    // routing to the child controls before applying the OSD drag hit-test.
     QTest::mouseClick(window.windowHandle(), Qt::LeftButton, Qt::NoModifier,
                       window.m_progressBar->mapTo(&window, window.m_progressBar->rect().center()));
     EXPECT_EQ(seeks, 1);

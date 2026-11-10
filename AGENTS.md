@@ -85,9 +85,9 @@ If the PulseAudio context fails or terminates, `PaWorker` reconnects with backof
 
 Qt skips stylesheet background painting for translucent top-level windows (`WA_TranslucentBackground`). The OSD background is drawn manually in `OSDWindow::paintEvent()` via `QPainter::drawRoundedRect()`. Do not try to set OSD background via stylesheet — it won't render.
 
-After `show()`, the X11/XWayland path also sets position via `QWindow::setPosition()` on `windowHandle()`. The native Wayland path updates layer-shell margins instead of calling `move()`.
+After `show()`, the X11/XWayland path also sets position via `QWindow::setPosition()` on `windowHandle()`. The native Wayland idle path updates layer-shell margins instead of calling `move()`.
 
-Layer-shell margins are double-buffered: `setMargins()` alone does not submit the new position. Keep a full-surface update at Qt frame opportunities in `positionWindowDuringMove()` so Qt clears translucent content and commits the surface even with static content; tiny dirty regions can leave movement trails. A test that checks only cached margins/coordinates or zero repaints can miss a visually stationary OSD; use the opt-in native regression and Wayland protocol trace described in `ARCHITECTURE.md`.
+Do not drag the native Wayland OSD by repeatedly changing layer-shell margins under the pointer: surface-local coordinates reset as the compositor catches up, so the cursor slips off the window. During mouse drag, `enterDragOverlay()` fills the screen with the layer surface and moves the inner `m_panel` instead; `leaveDragOverlay()` restores top-left anchors and final margins. Idle positioning still uses margins only. Background painting still targets the panel geometry in `paintEvent()`.
 
 Mouse resizing of the OSD is custom too: it updates the fixed widget size proportionally, persists `osd_scale` (and adjusted `screen`/`x`/`y` for left/top drags) on mouse release, and restarts the hide timer. Keep resize hit-testing separate from the progress-bar seek path so center clicks on the progress bar are not swallowed as resize gestures.
 

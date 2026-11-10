@@ -164,6 +164,9 @@ class OSDWindow : public QWidget
 
     // ── Volume row ───────────────────────────────────────────────────────────
     Config* m_config;
+    // Content host. On native Wayland drag this panel moves inside a fullscreen
+    // layer-shell surface so pointer events stay screen-stable (margins do not).
+    QWidget* m_panel = nullptr;
     QVBoxLayout* m_mainLayout = nullptr;
     QLabel* m_labelName = nullptr;
     QProgressBar* m_bar = nullptr;
@@ -208,8 +211,13 @@ class OSDWindow : public QWidget
     QPoint m_moveStartAbsPos;
     QScreen* m_moveDragScreen = nullptr;
     QPoint m_moveLastAppliedPos{-1, -1};
-    bool m_moveFramePending = false;
-    QPoint m_pendingMoveGlobalPos;
+    // Native Wayland pointer events are surface-local while layer-shell margins
+    // move the surface under the cursor. Track consecutive local deltas and
+    // absorb compositor catch-up that would otherwise yank the OSD backward.
+    QPoint m_moveLastLocal;
+    QPoint m_moveUncommitted;
+    QPoint m_moveGrabLocal;
+    bool m_dragOverlayActive = false;
 
     // ── Progress row ─────────────────────────────────────────────────────────
     QWidget* m_progressRow = nullptr; // container — show/hide as a unit
@@ -316,10 +324,16 @@ class OSDWindow : public QWidget
     bool isMoveDragBlocked(QObject* obj) const;
     bool isMoveDragZone(const QPoint& localPos) const;
     bool handleMoveMouseEvent(QObject* obj, QMouseEvent* event);
-    void startMove(const QPoint& globalPos);
-    void updateMove(const QPoint& globalPos);
-    void scheduleMoveUpdate(const QPoint& globalPos);
+    void startMove(const QPoint& globalPos, const QPoint& localPos = QPoint());
+    void updateMove(const QPoint& globalPos, const QPoint& localPos = QPoint());
+    void scheduleMoveUpdate(const QPoint& globalPos, const QPoint& localPos = QPoint());
     void finishMove(bool persist);
+    static QPoint absorbMoveCatchup(QPoint rawDelta, QPoint& uncommitted);
+    void enterDragOverlay();
+    void leaveDragOverlay();
+    int osdWidth() const;
+    int osdHeight() const;
+    void setOsdSize(int w, int h);
 
     // Update m_labelName text based on progressLabelMode + cached track info.
     void refreshNameLabel();
