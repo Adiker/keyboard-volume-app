@@ -1877,7 +1877,11 @@ bool OSDWindow::handleMoveMouseEvent(QObject* obj, QMouseEvent* event)
         }
         if (event->type() == QEvent::MouseButtonRelease && event->button() == Qt::LeftButton)
         {
-            updateMove(event->globalPosition().toPoint(), resizeLocalPos(obj, event));
+            // Wayland button events can retain surface-local coordinates from
+            // before the overlay was committed. Motion events carry the last
+            // actual pointer position; do not reinterpret a stale release.
+            if (!m_dragOverlayActive)
+                updateMove(event->globalPosition().toPoint(), resizeLocalPos(obj, event));
             finishMove(true);
             return true;
         }

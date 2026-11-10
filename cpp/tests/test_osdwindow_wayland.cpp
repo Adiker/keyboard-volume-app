@@ -106,9 +106,12 @@ TEST(OSDWindowWayland, StaticContentMoveRepaintsWholeSurfaceAtFrameCadence)
                         window.mapToGlobal(initialPanel + grabLocal + QPoint(150, 0)), Qt::NoButton,
                         Qt::LeftButton, Qt::NoModifier);
     QApplication::sendEvent(&window, &pending);
-    QMouseEvent release(QEvent::MouseButtonRelease, initialPanel + grabLocal + QPoint(160, 0),
-                        window.mapToGlobal(initialPanel + grabLocal + QPoint(160, 0)),
-                        Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    QMouseEvent lastMove(QEvent::MouseMove, initialPanel + grabLocal + QPoint(160, 0),
+                         window.mapToGlobal(initialPanel + grabLocal + QPoint(160, 0)),
+                         Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(&window, &lastMove);
+    QMouseEvent release(QEvent::MouseButtonRelease, grabLocal, start, Qt::LeftButton, Qt::NoButton,
+                        Qt::NoModifier);
     QApplication::sendEvent(&window, &release);
     EXPECT_FALSE(window.m_dragOverlayActive);
     EXPECT_EQ(layer->margins().left(), osd.x + 160);
@@ -244,6 +247,45 @@ TEST(OSDWindowWayland, ImmediateReleaseBeforeOverlayFrameKeepsPosition)
     QTest::qWait(100);
     EXPECT_EQ(window.m_currentAbsPos, initial);
     EXPECT_FALSE(window.m_dragOverlayActive);
+}
+
+TEST(OSDWindowWayland, ClickAfterOverlayReadyKeepsPosition)
+{
+    if (!qEnvironmentVariableIsSet("KVA_TEST_NATIVE_WAYLAND") ||
+        QGuiApplication::platformName() != QLatin1String("wayland"))
+        GTEST_SKIP() << "Requires a native layer-shell compositor.";
+    QTemporaryDir tmp;
+    Config config(tmp.path());
+    OsdConfig osd = config.osd();
+    osd.x = 300;
+    osd.y = 300;
+    osd.timeoutMs = 60000;
+    osd.positionControlsEnabled = true;
+    osd.positionDragEnabled = true;
+    config.setOsd(osd);
+    g_nativeWayland = true;
+    PaintCountingOSD window(&config);
+    window.initLayerShell();
+    window.showVolume(QStringLiteral("app"), 0.5);
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    QTest::qWait(50);
+    const QPoint initial = window.m_currentAbsPos;
+    const QPoint local = window.rect().center();
+    const QPoint global = window.mapToGlobal(local);
+    QMouseEvent press(QEvent::MouseButtonPress, local, global, Qt::LeftButton, Qt::LeftButton,
+                      Qt::NoModifier);
+    QApplication::sendEvent(&window, &press);
+    ASSERT_TRUE(window.m_dragOverlayActive);
+    QTRY_VERIFY_WITH_TIMEOUT(window.m_dragOverlayReady, 2000);
+    // Wayland can deliver a release with the last pointer coordinates from
+    // before the surface grew, even though no motion followed the press.
+    QMouseEvent release(QEvent::MouseButtonRelease, local, global, Qt::LeftButton, Qt::NoButton,
+                        Qt::NoModifier);
+    QApplication::sendEvent(&window, &release);
+    EXPECT_FALSE(window.m_dragOverlayActive);
+    EXPECT_EQ(window.m_currentAbsPos, initial);
+    EXPECT_EQ(config.osd().x, osd.x);
+    EXPECT_EQ(config.osd().y, osd.y);
 }
 
 TEST(OSDWindowWayland, VolumeRefreshDuringDragPreservesOverlay)
