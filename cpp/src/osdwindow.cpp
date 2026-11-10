@@ -501,6 +501,13 @@ void OSDWindow::paintEvent(QPaintEvent* event)
     const QRect bg = m_panel ? m_panel->geometry() : rect();
     painter.drawRoundedRect(bg, scaled(8), scaled(8));
     QWidget::paintEvent(event);
+    if (m_dragOverlayActive && !m_dragOverlayFrameRequested && windowHandle())
+    {
+        // Wait for a frame opportunity after painting the enlarged surface.
+        // Until then pointer coordinates may still belong to the old surface.
+        m_dragOverlayFrameRequested = true;
+        windowHandle()->requestUpdate();
+    }
 }
 
 void OSDWindow::hideEvent(QHideEvent* event)
@@ -788,7 +795,7 @@ QPoint OSDWindow::layerShellAbsolutePos() const
     return m_currentAbsPos;
 }
 
-void OSDWindow::positionWindow(int absX, int absY)
+void OSDWindow::positionWindow(int absX, int absY, bool showWindow)
 {
     auto [x, y] = clampedPos(absX, absY);
     m_currentAbsPos = QPoint(x, y);
@@ -815,7 +822,7 @@ void OSDWindow::positionWindow(int absX, int absY)
         }
         m_lsWindow->setMargins(QMargins(relX, relY, 0, 0));
 
-        if (!m_resizing)
+        if (showWindow && !m_resizing)
         {
             show();
             raise();
@@ -825,7 +832,7 @@ void OSDWindow::positionWindow(int absX, int absY)
 #endif
     move(x, y);
     setGeometry(x, y, width(), height());
-    if (!m_resizing)
+    if (showWindow && !m_resizing)
     {
         show();
         raise();
@@ -1413,6 +1420,16 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
 {
     if (obj == windowHandle())
     {
+        if (event->type() == QEvent::UpdateRequest && m_dragOverlayActive &&
+            m_dragOverlayFrameRequested && !m_dragOverlayReady)
+        {
+            // The first opportunity can belong to a frame requested before
+            // the overlay was painted. Wait for the following opportunity.
+            if (++m_dragOverlayFrameCount < 2)
+                windowHandle()->requestUpdate();
+            else
+                m_dragOverlayReady = true;
+        }
         // Let QWidgetWindow route pointer events to the actual child widget
         // first, preserving seek/media controls and resize hit-testing.
         return QWidget::eventFilter(obj, event);
@@ -1903,6 +1920,9 @@ void OSDWindow::enterDragOverlay()
 
     const QRect geo = m_moveDragScreen->geometry();
     m_dragOverlayActive = true;
+    m_dragOverlayReady = false;
+    m_dragOverlayFrameRequested = false;
+    m_dragOverlayFrameCount = 0;
     m_lsWindow->setAnchors(LayerShellQt::Window::Anchors(
         LayerShellQt::Window::AnchorTop | LayerShellQt::Window::AnchorBottom |
         LayerShellQt::Window::AnchorLeft | LayerShellQt::Window::AnchorRight));
@@ -1924,11 +1944,14 @@ void OSDWindow::leaveDragOverlay()
 
     const QPoint abs = m_currentAbsPos;
     m_dragOverlayActive = false;
+    m_dragOverlayReady = false;
+    m_dragOverlayFrameRequested = false;
+    m_dragOverlayFrameCount = 0;
     m_lsWindow->setAnchors(LayerShellQt::Window::Anchors(LayerShellQt::Window::AnchorTop |
                                                          LayerShellQt::Window::AnchorLeft));
     m_panel->move(0, 0);
     setFixedSize(m_panel->size());
-    positionWindow(abs.x(), abs.y());
+    positionWindow(abs.x(), abs.y(), false);
 #endif
 }
 
@@ -1967,6 +1990,7 @@ void OSDWindow::updateMove(const QPoint& eventGlobalPos, const QPoint& localPos)
 #ifdef HAVE_LAYER_SHELL_QT
     if (m_dragOverlayActive && m_panel && m_moveDragScreen)
     {
+        if (!m_dragOverlayReady) return;
         // Fullscreen stable surface: pointer locals are screen-relative, so the
         // grab point stays under the cursor without margin catch-up fights.
         const QRect geo = m_moveDragScreen->geometry();
@@ -2014,6 +2038,7 @@ void OSDWindow::finishMove(bool persist)
     if (!m_moving) return;
 
     m_moving = false;
+    if (!persist && m_dragOverlayActive) m_currentAbsPos = m_moveStartAbsPos;
     leaveDragOverlay();
     releaseMouse();
     m_moveDragScreen = nullptr;

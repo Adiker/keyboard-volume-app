@@ -218,6 +218,9 @@ class OSDWindow : public QWidget
     QPoint m_moveUncommitted;
     QPoint m_moveGrabLocal;
     bool m_dragOverlayActive = false;
+    bool m_dragOverlayReady = false;
+    bool m_dragOverlayFrameRequested = false;
+    int m_dragOverlayFrameCount = 0;
 
     // ── Progress row ─────────────────────────────────────────────────────────
     QWidget* m_progressRow = nullptr; // container — show/hide as a unit
@@ -268,7 +271,7 @@ class OSDWindow : public QWidget
     void applyScaleFonts();
     void applyResizeFontsFast(double scale);
     void enterResizeStyleMode();
-    void positionWindow(int absX, int absY);
+    void positionWindow(int absX, int absY, bool showWindow = true);
     void positionWindowDuringMove(int absX, int absY);
     void positionWindowDuringResize(int absX, int absY, int w, int h);
     std::pair<int, int> absPos() const;
