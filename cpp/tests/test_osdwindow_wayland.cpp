@@ -7,6 +7,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QTest>
 #include <QWindow>
 
@@ -243,6 +244,68 @@ TEST(OSDWindowWayland, ImmediateReleaseBeforeOverlayFrameKeepsPosition)
     QTest::qWait(100);
     EXPECT_EQ(window.m_currentAbsPos, initial);
     EXPECT_FALSE(window.m_dragOverlayActive);
+}
+
+TEST(OSDWindowWayland, VolumeRefreshDuringDragPreservesOverlay)
+{
+    if (!qEnvironmentVariableIsSet("KVA_TEST_NATIVE_WAYLAND") ||
+        QGuiApplication::platformName() != QLatin1String("wayland"))
+        GTEST_SKIP() << "Requires a native layer-shell compositor.";
+
+    QTemporaryDir tmp;
+    Config config(tmp.path());
+    OsdConfig osd = config.osd();
+    osd.x = 300;
+    osd.y = 300;
+    osd.timeoutMs = 100;
+    osd.positionControlsEnabled = true;
+    osd.positionDragEnabled = true;
+    config.setOsd(osd);
+    g_nativeWayland = true;
+    PaintCountingOSD window(&config);
+    window.initLayerShell();
+    window.showVolume(QStringLiteral("app"), 0.5);
+    ASSERT_TRUE(QTest::qWaitForWindowExposed(&window));
+    const QPoint grab(window.osdWidth() / 2, window.osdHeight() / 2);
+    const QPoint original = window.m_currentAbsPos;
+    window.startMove(window.mapToGlobal(grab), grab);
+    ASSERT_TRUE(window.m_dragOverlayActive);
+    QTRY_VERIFY_WITH_TIMEOUT(window.m_dragOverlayReady, 2000);
+    const QPoint pointer = window.m_panel->pos() + grab + QPoint(40, 0);
+    window.updateMove(window.mapToGlobal(pointer), pointer);
+    const QPoint moved = window.m_currentAbsPos;
+    ASSERT_EQ(moved, original + QPoint(40, 0));
+    const QPoint panel = window.m_panel->pos();
+    auto* layer = LayerShellQt::Window::get(window.windowHandle());
+    ASSERT_NE(layer, nullptr);
+
+    window.showMediaAction(QStringLiteral("Next"));
+    EXPECT_EQ(window.m_currentAbsPos, moved);
+    EXPECT_EQ(window.m_panel->pos(), panel);
+    EXPECT_EQ(layer->margins(), QMargins());
+    EXPECT_FALSE(window.m_hideTimer->isActive());
+
+    window.showVolume(QStringLiteral("app"), 0.7);
+    EXPECT_EQ(window.m_currentAbsPos, moved);
+    EXPECT_EQ(window.m_panel->pos(), panel);
+    EXPECT_EQ(layer->margins(), QMargins());
+    EXPECT_FALSE(window.m_hideTimer->isActive());
+    QTest::qWait(150);
+    EXPECT_TRUE(window.isVisible());
+    EXPECT_TRUE(window.m_dragOverlayActive);
+    const QPoint nextPointer = pointer + QPoint(10, 0);
+    window.updateMove(window.mapToGlobal(nextPointer), nextPointer);
+    EXPECT_EQ(window.m_currentAbsPos, moved + QPoint(10, 0));
+    window.finishMove(true);
+    EXPECT_EQ(window.m_currentAbsPos, moved + QPoint(10, 0));
+    EXPECT_EQ(config.osd().x, osd.x + 50);
+
+    window.startMove(window.mapToGlobal(grab), grab);
+    ASSERT_TRUE(window.m_dragOverlayActive);
+    window.showPreview(osd.screen, osd.x, osd.y, 1000);
+    EXPECT_FALSE(window.m_moving);
+    EXPECT_FALSE(window.m_dragOverlayActive);
+    EXPECT_TRUE(window.isVisible());
 }
 
 int main(int argc, char** argv)

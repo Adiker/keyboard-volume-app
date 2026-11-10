@@ -797,6 +797,10 @@ QPoint OSDWindow::layerShellAbsolutePos() const
 
 void OSDWindow::positionWindow(int absX, int absY, bool showWindow)
 {
+    // Content refreshes may request the saved idle position during a drag.
+    // Keep the fullscreen surface and the live panel position intact.
+    if (m_dragOverlayActive) return;
+
     auto [x, y] = clampedPos(absX, absY);
     m_currentAbsPos = QPoint(x, y);
 
@@ -945,11 +949,13 @@ bool OSDWindow::handleResizeEvent(QObject* obj, QEvent* event)
     {
         return handleResizeMouseEvent(obj, static_cast<QMouseEvent*>(event));
     }
-    if (m_resizing && (event->type() == QEvent::Hide || event->type() == QEvent::UngrabMouse))
+    const bool cancelled =
+        event->type() == QEvent::UngrabMouse || (event->type() == QEvent::Hide && obj == this);
+    if (m_resizing && cancelled)
     {
         finishResize(false);
     }
-    if (m_moving && (event->type() == QEvent::Hide || event->type() == QEvent::UngrabMouse))
+    if (m_moving && cancelled)
     {
         finishMove(false);
     }
@@ -1270,7 +1276,7 @@ void OSDWindow::persistPosition(const QPoint& absPos)
 
 void OSDWindow::restartHideTimerAfterResize()
 {
-    if (!isVisible()) return;
+    if (!isVisible() || m_moving) return;
     if (m_previewMode)
     {
         if (!m_previewHeld) m_hideTimer->start(m_previewTimeoutMs);
@@ -2073,7 +2079,7 @@ void OSDWindow::showVolume(const QString& appName, double volume, bool muted)
     applySize();
     auto [absX, absY] = absPos();
     positionWindow(absX, absY);
-    m_hideTimer->start(osd.timeoutMs);
+    if (!m_moving) m_hideTimer->start(osd.timeoutMs);
     updateLayoutKeysActive();
     updatePositionButtonsVisibility();
 }
@@ -2092,13 +2098,14 @@ void OSDWindow::showMediaAction(const QString& actionLabel)
     auto [absX, absY] = absPos();
     positionWindow(absX, absY);
     OsdConfig osd = m_config->osd();
-    m_hideTimer->start(osd.timeoutMs);
+    if (!m_moving) m_hideTimer->start(osd.timeoutMs);
     updateLayoutKeysActive();
     updatePositionButtonsVisibility();
 }
 
 void OSDWindow::showPreview(int screenIdx, int x, int y, int timeoutMs)
 {
+    if (m_moving) finishMove(false);
     m_mediaActionMode = false;
     m_previewMode = true;
     m_previewHeld = false;
