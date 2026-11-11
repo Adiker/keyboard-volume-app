@@ -517,6 +517,11 @@ void SettingsDialog::buildUi()
     m_autoProfile = new QCheckBox(::tr(QStringLiteral("settings.auto_profile_switch")), this);
     m_autoProfile->setChecked(m_config->autoProfileSwitch());
     form->addRow(QString(), m_autoProfile);
+    m_focusActiveApp = new QCheckBox(::tr(QStringLiteral("settings.focus_active_app")), this);
+    m_focusActiveApp->setChecked(m_config->focusUpdatesActiveApp());
+    m_focusActiveApp->setEnabled(m_autoProfile->isChecked());
+    connect(m_autoProfile, &QCheckBox::toggled, m_focusActiveApp, &QCheckBox::setEnabled);
+    form->addRow(QString(), m_focusActiveApp);
 
     layout->addLayout(form);
 
@@ -1102,6 +1107,7 @@ void SettingsDialog::saveAndAccept()
 
     m_config->setVolumeStep(m_step->value());
     m_config->setAutoProfileSwitch(m_autoProfile->isChecked());
+    m_config->setFocusUpdatesActiveApp(m_focusActiveApp->isChecked());
 
     // Persist media hotkeys (global). Note: we do not validate conflicts with
     // profile bindings here — profile resolution is checked first at dispatch

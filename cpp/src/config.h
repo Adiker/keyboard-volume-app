@@ -418,6 +418,8 @@ class Config
 
     // Auto-profile switching: when enabled, focused window determines the active
     // audio target. Disabled by default (off).
+    bool focusUpdatesActiveApp() const;
+    void setFocusUpdatesActiveApp(bool enabled);
     bool autoProfileSwitch() const;
     void setAutoProfileSwitch(bool enabled);
 

@@ -191,7 +191,10 @@ sanitized. Scenes and ducking intentionally retain their own configured range.
 `sink` is a stable PulseAudio sink name; an empty value uses the system default.
 
 `auto_profile_switch` enables focused-window selection globally and defaults to
-`false`; each profile's `auto_switch` defaults to `true`. `media_hotkeys` has
+`false`; each profile's `auto_switch` defaults to `true`. The optional
+`focus_updates_active_app` (default `false`) additionally updates the tray and
+D-Bus active app immediately for matching profiles. It is effective only when
+`auto_profile_switch` is enabled and does not replace the saved default app. `media_hotkeys` has
 `play_pause`, `next`, `previous` and `stop` bindings, all unassigned by
 default. A matching profile binding wins over a media binding; otherwise the
 media action is sent to the selected MPRIS player.

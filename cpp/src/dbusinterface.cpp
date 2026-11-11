@@ -44,21 +44,22 @@ DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, QObje
         reloadSinks();
     }
 
-    connect(m_volumeCtrl, &VolumeController::volumeChanged, this,
-            [this](const QString& app, double vol, bool muted)
-            {
-                if (app != m_activeApp) return;
-                if (qAbs(m_volume - vol) > 0.0001)
-                {
-                    m_volume = vol;
-                    emit volumeChanged(m_volume);
-                }
-                if (m_muted != muted)
-                {
-                    m_muted = muted;
-                    emit mutedChanged(m_muted);
-                }
-            });
+    const auto updateVolume = [this](const QString& app, double vol, bool muted)
+    {
+        if (app != m_activeApp) return;
+        if (qAbs(m_volume - vol) > 0.0001)
+        {
+            m_volume = vol;
+            emit volumeChanged(m_volume);
+        }
+        if (m_muted != muted)
+        {
+            m_muted = muted;
+            emit mutedChanged(m_muted);
+        }
+    };
+    connect(m_volumeCtrl, &VolumeController::volumeChanged, this, updateVolume);
+    connect(m_volumeCtrl, &VolumeController::volumeQueriedSilently, this, updateVolume);
 
     connect(m_volumeCtrl, &VolumeController::appsReady, this,
             [this](const QList<AudioApp>& apps)
@@ -76,6 +77,7 @@ DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, QObje
 
 void DbusInterface::onActiveAppChanged(const QString& name)
 {
+    m_focusedAppActive = false;
     if (m_activeApp != name)
     {
         m_activeApp = name;
@@ -86,6 +88,30 @@ void DbusInterface::onActiveAppChanged(const QString& name)
     reloadProfiles();
 }
 
+void DbusInterface::setFocusedApp(const QString& name)
+{
+    const QString target = name.isEmpty() ? m_config->defaultProfile().primaryApp() : name;
+    m_focusedAppActive = !name.isEmpty();
+    if (m_activeApp != target)
+    {
+        m_activeApp = target;
+        m_volume = 0.0;
+        m_muted = false;
+        emit activeAppChanged(m_activeApp);
+    }
+    if (!target.isEmpty()) m_volumeCtrl->queryVolumeSilently(target);
+}
+
+Profile DbusInterface::activeProfile() const
+{
+    if (m_focusedAppActive)
+    {
+        const Profile p = m_config->findProfileByApp(m_activeApp);
+        if (!p.id.isEmpty()) return p;
+    }
+    return m_config->defaultProfile();
+}
+
 void DbusInterface::setVolume(double vol)
 {
     vol = std::clamp(vol, 0.0, 1.0);
@@ -93,8 +119,8 @@ void DbusInterface::setVolume(double vol)
     // Absolute set — the cached m_volume can be stale (e.g. on startup before
     // the first volumeChanged signal, or after an external pavucontrol change),
     // so computing a delta against it would overshoot or undershoot the target.
-    const Profile p = m_config->defaultProfile();
-    applyProfileSink(p);
+    const Profile p = activeProfile();
+    applyActiveProfileSink(p);
     m_volumeCtrl->setVolume(m_activeApp, vol, p.volMin / 100.0, p.volMax / 100.0);
 }
 
@@ -103,23 +129,25 @@ void DbusInterface::setMuted(bool muted)
     if (m_activeApp.isEmpty()) return;
     // Absolute set — toggleMute() would flip whatever the real state is when
     // m_muted has drifted from the live sink-input (pavucontrol, PA reconnect).
-    applyProfileSink(m_config->defaultProfile());
+    applyActiveProfileSink(activeProfile());
     m_volumeCtrl->setMuted(m_activeApp, muted);
 }
 
 void DbusInterface::setActiveApp(const QString& name)
 {
-    if (m_activeApp == name) return;
+    if (m_activeApp == name && !m_focusedAppActive) return;
     if (!m_apps.contains(name) && !m_apps.isEmpty())
     {
         qDebug() << "[DbusInterface] unknown app:" << name;
         return;
     }
+    m_focusedAppActive = false;
     m_config->setSelectedApp(name);
     m_activeApp = name;
     m_volume = 0.0;
     m_muted = false;
     emit activeAppChanged(m_activeApp);
+    emit manualAppSelected(name);
     reloadProfiles();
 }
 
@@ -189,9 +217,9 @@ void DbusInterface::VolumeUp()
 {
     if (m_activeApp.isEmpty()) return;
     double step = m_volumeStep / 100.0;
-    // Bare D-Bus methods act on the default profile — respect its volume limits.
-    const Profile p = m_config->defaultProfile();
-    applyProfileSink(p);
+    // Use the focused profile in immediate mode, otherwise the default profile.
+    const Profile p = activeProfile();
+    applyActiveProfileSink(p);
     m_volumeCtrl->changeVolume(m_activeApp, step, p.volMin / 100.0, p.volMax / 100.0);
 }
 
@@ -199,31 +227,31 @@ void DbusInterface::VolumeDown()
 {
     if (m_activeApp.isEmpty()) return;
     double step = m_volumeStep / 100.0;
-    const Profile p = m_config->defaultProfile();
-    applyProfileSink(p);
+    const Profile p = activeProfile();
+    applyActiveProfileSink(p);
     m_volumeCtrl->changeVolume(m_activeApp, -step, p.volMin / 100.0, p.volMax / 100.0);
 }
 
 void DbusInterface::ToggleMute()
 {
     if (m_activeApp.isEmpty()) return;
-    applyProfileSink(m_config->defaultProfile());
+    applyActiveProfileSink(activeProfile());
     m_volumeCtrl->toggleMute(m_activeApp);
 }
 
 void DbusInterface::SetMute(bool muted)
 {
     if (m_activeApp.isEmpty()) return;
-    applyProfileSink(m_config->defaultProfile());
+    applyActiveProfileSink(activeProfile());
     m_volumeCtrl->setMuted(m_activeApp, muted);
 }
 
 void DbusInterface::ToggleDucking()
 {
-    const Profile p = m_config->defaultProfile();
-    if (p.primaryApp().isEmpty() || !p.ducking.enabled) return;
-    applyProfileSink(p);
-    m_volumeCtrl->toggleDucking(p.primaryApp(), p.ducking.volume / 100.0);
+    const Profile p = activeProfile();
+    if (m_activeApp.isEmpty() || !p.ducking.enabled) return;
+    applyActiveProfileSink(p);
+    m_volumeCtrl->toggleDucking(m_activeApp, p.ducking.volume / 100.0);
 }
 
 void DbusInterface::RefreshApps()
@@ -346,6 +374,13 @@ void DbusInterface::applyProfileSink(const Profile& p)
     }
 }
 
+void DbusInterface::applyActiveProfileSink(const Profile& p)
+{
+    applyProfileSink(p);
+    if (m_focusedAppActive && !m_activeApp.isEmpty() && !p.sink.isEmpty())
+        m_volumeCtrl->setProfileAppSink(p.id, m_activeApp, p.sink);
+}
+
 void DbusInterface::reloadProfiles()
 {
     QVariantList fresh = buildProfilesProp();
@@ -456,7 +491,7 @@ void DbusInterface::ApplyScene(const QString& sceneId)
 void DbusInterface::ShowVolume()
 {
     if (m_activeApp.isEmpty()) return;
-    applyProfileSink(m_config->defaultProfile());
+    applyActiveProfileSink(activeProfile());
     m_volumeCtrl->queryVolume(m_activeApp);
 }
 
