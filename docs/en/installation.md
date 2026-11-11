@@ -171,9 +171,11 @@ positioning continues to work. Do not set
 and other windows as well. OSD edge/corner resizing is implemented inside the
 app and works on both paths.
 
-Focused-window profile switching uses the native
-`zwlr_foreign_toplevel_management_unstable_v1` protocol where available and
-falls back to X11/XWayland via XCB.
+Focused-window profile switching uses a KWin script on KDE Wayland, then the
+`zwlr_foreign_toplevel_management_unstable_v1` protocol where available, and
+falls back to X11/XWayland via XCB. KWin startup is confirmed before the tracker
+is accepted; failures are logged. The XCB fallback sees X11/XWayland windows,
+not native Wayland windows.
 
 ## Testing and maintenance
 

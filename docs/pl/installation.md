@@ -167,9 +167,11 @@ globalnie `QT_WAYLAND_SHELL_INTEGRATION=layer-shell`, bo zmieniłoby to także
 dialogi i pozostałe okna. Zmiana rozmiaru OSD jest obsługiwana wewnątrz aplikacji
 i działa na obu ścieżkach.
 
-Przełączanie profili według aktywnego okna używa
-`zwlr_foreign_toplevel_management_unstable_v1`, jeśli jest dostępne, a w
-pozostałych przypadkach przechodzi przez X11/XWayland i XCB.
+Przełączanie profili według aktywnego okna używa skryptu KWin na KDE Wayland,
+następnie protokołu `zwlr_foreign_toplevel_management_unstable_v1`, jeśli jest
+dostępny, a w pozostałych przypadkach X11/XWayland i XCB. Uruchomienie skryptu
+KWin musi zostać potwierdzone; błędy są zapisywane w logu. Fallback XCB widzi
+okna X11/XWayland, ale nie natywne okna Wayland.
 
 ## Testy i utrzymanie
 

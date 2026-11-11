@@ -319,3 +319,14 @@ if(ENABLE_INPUT_STARTUP_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/run_inputstartup_test.sh $<TARGET_FILE:test_inputstartup>)
     set_tests_properties(test_inputstartup PROPERTIES TIMEOUT 30 LABELS "integration;input")
 endif()
+
+# KWin focus tracker integration on a private session bus with a fake KWin.
+add_executable(test_windowtracker test_windowtracker.cpp ../src/windowtracker.cpp)
+target_include_directories(test_windowtracker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_link_libraries(test_windowtracker PRIVATE GTest::gtest Qt6::Core Qt6::DBus Qt6::Test PkgConfig::XCB)
+add_test(NAME test_windowtracker COMMAND dbus-run-session -- $<TARGET_FILE:test_windowtracker>)
+
+# Built on request for a live, opt-in KWin integration check; not run by CTest.
+add_executable(kwin_tracker_live EXCLUDE_FROM_ALL kwin_tracker_live.cpp ../src/windowtracker.cpp)
+target_include_directories(kwin_tracker_live PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_link_libraries(kwin_tracker_live PRIVATE Qt6::Core Qt6::DBus PkgConfig::XCB)
