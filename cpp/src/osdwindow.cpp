@@ -188,23 +188,30 @@ void OSDWindow::buildUi()
     setWindowFlags(flags);
     setAttribute(Qt::WA_TranslucentBackground);
     setMouseTracking(true);
+
+    m_panel = new QWidget(this);
+    m_panel->setObjectName(QStringLiteral("osd_panel"));
+    m_panel->setAttribute(Qt::WA_TranslucentBackground);
+    m_panel->setMouseTracking(true);
+    m_panel->setFixedSize(scaled(OSD_W), scaled(OSD_H_BASE));
+    m_panel->move(0, 0);
     setFixedSize(scaled(OSD_W), scaled(OSD_H_BASE));
 
-    m_mainLayout = new QVBoxLayout(this);
+    m_mainLayout = new QVBoxLayout(m_panel);
     m_mainLayout->setContentsMargins(scaled(10), scaled(8), scaled(10), scaled(8));
     m_mainLayout->setSpacing(scaled(4));
 
     // ── Volume row ────────────────────────────────────────────────────────────
-    m_labelName = new MarqueeLabel(this);
+    m_labelName = new MarqueeLabel(m_panel);
     m_labelName->setAlignment(Qt::AlignCenter);
     m_labelName->setObjectName(QStringLiteral("name_label"));
 
-    m_bar = new QProgressBar(this);
+    m_bar = new QProgressBar(m_panel);
     m_bar->setRange(0, 100);
     m_bar->setTextVisible(false);
     m_bar->setFixedHeight(scaled(10));
 
-    m_labelPct = new QLabel(this);
+    m_labelPct = new QLabel(m_panel);
     m_labelPct->setAlignment(Qt::AlignCenter);
     m_labelPct->setObjectName(QStringLiteral("pct_label"));
 
@@ -213,7 +220,7 @@ void OSDWindow::buildUi()
     m_mainLayout->addWidget(m_labelPct);
 
     // ── Progress row (hidden by default) ─────────────────────────────────────
-    m_progressRow = new QWidget(this);
+    m_progressRow = new QWidget(m_panel);
     m_progressRow->setVisible(false);
 
     m_progressOuterLayout = new QHBoxLayout(m_progressRow);
@@ -287,10 +294,10 @@ void OSDWindow::buildUi()
     m_mainLayout->addWidget(m_progressRow);
 
     // ── Position controls (corner overlay — not in layout flow) ─────────────
-    m_btnPosUp = new QPushButton(QStringLiteral("\u2191"), this);
-    m_btnPosLeft = new QPushButton(QStringLiteral("\u2190"), this);
-    m_btnPosDown = new QPushButton(QStringLiteral("\u2193"), this);
-    m_btnPosRight = new QPushButton(QStringLiteral("\u2192"), this);
+    m_btnPosUp = new QPushButton(QStringLiteral("\u2191"), m_panel);
+    m_btnPosLeft = new QPushButton(QStringLiteral("\u2190"), m_panel);
+    m_btnPosDown = new QPushButton(QStringLiteral("\u2193"), m_panel);
+    m_btnPosRight = new QPushButton(QStringLiteral("\u2192"), m_panel);
     for (auto* btn : {m_btnPosUp, m_btnPosLeft, m_btnPosDown, m_btnPosRight})
     {
         btn->setObjectName(QStringLiteral("pos_btn"));
@@ -491,8 +498,16 @@ void OSDWindow::paintEvent(QPaintEvent* event)
     painter.setRenderHint(QPainter::Antialiasing);
     painter.setPen(Qt::NoPen);
     painter.setBrush(m_bgColor);
-    painter.drawRoundedRect(rect(), scaled(8), scaled(8));
+    const QRect bg = m_panel ? m_panel->geometry() : rect();
+    painter.drawRoundedRect(bg, scaled(8), scaled(8));
     QWidget::paintEvent(event);
+    if (m_dragOverlayActive && !m_dragOverlayFrameRequested && windowHandle())
+    {
+        // Wait for a frame opportunity after painting the enlarged surface.
+        // Until then pointer coordinates may still belong to the old surface.
+        m_dragOverlayFrameRequested = true;
+        windowHandle()->requestUpdate();
+    }
 }
 
 void OSDWindow::hideEvent(QHideEvent* event)
@@ -630,7 +645,7 @@ void OSDWindow::rescaleDuringResize(int absX, int absY, int newW, int newH)
     }
 
     const bool sizeChanged = size() != QSize(newW, newH);
-    if (sizeChanged) setFixedSize(newW, newH);
+    if (sizeChanged) setOsdSize(newW, newH);
     const bool posChanged = m_resizeLastAppliedPos != QPoint(absX, absY);
     if (posChanged || sizeChanged) positionWindowDuringResize(absX, absY, newW, newH);
     applyResizeFontsFast(activeScale());
@@ -645,10 +660,10 @@ void OSDWindow::applySize()
 
 void OSDWindow::applySizeAt(int absX, int absY, bool restartHideTimer)
 {
-    const QSize oldSize = size();
+    const QSize oldSize(osdWidth(), osdHeight());
     const int h = currentBaseHeight();
-    setFixedSize(scaled(OSD_W), scaled(h));
-    const bool sizeChanged = oldSize != size();
+    setOsdSize(scaled(OSD_W), scaled(h));
+    const bool sizeChanged = oldSize != QSize(osdWidth(), osdHeight());
 
 #ifdef HAVE_LAYER_SHELL_QT
     if (m_layerShellActive && m_lsWindow && isVisible())
@@ -725,14 +740,30 @@ std::pair<int, int> OSDWindow::absPos() const
     return {geo.x() + osd.x, geo.y() + osd.y};
 }
 
-// Clamp absX/absY so the OSD window (width() × height()) stays fully within
+int OSDWindow::osdWidth() const
+{
+    return m_panel ? m_panel->width() : width();
+}
+
+int OSDWindow::osdHeight() const
+{
+    return m_panel ? m_panel->height() : height();
+}
+
+void OSDWindow::setOsdSize(int w, int h)
+{
+    if (m_panel) m_panel->setFixedSize(w, h);
+    if (!m_dragOverlayActive) setFixedSize(w, h);
+}
+
+// Clamp absX/absY so the OSD window (osdWidth × osdHeight) stays fully within
 // the available geometry of the screen that contains the requested position.
 std::pair<int, int> OSDWindow::clampedPosOnScreen(int absX, int absY, QScreen* screen) const
 {
     if (!screen) return {absX, absY};
 
-    const int w = width();
-    const int h = height();
+    const int w = osdWidth();
+    const int h = osdHeight();
     const QRect avail = screen->availableGeometry();
     const int maxX = std::max(avail.left(), avail.right() - w + 1);
     const int maxY = std::max(avail.top(), avail.bottom() - h + 1);
@@ -743,8 +774,8 @@ std::pair<int, int> OSDWindow::clampedPosOnScreen(int absX, int absY, QScreen* s
 
 std::pair<int, int> OSDWindow::clampedPos(int absX, int absY) const
 {
-    const int w = width();
-    const int h = height();
+    const int w = osdWidth();
+    const int h = osdHeight();
     const QPoint center(absX + w / 2, absY + h / 2);
     QScreen* screen = QApplication::screenAt(center);
     if (!screen && !QApplication::screens().isEmpty()) screen = QApplication::screens().first();
@@ -764,8 +795,12 @@ QPoint OSDWindow::layerShellAbsolutePos() const
     return m_currentAbsPos;
 }
 
-void OSDWindow::positionWindow(int absX, int absY)
+void OSDWindow::positionWindow(int absX, int absY, bool showWindow)
 {
+    // Content refreshes may request the saved idle position during a drag.
+    // Keep the fullscreen surface and the live panel position intact.
+    if (m_dragOverlayActive) return;
+
     auto [x, y] = clampedPos(absX, absY);
     m_currentAbsPos = QPoint(x, y);
 
@@ -791,7 +826,7 @@ void OSDWindow::positionWindow(int absX, int absY)
         }
         m_lsWindow->setMargins(QMargins(relX, relY, 0, 0));
 
-        if (!m_resizing)
+        if (showWindow && !m_resizing)
         {
             show();
             raise();
@@ -801,7 +836,7 @@ void OSDWindow::positionWindow(int absX, int absY)
 #endif
     move(x, y);
     setGeometry(x, y, width(), height());
-    if (!m_resizing)
+    if (showWindow && !m_resizing)
     {
         show();
         raise();
@@ -812,8 +847,8 @@ void OSDWindow::positionWindow(int absX, int absY)
 void OSDWindow::positionWindowDuringMove(int absX, int absY)
 {
     m_currentAbsPos = QPoint(absX, absY);
-    const int w = width();
-    const int h = height();
+    const int w = osdWidth();
+    const int h = osdHeight();
 
 #ifdef HAVE_LAYER_SHELL_QT
     if (m_layerShellActive && m_lsWindow)
@@ -825,6 +860,14 @@ void OSDWindow::positionWindowDuringMove(int absX, int absY)
             screen = QApplication::screenAt(center);
         }
         if (!screen && !QApplication::screens().isEmpty()) screen = QApplication::screens().first();
+
+        if (m_dragOverlayActive && m_panel && screen)
+        {
+            const QRect geo = screen->geometry();
+            m_panel->move(absX - geo.x(), absY - geo.y());
+            update();
+            return;
+        }
 
         if (screen && screen != m_lsScreen)
         {
@@ -906,11 +949,13 @@ bool OSDWindow::handleResizeEvent(QObject* obj, QEvent* event)
     {
         return handleResizeMouseEvent(obj, static_cast<QMouseEvent*>(event));
     }
-    if (m_resizing && (event->type() == QEvent::Hide || event->type() == QEvent::UngrabMouse))
+    const bool cancelled =
+        event->type() == QEvent::UngrabMouse || (event->type() == QEvent::Hide && obj == this);
+    if (m_resizing && cancelled)
     {
         finishResize(false);
     }
-    if (m_moving && (event->type() == QEvent::Hide || event->type() == QEvent::UngrabMouse))
+    if (m_moving && cancelled)
     {
         finishMove(false);
     }
@@ -973,14 +1018,15 @@ QPoint OSDWindow::resizeLocalPos(QObject* obj, QMouseEvent* event) const
 
 int OSDWindow::resizeEdgesAt(const QPoint& pos) const
 {
-    if (pos.x() < 0 || pos.y() < 0 || pos.x() >= width() || pos.y() >= height()) return EdgeNone;
+    if (pos.x() < 0 || pos.y() < 0 || pos.x() >= osdWidth() || pos.y() >= osdHeight())
+        return EdgeNone;
 
     const int margin = resizeHitMargin();
     int edges = EdgeNone;
     if (pos.x() <= margin) edges |= EdgeLeft;
-    if (pos.x() >= width() - margin) edges |= EdgeRight;
+    if (pos.x() >= osdWidth() - margin) edges |= EdgeRight;
     if (pos.y() <= margin) edges |= EdgeTop;
-    if (pos.y() >= height() - margin) edges |= EdgeBottom;
+    if (pos.y() >= osdHeight() - margin) edges |= EdgeBottom;
     return edges;
 }
 
@@ -1230,7 +1276,7 @@ void OSDWindow::persistPosition(const QPoint& absPos)
 
 void OSDWindow::restartHideTimerAfterResize()
 {
-    if (!isVisible()) return;
+    if (!isVisible() || m_moving) return;
     if (m_previewMode)
     {
         if (!m_previewHeld) m_hideTimer->start(m_previewTimeoutMs);
@@ -1380,11 +1426,15 @@ bool OSDWindow::eventFilter(QObject* obj, QEvent* event)
 {
     if (obj == windowHandle())
     {
-        if (event->type() == QEvent::UpdateRequest && m_moveFramePending)
+        if (event->type() == QEvent::UpdateRequest && m_dragOverlayActive &&
+            m_dragOverlayFrameRequested && !m_dragOverlayReady)
         {
-            m_moveFramePending = false;
-            if (m_moving && isVisible()) updateMove(m_pendingMoveGlobalPos);
-            return true;
+            // The first opportunity can belong to a frame requested before
+            // the overlay was painted. Wait for the following opportunity.
+            if (++m_dragOverlayFrameCount < 2)
+                windowHandle()->requestUpdate();
+            else
+                m_dragOverlayReady = true;
         }
         // Let QWidgetWindow route pointer events to the actual child widget
         // first, preserving seek/media controls and resize hit-testing.
@@ -1574,9 +1624,9 @@ void OSDWindow::layoutPositionButtons()
 
     // Corner placement: each arrow sits in the corner toward its snap direction.
     m_btnPosUp->setGeometry(inset, inset, btnW, btnH);
-    m_btnPosRight->setGeometry(width() - inset - btnW, inset, btnW, btnH);
-    m_btnPosLeft->setGeometry(inset, height() - inset - btnH, btnW, btnH);
-    m_btnPosDown->setGeometry(width() - inset - btnW, height() - inset - btnH, btnW, btnH);
+    m_btnPosRight->setGeometry(osdWidth() - inset - btnW, inset, btnW, btnH);
+    m_btnPosLeft->setGeometry(inset, osdHeight() - inset - btnH, btnW, btnH);
+    m_btnPosDown->setGeometry(osdWidth() - inset - btnW, osdHeight() - inset - btnH, btnW, btnH);
 
     for (auto* btn : {m_btnPosUp, m_btnPosDown, m_btnPosLeft, m_btnPosRight})
         if (btn) btn->raise();
@@ -1701,8 +1751,8 @@ void OSDWindow::snapToScreenEdge(ScreenEdge edge)
     const QRect avail = screen->availableGeometry();
     int absX = absPos.x();
     int absY = absPos.y();
-    const int w = width();
-    const int h = height();
+    const int w = osdWidth();
+    const int h = osdHeight();
 
     switch (edge)
     {
@@ -1751,7 +1801,7 @@ void OSDWindow::stepScale(double delta)
     const double next = std::clamp(current + delta, 0.5, 3.0);
     if (qFuzzyCompare(next, current)) return;
 
-    const QPoint center = m_currentAbsPos + QPoint(width() / 2, height() / 2);
+    const QPoint center = m_currentAbsPos + QPoint(osdWidth() / 2, osdHeight() / 2);
     m_previewScale = -1.0;
 
     const int newW = qRound(OSD_W * next);
@@ -1789,7 +1839,8 @@ bool OSDWindow::isMoveDragBlocked(QObject* obj) const
 bool OSDWindow::isMoveDragZone(const QPoint& localPos) const
 {
     if (!m_positionControlsEnabled || !m_positionDragEnabled || m_previewMode) return false;
-    if (localPos.x() < 0 || localPos.y() < 0 || localPos.x() >= width() || localPos.y() >= height())
+    if (localPos.x() < 0 || localPos.y() < 0 || localPos.x() >= osdWidth() ||
+        localPos.y() >= osdHeight())
         return false;
     if (resizeEdgesAt(localPos) != EdgeNone) return false;
 
@@ -1800,11 +1851,11 @@ bool OSDWindow::isMoveDragZone(const QPoint& localPos) const
         const int btnH = scaled(OSD_POS_BTN_H);
         const int pad = scaled(2);
         const QRect topLeft(inset - pad, inset - pad, btnW + 2 * pad, btnH + 2 * pad);
-        const QRect topRight(width() - inset - btnW - pad, inset - pad, btnW + 2 * pad,
+        const QRect topRight(osdWidth() - inset - btnW - pad, inset - pad, btnW + 2 * pad,
                              btnH + 2 * pad);
-        const QRect bottomLeft(inset - pad, height() - inset - btnH - pad, btnW + 2 * pad,
+        const QRect bottomLeft(inset - pad, osdHeight() - inset - btnH - pad, btnW + 2 * pad,
                                btnH + 2 * pad);
-        const QRect bottomRight(width() - inset - btnW - pad, height() - inset - btnH - pad,
+        const QRect bottomRight(osdWidth() - inset - btnW - pad, osdHeight() - inset - btnH - pad,
                                 btnW + 2 * pad, btnH + 2 * pad);
         if (topLeft.contains(localPos) || topRight.contains(localPos) ||
             bottomLeft.contains(localPos) || bottomRight.contains(localPos))
@@ -1821,12 +1872,16 @@ bool OSDWindow::handleMoveMouseEvent(QObject* obj, QMouseEvent* event)
     {
         if (event->type() == QEvent::MouseMove)
         {
-            scheduleMoveUpdate(event->globalPosition().toPoint());
+            scheduleMoveUpdate(event->globalPosition().toPoint(), resizeLocalPos(obj, event));
             return true;
         }
         if (event->type() == QEvent::MouseButtonRelease && event->button() == Qt::LeftButton)
         {
-            updateMove(event->globalPosition().toPoint());
+            // Wayland button events can retain surface-local coordinates from
+            // before the overlay was committed. Motion events carry the last
+            // actual pointer position; do not reinterpret a stale release.
+            if (!m_dragOverlayActive)
+                updateMove(event->globalPosition().toPoint(), resizeLocalPos(obj, event));
             finishMove(true);
             return true;
         }
@@ -1838,17 +1893,85 @@ bool OSDWindow::handleMoveMouseEvent(QObject* obj, QMouseEvent* event)
         const QPoint local = resizeLocalPos(obj, event);
         if (resizeEdgesAt(local) != EdgeNone) return false;
         if (!isMoveDragZone(local) || isMoveDragBlocked(obj)) return false;
-        startMove(event->globalPosition().toPoint());
+        startMove(event->globalPosition().toPoint(), local);
         return true;
     }
     return false;
 }
 
-void OSDWindow::startMove(const QPoint& globalPos)
+QPoint OSDWindow::absorbMoveCatchup(QPoint rawDelta, QPoint& uncommitted)
+{
+    auto absorbAxis = [](int raw, int& unc) -> int
+    {
+        if (raw == 0 || unc == 0) return raw;
+        // Same direction as uncommitted motion: real pointer movement.
+        if ((raw > 0) == (unc > 0)) return raw;
+        // Opposing motion: absorb as compositor catch-up under the cursor.
+        if (qAbs(raw) >= qAbs(unc))
+        {
+            const int leftover = raw + unc;
+            unc = 0;
+            return leftover;
+        }
+        unc += raw;
+        return 0;
+    };
+
+    const int dx = absorbAxis(rawDelta.x(), uncommitted.rx());
+    const int dy = absorbAxis(rawDelta.y(), uncommitted.ry());
+    return {dx, dy};
+}
+
+void OSDWindow::enterDragOverlay()
+{
+#ifdef HAVE_LAYER_SHELL_QT
+    if (!m_layerShellActive || !m_lsWindow || !m_panel || !m_moveDragScreen) return;
+    if (m_dragOverlayActive) return;
+
+    const QRect geo = m_moveDragScreen->geometry();
+    m_dragOverlayActive = true;
+    m_dragOverlayReady = false;
+    m_dragOverlayFrameRequested = false;
+    m_dragOverlayFrameCount = 0;
+    m_lsWindow->setAnchors(LayerShellQt::Window::Anchors(
+        LayerShellQt::Window::AnchorTop | LayerShellQt::Window::AnchorBottom |
+        LayerShellQt::Window::AnchorLeft | LayerShellQt::Window::AnchorRight));
+    m_lsWindow->setMargins(QMargins(0, 0, 0, 0));
+    setFixedSize(geo.size());
+    m_panel->move(m_currentAbsPos - geo.topLeft());
+    // Fullscreen locals equal panel offset + grab; reset so the first move
+    // event does not invent a huge surface-relative jump.
+    m_moveLastLocal = m_panel->pos() + m_moveGrabLocal;
+    grabMouse();
+    update();
+#endif
+}
+
+void OSDWindow::leaveDragOverlay()
+{
+#ifdef HAVE_LAYER_SHELL_QT
+    if (!m_dragOverlayActive || !m_lsWindow || !m_panel) return;
+
+    const QPoint abs = m_currentAbsPos;
+    m_dragOverlayActive = false;
+    m_dragOverlayReady = false;
+    m_dragOverlayFrameRequested = false;
+    m_dragOverlayFrameCount = 0;
+    m_lsWindow->setAnchors(LayerShellQt::Window::Anchors(LayerShellQt::Window::AnchorTop |
+                                                         LayerShellQt::Window::AnchorLeft));
+    m_panel->move(0, 0);
+    setFixedSize(m_panel->size());
+    positionWindow(abs.x(), abs.y(), false);
+#endif
+}
+
+void OSDWindow::startMove(const QPoint& globalPos, const QPoint& localPos)
 {
     finishSeeking();
     m_moving = true;
     m_moveLastAppliedPos = QPoint(-1, -1);
+    m_moveUncommitted = QPoint(0, 0);
+    m_moveGrabLocal = localPos;
     m_hideTimer->stop();
     setCursor(Qt::ClosedHandCursor);
     grabMouse();
@@ -1860,56 +1983,77 @@ void OSDWindow::startMove(const QPoint& globalPos)
 #else
     m_moveStartAbsPos = m_currentAbsPos;
 #endif
+    m_currentAbsPos = m_moveStartAbsPos;
+    m_moveLastLocal = localPos;
 
     m_moveDragScreen =
-        QApplication::screenAt(m_moveStartAbsPos + QPoint(width() / 2, height() / 2));
+        QApplication::screenAt(m_moveStartAbsPos + QPoint(osdWidth() / 2, osdHeight() / 2));
 #ifdef HAVE_LAYER_SHELL_QT
     if (!m_moveDragScreen && m_lsScreen) m_moveDragScreen = m_lsScreen;
+    if (m_layerShellActive && m_lsWindow) enterDragOverlay();
 #endif
 }
 
-void OSDWindow::updateMove(const QPoint& eventGlobalPos)
+void OSDWindow::updateMove(const QPoint& eventGlobalPos, const QPoint& localPos)
 {
-    const QPoint delta = eventGlobalPos - m_moveStartGlobal;
-    const QPoint target = m_moveStartAbsPos + delta;
+    QPoint target;
+#ifdef HAVE_LAYER_SHELL_QT
+    if (m_dragOverlayActive && m_panel && m_moveDragScreen)
+    {
+        if (!m_dragOverlayReady) return;
+        // Fullscreen stable surface: pointer locals are screen-relative, so the
+        // grab point stays under the cursor without margin catch-up fights.
+        const QRect geo = m_moveDragScreen->geometry();
+        target = geo.topLeft() + (localPos - m_moveGrabLocal);
+        m_moveLastLocal = localPos;
+    }
+    else if (m_layerShellActive && m_lsWindow)
+    {
+        // Fallback path if overlay could not be entered.
+        const QPoint rawDelta = localPos - m_moveLastLocal;
+        m_moveLastLocal = localPos;
+        const QPoint correctedDelta = absorbMoveCatchup(rawDelta, m_moveUncommitted);
+        if (correctedDelta.isNull()) return;
+        target = m_currentAbsPos + correctedDelta;
+    }
+    else
+#endif
+    {
+#ifndef HAVE_LAYER_SHELL_QT
+        Q_UNUSED(localPos);
+#endif
+        target = m_moveStartAbsPos + (eventGlobalPos - m_moveStartGlobal);
+    }
+
     auto [x, y] = m_moveDragScreen ? clampedPosOnScreen(target.x(), target.y(), m_moveDragScreen)
                                    : clampedPos(target.x(), target.y());
     if (m_moveLastAppliedPos == QPoint(x, y)) return;
 
+#ifdef HAVE_LAYER_SHELL_QT
+    if (m_layerShellActive && m_lsWindow && !m_dragOverlayActive)
+        m_moveUncommitted += QPoint(x, y) - m_currentAbsPos;
+#endif
     m_moveLastAppliedPos = QPoint(x, y);
     m_currentAbsPos = QPoint(x, y);
     positionWindowDuringMove(x, y);
-    // XWayland keeps its backing store; native Wayland repaints on each frame.
 }
 
-void OSDWindow::scheduleMoveUpdate(const QPoint& globalPos)
+void OSDWindow::scheduleMoveUpdate(const QPoint& globalPos, const QPoint& localPos)
 {
-#ifdef HAVE_LAYER_SHELL_QT
-    if (m_layerShellActive && m_lsWindow && windowHandle())
-    {
-        m_pendingMoveGlobalPos = globalPos;
-        if (!m_moveFramePending)
-        {
-            m_moveFramePending = true;
-            // Native Wayland delivers this after the previous frame callback,
-            // avoiding a second, unsynchronised application timer.
-            windowHandle()->requestUpdate();
-        }
-        return;
-    }
-#endif
-    updateMove(globalPos);
+    updateMove(globalPos, localPos);
 }
 
 void OSDWindow::finishMove(bool persist)
 {
     if (!m_moving) return;
 
-    m_moveFramePending = false;
     m_moving = false;
+    if (!persist && m_dragOverlayActive) m_currentAbsPos = m_moveStartAbsPos;
+    leaveDragOverlay();
     releaseMouse();
     m_moveDragScreen = nullptr;
     m_moveLastAppliedPos = QPoint(-1, -1);
+    m_moveUncommitted = QPoint(0, 0);
     unsetCursor();
     if (persist) persistPosition(m_currentAbsPos);
     restartHideTimerAfterResize();
@@ -1939,7 +2083,7 @@ void OSDWindow::showVolume(const QString& appName, double volume, bool muted)
     applySize();
     auto [absX, absY] = absPos();
     positionWindow(absX, absY);
-    m_hideTimer->start(osd.timeoutMs);
+    if (!m_moving) m_hideTimer->start(osd.timeoutMs);
     updateLayoutKeysActive();
     updatePositionButtonsVisibility();
 }
@@ -1954,17 +2098,18 @@ void OSDWindow::showMediaAction(const QString& actionLabel)
     if (m_progressRow) m_progressRow->hide();
     m_labelName->setText(actionLabel);
 
-    setFixedSize(scaled(OSD_W), scaled(OSD_H_BASE));
+    setOsdSize(scaled(OSD_W), scaled(OSD_H_BASE));
     auto [absX, absY] = absPos();
     positionWindow(absX, absY);
     OsdConfig osd = m_config->osd();
-    m_hideTimer->start(osd.timeoutMs);
+    if (!m_moving) m_hideTimer->start(osd.timeoutMs);
     updateLayoutKeysActive();
     updatePositionButtonsVisibility();
 }
 
 void OSDWindow::showPreview(int screenIdx, int x, int y, int timeoutMs)
 {
+    if (m_moving) finishMove(false);
     m_mediaActionMode = false;
     m_previewMode = true;
     m_previewHeld = false;
