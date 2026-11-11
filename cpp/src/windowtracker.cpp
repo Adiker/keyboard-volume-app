@@ -5,10 +5,16 @@
 #include <QDBusInterface>
 #include <QDBusMessage>
 #include <QDBusReply>
+#include <QDebug>
 #include <QDir>
 #include <QEventLoop>
 #include <QFile>
 #include <QList>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QSet>
+#include <QUuid>
+#include <QXmlStreamReader>
 #include <QString>
 #include <QTemporaryFile>
 #include <QTimer>
@@ -17,6 +23,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <optional>
 #include <cstdlib>
 
 #ifdef HAVE_WAYLAND_FOREIGN_TOPLEVEL
@@ -31,7 +38,6 @@
 
 namespace
 {
-constexpr auto KWinScriptPluginName = "keyboard-volume-app-focus-tracker";
 constexpr auto KWinTrackerObjectPath = "/org/keyboardvolumeapp/WindowTracker";
 
 class KWinFocusReceiver : public QObject
@@ -40,16 +46,27 @@ class KWinFocusReceiver : public QObject
     Q_CLASSINFO("D-Bus Interface", "org.keyboardvolumeapp.WindowTracker")
 
   public:
-    explicit KWinFocusReceiver(QObject* parent = nullptr) : QObject(parent) {}
+    explicit KWinFocusReceiver(const QString& token, QObject* parent = nullptr)
+        : QObject(parent), m_token(token)
+    {
+    }
 
   public slots:
-    Q_SCRIPTABLE void ReportFocusedApp(const QString& appId)
+    Q_SCRIPTABLE void ReportFocusedApp(const QString& appId, const QString& token)
     {
-        emit focusedAppReported(appId);
+        if (token == m_token) emit focusedAppReported(appId);
+    }
+    Q_SCRIPTABLE void TrackerReady(const QString& token)
+    {
+        emit trackerReady(token);
     }
 
   signals:
     void focusedAppReported(const QString& appId);
+    void trackerReady(const QString& token);
+
+  private:
+    QString m_token;
 };
 
 QString windowToBinary(xcb_connection_t* conn, xcb_window_t win, xcb_atom_t pidAtom)
@@ -100,11 +117,18 @@ bool probeKWinScripting()
     return scripting.isValid();
 }
 
-QString kwinFocusScriptSource()
+QString jsString(const QString& value)
+{
+    const QByteArray json = QJsonDocument(QJsonArray{value}).toJson(QJsonDocument::Compact);
+    return QString::fromUtf8(json.mid(1, json.size() - 2));
+}
+
+QString kwinFocusScriptSource(const QString& service, const QString& token)
 {
     return QStringLiteral(R"JS(
-const service = "org.keyboardvolumeapp";
+const service = %1;
 const path = "/org/keyboardvolumeapp/WindowTracker";
+const token = %2;
 const iface = "org.keyboardvolumeapp.WindowTracker";
 
 function firstText(window, names) {
@@ -133,24 +157,31 @@ function appIdForWindow(window) {
 }
 
 function report(window) {
-    callDBus(service, path, iface, "ReportFocusedApp", appIdForWindow(window));
+    callDBus(service, path, iface, "ReportFocusedApp", appIdForWindow(window), token);
 }
 
+let connected = false;
 try {
     workspace.windowActivated.connect(report);
+    connected = true;
 } catch (error) {
     try {
         workspace.clientActivated.connect(report);
+        connected = true;
     } catch (fallbackError) {
     }
 }
 
-try {
-    report(workspace.activeWindow || workspace.activeClient);
-} catch (error) {
-    report(null);
+if (connected) {
+    callDBus(service, path, iface, "TrackerReady", token);
+    try {
+        report(workspace.activeWindow || workspace.activeClient);
+    } catch (error) {
+        report(null);
+    }
 }
-)JS");
+)JS")
+        .arg(jsString(service), jsString(token));
 }
 
 #ifdef HAVE_WAYLAND_FOREIGN_TOPLEVEL
@@ -393,9 +424,12 @@ void cleanupWaylandState(WaylandState* state)
 #endif
 } // namespace
 
-WindowTracker::WindowTracker(QObject* parent) : QThread(parent)
+WindowTracker::WindowTracker(QObject* parent, const QString& serviceName, const QString& pluginName)
+    : QThread(parent), m_token(QUuid::createUuid().toString(QUuid::WithoutBraces)),
+      m_serviceName(serviceName), m_pluginName(pluginName + QLatin1Char('-') +
+                                               QUuid::createUuid().toString(QUuid::WithoutBraces))
 {
-    m_kwinReceiver = new KWinFocusReceiver(this);
+    m_kwinReceiver = new KWinFocusReceiver(m_token, this);
     connect(m_kwinReceiver, SIGNAL(focusedAppReported(QString)), this,
             SIGNAL(focusedBinaryChanged(QString)));
 }
@@ -502,69 +536,169 @@ bool WindowTracker::runKWinScript()
         return false;
     }
 
-    const QString scriptPluginName = QString::fromLatin1(KWinScriptPluginName);
-
     if (!m_kwinReceiverRegistered)
     {
         emit error(QStringLiteral("Cannot register KWin focus tracker D-Bus object"));
         return false;
     }
 
+    const QString& token = m_token;
     QTemporaryFile scriptFile(QDir::tempPath() +
                               QStringLiteral("/keyboard-volume-app-kwin-XXXXXX.js"));
-    scriptFile.setAutoRemove(false);
-    if (!scriptFile.open())
+    QTemporaryFile reservationFile(QDir::tempPath() +
+                                   QStringLiteral("/keyboard-volume-app-kwin-reserve-XXXXXX.js"));
+    const QByteArray source = kwinFocusScriptSource(m_serviceName, token).toUtf8();
+    const QByteArray reservationSource("// inert reservation\n");
+    if (!scriptFile.open() || !reservationFile.open() ||
+        scriptFile.write(source) != source.size() ||
+        reservationFile.write(reservationSource) != reservationSource.size() ||
+        !scriptFile.flush() || !reservationFile.flush())
     {
-        emit error(QStringLiteral("Cannot create KWin focus tracker script"));
+        emit error(QStringLiteral("Cannot create KWin focus tracker scripts"));
         return false;
     }
 
-    const QString scriptPath = scriptFile.fileName();
-    const QByteArray script = kwinFocusScriptSource().toUtf8();
-    if (scriptFile.write(script) != script.size())
+    auto busInterface = QDBusInterface(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"),
+                                       QStringLiteral("org.kde.kwin.Scripting"), bus);
+    QDBusInterface introspection(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"),
+                                 QStringLiteral("org.freedesktop.DBus.Introspectable"), bus);
+    if (!busInterface.isValid() || !introspection.isValid())
     {
-        scriptFile.close();
-        QFile::remove(scriptPath);
-        emit error(QStringLiteral("Cannot write KWin focus tracker script"));
-        return false;
-    }
-    scriptFile.close();
-
-    QDBusInterface scripting(QStringLiteral("org.kde.KWin"), QStringLiteral("/Scripting"),
-                             QStringLiteral("org.kde.kwin.Scripting"), bus);
-    if (!scripting.isValid())
-    {
-        QFile::remove(scriptPath);
         emit error(QStringLiteral("KWin scripting D-Bus interface unavailable"));
         return false;
     }
 
-    scripting.call(QStringLiteral("unloadScript"), scriptPluginName);
-
-    QDBusReply<int> loadReply =
-        scripting.call(QStringLiteral("loadScript"), scriptPath, scriptPluginName);
-    if (!loadReply.isValid() || loadReply.value() < 0)
+    // Do not unload a different application instance's tracker.
+    QDBusReply<bool> alreadyLoaded =
+        busInterface.call(QStringLiteral("isScriptLoaded"), m_pluginName);
+    if (!alreadyLoaded.isValid() || alreadyLoaded.value())
     {
-        QFile::remove(scriptPath);
-        emit error(QStringLiteral("KWin focus tracker script failed to load"));
+        emit error(QStringLiteral("KWin focus tracker name is already in use or unavailable"));
         return false;
     }
 
-    const int scriptId = loadReply.value();
+    auto waitUnloaded = [&](const QString& name)
+    {
+        for (int i = 0; i < 50; ++i)
+        {
+            QDBusReply<bool> loaded = busInterface.call(QStringLiteral("isScriptLoaded"), name);
+            if (!loaded.isValid()) return false;
+            if (!loaded.value()) return true;
+            QThread::msleep(20);
+        }
+        return false;
+    };
+    auto unload = [&](const QString& name)
+    {
+        QDBusReply<bool> reply = busInterface.call(QStringLiteral("unloadScript"), name);
+        return reply.isValid() && (!reply.value() || waitUnloaded(name));
+    };
+    auto occupiedPaths = [&]() -> std::optional<QSet<QString>>
+    {
+        QDBusReply<QString> reply = introspection.call(QStringLiteral("Introspect"));
+        if (!reply.isValid()) return std::nullopt;
+        QSet<QString> paths;
+        QXmlStreamReader xml(reply.value());
+        while (!xml.atEnd())
+        {
+            xml.readNext();
+            if (xml.isStartElement() && xml.name() == QLatin1String("node"))
+            {
+                const QString name = xml.attributes().value(QLatin1String("name")).toString();
+                if (name.startsWith(QLatin1String("Script"))) paths.insert(name);
+            }
+        }
+        if (xml.hasError()) return std::nullopt;
+        return paths;
+    };
+
+    QStringList reservations;
+    bool trackerLoaded = false;
+    auto cleanup = [&]()
+    {
+        if (trackerLoaded && !unload(m_pluginName))
+            emit error(QStringLiteral("Cannot unload KWin focus tracker"));
+        for (auto it = reservations.crbegin(); it != reservations.crend(); ++it)
+            if (!unload(*it)) emit error(QStringLiteral("Cannot unload KWin script reservation"));
+    };
+
+    int scriptId = -1;
+    // KWin versions using scripts.size() can return an ID already registered by
+    // another script. Keep inert reservations alive to advance past occupied IDs.
+    constexpr int maxAttempts = 16;
+    for (int attempt = 0; attempt < maxAttempts && m_running; ++attempt)
+    {
+        const auto before = occupiedPaths();
+        if (!before) break;
+        QDBusReply<int> load =
+            busInterface.call(QStringLiteral("loadScript"), scriptFile.fileName(), m_pluginName);
+        if (!load.isValid() || load.value() < 0) break;
+        trackerLoaded = true;
+        scriptId = load.value();
+        if (!before->contains(QStringLiteral("Script%1").arg(scriptId))) break;
+
+        // Never call run() on a path owned by another script.
+        qInfo() << "[WindowTracker] KWin script path is occupied; reserving another ID";
+        scriptId = -1;
+        if (!unload(m_pluginName)) break;
+        trackerLoaded = false;
+        const QString reservation =
+            m_pluginName + QStringLiteral("-reserve-") + token + QStringLiteral("-%1").arg(attempt);
+        QDBusReply<int> reserved = busInterface.call(QStringLiteral("loadScript"),
+                                                     reservationFile.fileName(), reservation);
+        if (!reserved.isValid() || reserved.value() < 0) break;
+        reservations.append(reservation);
+        scriptId = -1;
+    }
+
+    if (!m_running || !trackerLoaded || scriptId < 0)
+    {
+        cleanup();
+        if (m_running) emit error(QStringLiteral("Cannot obtain an unoccupied KWin script path"));
+        return false;
+    }
+
+    // A unique handshake also detects races with other script loaders and a
+    // successful run() delivered to the wrong object. Receive it on this thread.
+    QEventLoop readyLoop;
+    bool ready = false;
+    auto* receiver = static_cast<KWinFocusReceiver*>(m_kwinReceiver);
+    QObject::connect(
+        receiver, &KWinFocusReceiver::trackerReady, &readyLoop,
+        [&](const QString& value)
+        {
+            if (value != token) return;
+            ready = true;
+            readyLoop.quit();
+        },
+        Qt::QueuedConnection);
+    QTimer deadline;
+    deadline.setSingleShot(true);
+    QObject::connect(&deadline, &QTimer::timeout, &readyLoop, &QEventLoop::quit);
+    QTimer stopPoll;
+    QObject::connect(&stopPoll, &QTimer::timeout, &readyLoop,
+                     [&]()
+                     {
+                         if (!m_running) readyLoop.quit();
+                     });
     QDBusInterface scriptObject(QStringLiteral("org.kde.KWin"),
                                 QStringLiteral("/Scripting/Script%1").arg(scriptId),
                                 QStringLiteral("org.kde.kwin.Script"), bus);
     QDBusMessage runReply = scriptObject.call(QStringLiteral("run"));
-    if (runReply.type() == QDBusMessage::ErrorMessage)
+    if (runReply.type() != QDBusMessage::ErrorMessage && m_running)
     {
-        scripting.call(QStringLiteral("unloadScript"), scriptPluginName);
-        QFile::remove(scriptPath);
-        emit error(QStringLiteral("KWin focus tracker script failed to start"));
+        deadline.start(2000);
+        stopPoll.start(50);
+        readyLoop.exec();
+    }
+    if (!ready || !m_running)
+    {
+        cleanup();
+        if (m_running) emit error(QStringLiteral("KWin focus tracker did not confirm startup"));
         return false;
     }
 
-    // D-Bus session bus dispatches ReportFocusedApp to the main thread
-    // (where m_kwinReceiver lives); this loop only polls m_running as a stop sentinel.
+    qInfo() << "[WindowTracker] KWin focus tracker confirmed startup";
     QEventLoop loop;
     QTimer poll;
     poll.setInterval(50);
@@ -575,9 +709,7 @@ bool WindowTracker::runKWinScript()
             });
     poll.start();
     loop.exec();
-
-    scripting.call(QStringLiteral("unloadScript"), scriptPluginName);
-    QFile::remove(scriptPath);
+    cleanup();
     return true;
 }
 
