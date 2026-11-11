@@ -399,6 +399,7 @@ class App : public QObject
 
     void onAutoSwitchMaybeChanged()
     {
+        const QString previousTarget = m_autoActiveApp;
         if (m_config->autoProfileSwitch())
         {
             m_autoActiveApp = ::validateStickyAutoProfileTarget(
@@ -411,6 +412,19 @@ class App : public QObject
             m_autoActiveApp.clear();
             stopWindowTracker();
         }
+        const bool enabled = m_config->autoProfileSwitch() && m_config->focusUpdatesActiveApp();
+        if (enabled != m_focusDisplayActive || (enabled && previousTarget != m_autoActiveApp))
+            updateFocusedActiveApp();
+    }
+
+    void updateFocusedActiveApp()
+    {
+        const bool enabled = m_config->autoProfileSwitch() && m_config->focusUpdatesActiveApp();
+        if (!enabled && !m_focusDisplayActive) return;
+        m_focusDisplayActive = enabled;
+        const QString target = enabled ? m_autoActiveApp : QString{};
+        if (m_tray) m_tray->setDisplayedApp(target);
+        if (m_dbus) m_dbus->setFocusedApp(target);
     }
 
     // Lookup profile by id; returns empty Profile when not found.
@@ -616,6 +630,8 @@ class App : public QObject
         m_dbus = new DbusInterface(m_config.get(), m_volumeCtrl, this);
         m_dbus->setMprisClient(m_mpris);
         connect(m_tray, &TrayApp::appChanged, m_dbus, &DbusInterface::onActiveAppChanged);
+        connect(m_dbus, &DbusInterface::manualAppSelected, m_tray,
+                [this](const QString&) { m_tray->setDisplayedApp({}); });
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProfiles);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProgressEnabled);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadAutoProfileSwitch);
@@ -688,8 +704,13 @@ class App : public QObject
             return;
         }
 
-        m_autoActiveApp = ::resolveStickyAutoProfileTarget(binary, m_appCache, m_config->profiles(),
-                                                           m_autoActiveApp, m_config->appAliases());
+        const QString matchedTarget = ::resolveStickyAutoProfileTarget(
+            binary, m_appCache, m_config->profiles(), {}, m_config->appAliases());
+        if (!matchedTarget.isEmpty())
+        {
+            m_autoActiveApp = matchedTarget;
+            if (m_config->focusUpdatesActiveApp()) updateFocusedActiveApp();
+        }
         if (m_mpris) m_mpris->setPreferredApp(m_autoActiveApp);
         if (!m_autoActiveApp.isEmpty())
         {
@@ -733,6 +754,7 @@ class App : public QObject
     WindowTracker* m_windowTracker = nullptr;
     QList<AudioApp> m_appCache;
     QString m_autoActiveApp;
+    bool m_focusDisplayActive = false;
     // Last profile id + routed app whose sink we applied — guards activateProfile()
     // so the sink is moved once per (profile, focused-app) pair, not on every
     // hotkey press, while still re-routing when Follow Focus changes app inside

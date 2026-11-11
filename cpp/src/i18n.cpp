@@ -191,6 +191,8 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              // auto profile switch
              {QStringLiteral("settings.auto_profile_switch"),
               QStringLiteral("Auto-switch profile by focused window")},
+             {QStringLiteral("settings.focus_active_app"),
+              QStringLiteral("Immediately update active app on focus")},
              // media hotkeys (global, MPRIS)
              {QStringLiteral("settings.media.section"), QStringLiteral("Media hotkeys")},
              {QStringLiteral("settings.media.play_pause"), QStringLiteral("Play / Pause:")},
@@ -532,6 +534,8 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              // auto profile switch
              {QStringLiteral("settings.auto_profile_switch"),
               QStringLiteral("Auto-prze\u0142\u0105czanie profilu wg aktywnego okna")},
+             {QStringLiteral("settings.focus_active_app"),
+              QStringLiteral("Od razu aktualizuj aktywną aplikację po zmianie focusu")},
              // media hotkeys (global, MPRIS)
              {QStringLiteral("settings.media.section"),
               QStringLiteral("Skr\u00f3ty multimedialne")},

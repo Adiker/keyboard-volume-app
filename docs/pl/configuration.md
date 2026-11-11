@@ -191,6 +191,10 @@ dla danego profilu. Są to wartości 0–100; błędne lub odwrócone granice s�
 porządkowane. Sceny i ducking zachowują własny zakres. `sink` to stabilna nazwa
 wyjścia PulseAudio; pusty wpis oznacza domyślne wyjście systemu.
 
+`focus_updates_active_app` (domyślnie `false`) dodatkowo od razu aktualizuje
+aktywną aplikację w zasobniku i D-Bus dla pasującego profilu. Opcja działa tylko
+przy włączonym `auto_profile_switch` i nie zmienia zapisanej aplikacji domyślnej.
+
 `auto_profile_switch` globalnie włącza wybór profilu według aktywnego okna i
 domyślnie ma wartość `false`; `auto_switch` profilu domyślnie ma `true`.
 `media_hotkeys` zawiera `play_pause`, `next`, `previous` i `stop`, wszystkie

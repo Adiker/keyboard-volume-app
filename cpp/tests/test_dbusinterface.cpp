@@ -38,8 +38,8 @@ class MockVolumeController : public VolumeController
     void setVolume(const QString& appName, double targetVolume, double minVol = 0.0,
                    double maxVol = 1.0) override
     {
-        Q_UNUSED(minVol);
-        Q_UNUSED(maxVol);
+        lastMin = minVol;
+        lastMax = maxVol;
         setVolumeCalls.append({appName, targetVolume});
     }
     void toggleMute(const QString& appName) override
@@ -51,6 +51,8 @@ class MockVolumeController : public VolumeController
         setMutedCalls.append({appName, muted});
     }
 
+    double lastMin = 0.0;
+    double lastMax = 1.0;
     QList<QPair<QString, double>> changeVolumeCalls;
     QList<QPair<QString, double>> setVolumeCalls;
     QList<QString> toggleMuteCalls;
@@ -329,4 +331,47 @@ int main(int argc, char** argv)
     QCoreApplication app(argc, argv);
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+TEST(DbusInterface, FocusTargetIsTemporaryAndUsesItsProfileLimits)
+{
+    Harness h;
+    auto profiles = h.config.profiles();
+    Profile other;
+    other.id = QStringLiteral("browser");
+    other.name = QStringLiteral("Browser");
+    other.apps = {QStringLiteral("firefox")};
+    other.volMin = 20;
+    other.volMax = 70;
+    profiles.append(other);
+    h.config.setProfiles(profiles);
+
+    h.dbus.setFocusedApp(QStringLiteral("firefox"));
+    EXPECT_EQ(h.dbus.activeApp(), QStringLiteral("firefox"));
+    EXPECT_EQ(h.config.defaultProfile().primaryApp(), QStringLiteral("spotify"));
+    EXPECT_TRUE(h.vc.setVolumeCalls.isEmpty());
+    EXPECT_TRUE(h.vc.changeVolumeCalls.isEmpty());
+    h.dbus.setVolume(0.5);
+    EXPECT_EQ(h.vc.setVolumeCalls.last().first, QStringLiteral("firefox"));
+    EXPECT_DOUBLE_EQ(h.vc.lastMin, 0.2);
+    EXPECT_DOUBLE_EQ(h.vc.lastMax, 0.7);
+
+    h.dbus.setFocusedApp({});
+    EXPECT_EQ(h.dbus.activeApp(), QStringLiteral("spotify"));
+    EXPECT_EQ(h.config.defaultProfile().primaryApp(), QStringLiteral("spotify"));
+}
+
+TEST(DbusInterface, SilentResultsFollowCurrentTargetAndManualSelectionPersists)
+{
+    Harness h;
+    h.dbus.setFocusedApp(QStringLiteral("firefox"));
+    emit h.vc.volumeQueriedSilently(QStringLiteral("spotify"), 0.8, true);
+    EXPECT_DOUBLE_EQ(h.dbus.volume(), 0.0);
+    emit h.vc.volumeQueriedSilently(QStringLiteral("firefox"), 0.4, true);
+    EXPECT_DOUBLE_EQ(h.dbus.volume(), 0.4);
+    EXPECT_TRUE(h.dbus.isMuted());
+    h.dbus.setActiveApp(QStringLiteral("firefox"));
+    EXPECT_EQ(h.config.defaultProfile().primaryApp(), QStringLiteral("firefox"));
+    h.dbus.setFocusedApp({});
+    EXPECT_EQ(h.dbus.activeApp(), QStringLiteral("firefox"));
 }

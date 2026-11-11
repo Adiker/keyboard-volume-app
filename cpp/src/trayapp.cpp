@@ -105,8 +105,8 @@ void TrayApp::populateAppList()
         else
             m_menu->addAction(act);
 
-        if (app.name.compare(m_config->defaultProfile().primaryApp(), Qt::CaseInsensitive) == 0 ||
-            app.binary.compare(m_config->defaultProfile().primaryApp(), Qt::CaseInsensitive) == 0)
+        if (app.name.compare(currentApp(), Qt::CaseInsensitive) == 0 ||
+            app.binary.compare(currentApp(), Qt::CaseInsensitive) == 0)
             act->setChecked(true);
 
         connect(act, &QAction::triggered, this, [this, target]() { onAppSelected(target); });
@@ -160,6 +160,7 @@ void TrayApp::onRefresh()
 
 void TrayApp::onAppSelected(const QString& name)
 {
+    m_displayedApp.clear();
     m_config->setDefaultProfileApp(name);
     auto it = m_appActions.find(name);
     if (it != m_appActions.end()) it.value()->setChecked(true);
@@ -210,5 +211,11 @@ void TrayApp::rebuildMenu()
 
 QString TrayApp::currentApp() const
 {
-    return m_config->defaultProfile().primaryApp();
+    return m_displayedApp.isEmpty() ? m_config->defaultProfile().primaryApp() : m_displayedApp;
+}
+
+void TrayApp::setDisplayedApp(const QString& name)
+{
+    m_displayedApp = name;
+    rebuildMenu();
 }

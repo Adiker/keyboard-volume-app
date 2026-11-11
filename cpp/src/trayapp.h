@@ -24,6 +24,7 @@ class TrayApp : public QObject
 
     // Rebuild the tray menu — call after language change.
     void rebuildMenu();
+    void setDisplayedApp(const QString& name);
 
   signals:
     void appChanged(const QString& name);
@@ -60,4 +61,5 @@ class TrayApp : public QObject
     QMenu* m_menu = nullptr;
     QActionGroup* m_appGroup = nullptr;
     QMap<QString, QAction*> m_appActions;
+    QString m_displayedApp;
 };

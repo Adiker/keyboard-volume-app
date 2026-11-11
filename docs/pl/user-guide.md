@@ -105,6 +105,11 @@ Pierwszy profil jest domyślny. Zwykłe akcje zasobnika, D-Bus i `kv-ctl` używa
 go, jeśli profil nie został wskazany. Po włączeniu globalnego przełączania
 focus wybiera pasujący profil; `auto_switch` może wyłączyć pojedynczy profil.
 
+Opcja **Od razu aktualizuj aktywną aplikację po zmianie focusu** aktualizuje
+również aplikację w zasobniku i D-Bus po przejściu do pasującego okna. Nie
+zmienia zapisanej aplikacji domyślnej ani głośności i nie wyświetla OSD.
+Niepasujące okno pozostawia ostatni pasujący cel.
+
 ## Ducking, sceny i routing
 
 Włącz Focus audio ducking w profilu, aby obniżyć wszystkie inne znane aplikacje

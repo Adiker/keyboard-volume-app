@@ -2052,3 +2052,13 @@ TEST(ConfigIdentity, FindProfileByAppUsesRegex)
     EXPECT_EQ(config.findProfileByApp(QStringLiteral("teams-for-linux")).id.toStdString(), "comms");
     EXPECT_TRUE(config.findProfileByApp(QStringLiteral("spotify")).id.isEmpty());
 }
+
+TEST(ConfigFocusActiveApp, DefaultAndRoundTrip)
+{
+    QTemporaryDir tmp;
+    Config config(tmp.path());
+    EXPECT_FALSE(config.focusUpdatesActiveApp());
+    config.setFocusUpdatesActiveApp(true);
+    Config reloaded(tmp.path());
+    EXPECT_TRUE(reloaded.focusUpdatesActiveApp());
+}

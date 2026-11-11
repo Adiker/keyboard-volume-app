@@ -293,6 +293,7 @@ QJsonObject Config::defaultJson()
              {QStringLiteral("remove_skip_app_names"), QJsonArray{}},
          }},
         {QStringLiteral("auto_profile_switch"), false},
+        {QStringLiteral("focus_updates_active_app"), false},
         {QStringLiteral("ui"),
          QJsonObject{
              {QStringLiteral("settings_dialog_width"), 0},
@@ -1278,6 +1279,19 @@ void Config::setDefaultProfileApp(const QString& app)
     m_data[QStringLiteral("profiles")] = arr;
     m_data[QStringLiteral("selected_app")] =
         app.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(app);
+    saveUnlocked();
+}
+
+bool Config::focusUpdatesActiveApp() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_data[QStringLiteral("focus_updates_active_app")].toBool(false);
+}
+
+void Config::setFocusUpdatesActiveApp(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_data[QStringLiteral("focus_updates_active_app")] = enabled;
     saveUnlocked();
 }
 

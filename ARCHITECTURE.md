@@ -592,6 +592,13 @@ Each instance uses a unique plugin name, and removes its own tracker before its 
 
 `test_windowtracker` uses a private D-Bus session and a fake KWin with occupied object paths, repeated collisions, bounded attempts, forged tokens, missing handshake and cleanup checks. For an opt-in live KDE focus check, build `kwin_tracker_live` and run it in the desktop session, then focus Strawberry and LiMusic; it uses a separate D-Bus service and does not grab input devices.
 
+The optional `focus_updates_active_app` mode also mirrors the sticky focus target
+to the tray and D-Bus without changing the stored default profile. A separate
+silent asynchronous volume query updates D-Bus volume/mute without opening OSD;
+D-Bus operations use the focused target profile. Disabling the mode restores the
+manual selection.
+
+
 ### `cpp/src/i18n.h/cpp`
 
 Static string tables for `en` and `pl`. `tr(key)` falls back to English if a key is missing in the current language.

@@ -104,6 +104,11 @@ it unless a profile is explicitly selected. When global auto-profile switching
 is enabled, the focused window chooses the matching profile; per-profile
 `auto_switch` can opt individual profiles out.
 
+Enable **Immediately update active app on focus** to also update the tray and
+D-Bus active app as soon as a matching window gains focus. The saved default
+app remains unchanged, and switching focus does not change volume or show OSD.
+Unmatched windows retain the last matching target.
+
 ## Ducking, scenes and routing
 
 Enable Focus audio ducking in a profile to lower every other known audio app to
