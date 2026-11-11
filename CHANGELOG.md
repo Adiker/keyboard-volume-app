@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 GitHub Release notes are generated from the matching section below (this file is
 the single source of truth).
 
+## [0.3.0] - 2026-11-11
+
+**Install:** download `.deb`, `.rpm`, or Arch `.pkg.tar.zst` from the
+[GitHub Release](https://github.com/Adiker/keyboard-volume-app/releases/tag/v0.3.0).
+Arch users who prefer rolling builds can keep using AUR
+`keyboard-volume-app-git`.
+
+### Added
+
+- Opt in to immediately showing the focused, profile-matched app in the tray
+  and D-Bus, without changing the saved default or opening the OSD (#202).
+
+### Fixed
+
+- Avoid KWin focus tracker script path collisions and verify that the tracker
+  started before accepting focus reports (#206).
+- Keep the OSD under the pointer while dragging on native Wayland and preserve
+  its position across release, cancellation, and content updates (#207).
+
+### Known limitations
+
+- KWin script allocation is not atomic; concurrent script loading can still
+  race the focus tracker's collision check (#206).
+- After an input device is disconnected and reconnected, restart the app; if
+  its `/dev/input/event*` path changed, select the device again.
+- On some Linux desktop setups, registering a keyboard can make a lock LED
+  disagree with the desktop's logical state. Toggling the affected lock key
+  twice can resynchronize it.
+
+Full changes: https://github.com/Adiker/keyboard-volume-app/compare/v0.2.1...v0.3.0
+
 ## [0.2.1] - 2026-10-31
 
 **Install:** download `.deb`, `.rpm`, or Arch `.pkg.tar.zst` from the
@@ -103,3 +134,5 @@ https://github.com/Adiker/keyboard-volume-app/compare/cpp-rewrite-v0.1.0...v0.2.
 [0.2.1]: https://github.com/Adiker/keyboard-volume-app/releases/tag/v0.2.1
 [0.2.0]: https://github.com/Adiker/keyboard-volume-app/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Adiker/keyboard-volume-app/releases/tag/cpp-rewrite-v0.1.0
+
+[0.3.0]: https://github.com/Adiker/keyboard-volume-app/releases/tag/v0.3.0
