@@ -34,7 +34,7 @@ class VolumeController : public QObject
 
     // Returns the cached app list immediately and posts an async refresh.
     // Connect to appsReady() to know when fresh data has arrived.
-    QList<AudioApp> listApps(bool forceRefresh = false);
+    virtual QList<AudioApp> listApps(bool forceRefresh = false);
 
     // Returns the cached sink list immediately and posts an async refresh.
     // Connect to sinksReady() to know when fresh data has arrived.

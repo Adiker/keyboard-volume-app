@@ -9,6 +9,7 @@ class QAction;
 class Config;
 class VolumeController;
 class InputHandler;
+class DbusInterface;
 
 // System tray icon with context menu.
 // Emits signals for device/settings changes and OSD previews.
@@ -25,6 +26,7 @@ class TrayApp : public QObject
     // Rebuild the tray menu — call after language change.
     void rebuildMenu();
     void setDisplayedApp(const QString& name);
+    void connectDbus(DbusInterface* dbus);
 
   signals:
     void appChanged(const QString& name);

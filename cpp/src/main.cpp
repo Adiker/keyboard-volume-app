@@ -629,9 +629,7 @@ class App : public QObject
     {
         m_dbus = new DbusInterface(m_config.get(), m_volumeCtrl, this);
         m_dbus->setMprisClient(m_mpris);
-        connect(m_tray, &TrayApp::appChanged, m_dbus, &DbusInterface::onActiveAppChanged);
-        connect(m_dbus, &DbusInterface::manualAppSelected, m_tray,
-                [this](const QString&) { m_tray->setDisplayedApp({}); });
+        m_tray->connectDbus(m_dbus);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProfiles);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProgressEnabled);
         connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadAutoProfileSwitch);
