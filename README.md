@@ -83,6 +83,7 @@ cmake --build cpp/build -j"$(nproc)"
 | `config.json`, hotkey formats and migrations | [Configuration](docs/en/configuration.md) | [Konfiguracja](docs/pl/configuration.md) |
 | `kv-ctl`, `qdbus`, D-Bus and MPRIS | [Remote control](docs/en/remote-control.md) | [Sterowanie zdalne](docs/pl/remote-control.md) |
 | Architecture, tests and maintainer workflows | [ARCHITECTURE.md](ARCHITECTURE.md) | — |
+| Contributing and reporting issues | [CONTRIBUTING.md](CONTRIBUTING.md) | — |
 
 The source-build guide lists the required Qt6, libevdev, PulseAudio, PipeWire,
 TagLib, Wayland/XCB and CMake packages. Native Wayland OSD positioning is
