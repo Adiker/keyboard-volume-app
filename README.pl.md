@@ -84,6 +84,7 @@ cmake --build cpp/build -j"$(nproc)"
 | `config.json`, formaty skrótów i migracje | [Configuration](docs/en/configuration.md) | [Konfiguracja](docs/pl/configuration.md) |
 | `kv-ctl`, `qdbus`, D-Bus i MPRIS | [Remote control](docs/en/remote-control.md) | [Sterowanie zdalne](docs/pl/remote-control.md) |
 | Architektura, testy i workflow utrzymania | [ARCHITECTURE.md](ARCHITECTURE.md) | — |
+| Współtworzenie i zgłaszanie problemów | [CONTRIBUTING.md](CONTRIBUTING.md) | — |
 
 Przewodnik budowania wymienia pakiety Qt6, libevdev, PulseAudio, PipeWire,
 TagLib, Wayland/XCB i CMake. Natywne pozycjonowanie OSD na Waylandzie jest
