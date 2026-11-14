@@ -12,6 +12,7 @@ depends=('qt6-base' 'libevdev' 'libpulse' 'libpipewire' 'taglib' 'pipewire' 'lay
 makedepends=('cmake' 'gcc' 'pkg-config' 'wayland' 'layer-shell-qt')
 conflicts=('keyboard-volume-app-git')
 provides=('keyboard-volume-app')
+options=('!debug')
 source=("${pkgname}-${pkgver}.tar.gz")
 sha256sums=('SKIP')
 

@@ -52,14 +52,26 @@ sed -i \
   -e "s/^sha256sums=.*/sha256sums=('${SUM}')/" \
   "${WORKDIR}/PKGBUILD"
 
-(
-  cd "${WORKDIR}"
-  makepkg -f --noconfirm
-)
+cd "${WORKDIR}"
+export PKGDEST="${WORKDIR}"
+expected_packages="$(makepkg --packagelist)"
+mapfile -t expected < <(printf '%s\n' "${expected_packages}")
+if [[ ${#expected[@]} -ne 1 || "${expected[0]}" != "${WORKDIR}/${PKGNAME}-${VERSION}-"*.pkg.tar.zst ]]; then
+  echo "Expected exactly one stable Arch package, got: ${expected_packages}" >&2
+  exit 1
+fi
+
+makepkg -f --noconfirm
+cd "${ROOT}"
+
+shopt -s nullglob
+packages=("${WORKDIR}"/*.pkg.tar.zst)
+if [[ ${#packages[@]} -ne 1 || "${packages[0]}" != "${expected[0]}" ]]; then
+  printf 'Expected one package (%s); found %s package(s): %s\n' \
+    "${expected[0]}" "${#packages[@]}" "${packages[*]}" >&2
+  exit 1
+fi
 
 mkdir -p "${OUT_DIR}"
-shopt -s nullglob
-for pkg in "${WORKDIR}"/*.pkg.tar.zst; do
-  cp -f "${pkg}" "${OUT_DIR}/"
-  echo "Built ${OUT_DIR}/$(basename "${pkg}")"
-done
+cp -f "${packages[0]}" "${OUT_DIR}/"
+echo "Built ${OUT_DIR}/$(basename "${packages[0]}")"
