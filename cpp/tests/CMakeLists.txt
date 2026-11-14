@@ -258,6 +258,27 @@ target_link_libraries(test_dbusinterface PRIVATE
 )
 add_test(NAME test_dbusinterface COMMAND test_dbusinterface)
 
+# Exercise the production tray/D-Bus connection on a private session bus.
+add_executable(test_tray_dbus
+    test_tray_dbus.cpp
+    ../src/trayapp.cpp ../src/dbusinterface.cpp ../src/config.cpp
+    ../src/volumecontroller.cpp ../src/pwutils.cpp ../src/appaudiofilters.cpp
+    ../src/inputhandler.cpp ../src/evdevdevice.cpp ../src/i18n.cpp
+    ../src/aboutdialog.cpp ../src/settingsdialog.cpp ../src/appselectordialog.cpp
+    ../src/applistwidget.cpp ../src/profileeditdialog.cpp ../src/sceneeditdialog.cpp
+    ../src/mprisclient.cpp
+)
+target_include_directories(test_tray_dbus PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_link_libraries(test_tray_dbus PRIVATE
+    GTest::gtest Qt6::Core Qt6::Widgets Qt6::DBus Qt6::Network Qt6::Test
+    PkgConfig::LIBPULSE PkgConfig::LIBPIPEWIRE PkgConfig::LIBEVDEV PkgConfig::TAGLIB)
+find_program(DBUS_RUN_SESSION dbus-run-session)
+if(DBUS_RUN_SESSION)
+    add_test(NAME test_tray_dbus COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:test_tray_dbus>)
+else()
+    message(WARNING "test_tray_dbus: dbus-run-session not found; test not registered")
+endif()
+
 if(ENABLE_PIPEWIRE_INTEGRATION_TESTS)
     add_test(
         NAME integration_pipewire_visible_volume

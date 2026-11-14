@@ -4,7 +4,7 @@ Stan względem `main`: 5 listopada 2026. Roadmapa zachowuje pierwotne numery poz
 
 ## Otwarte i częściowo zrealizowane
 
-Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej kolejności realizacji. Wcześniejsza notatka z przeglądu kodu wskazywała w pierwszej kolejności #37, następnie #33, #34, #22 i #38; statusy zweryfikowano poniżej.
+Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej kolejności realizacji. Wcześniejsza notatka z przeglądu kodu wskazywała w pierwszej kolejności #37 (zrealizowane), następnie #33, #34, #22 i #38; statusy zweryfikowano poniżej.
 
 ### 16. Tryb "Follow Focus" (Dynamiczne śledzenie aktywnego okna)
 
@@ -61,13 +61,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Rekomendacja:** Przed kolejnymi rozszerzeniami rozdzielić warstwy: registry snapshot, transformacja/filtr (filtrowanie klientów, mapping owner-by-`client.id`, normalizacja nazw), node control (read/write `SPA_PARAM_Props`).
 **Pliki:** `cpp/src/pwutils.{h,cpp}` — refactor wewnątrzplikowy lub split na 2–3 jednostki.
 **Status:** Planowane.
-
-### 37. D-Bus `setActiveApp()` → tray refresh
-
-**Problem:** `DbusInterface::setActiveApp()` zapisuje `Config::setSelectedApp(name)` i aktualizuje swój cache, ale wcześniej nie wymuszał jawnie odświeżenia stanu `TrayApp`/menu. Po zewnętrznej zmianie aktywnej aplikacji przez D-Bus UI mogło wymagać kolejnego eventu, żeby pokazać spójny stan.
-**Rekomendacja:** Sprawdzić zachowanie ręcznie (`qdbus … setActiveApp …` + obserwacja menu). Jeśli problem się potwierdzi: dodać jawny sygnał/slot do zmiany domyślnej aplikacji przez `TrayApp` albo wspólną ścieżkę `Config → UI refresh`.
-**Pliki:** `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/trayapp.{h,cpp}`, `cpp/tests/test_dbusinterface.cpp`.
-**Status:** Do weryfikacji. `setActiveApp()` aktualizuje konfigurację i emituje `activeAppChanged`; połączenie `TrayApp::appChanged` → `DbusInterface::onActiveAppChanged()` działa w przeciwnym kierunku. Spójność menu po zmianie przez D-Bus wymaga sprawdzenia.
 
 ### 38. Uzupełnienie pokrycia testowego
 
@@ -237,6 +230,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 36. Konfigurowalne filtry aplikacji audio
 
 **Status:** Zrealizowane. Sekcja `audio_app_filters` z kluczami `extra_system_binaries` / `remove_system_binaries` / `extra_skip_app_names` / `remove_skip_app_names` nakłada się na wbudowane stałe z `appaudiofilters`. `Config::effectiveSystemBinaries()` / `effectiveSkipAppNames()` zasilają `listPipeWireClients` i `VolumeController`. UI filtrów odłożone (edycja przez config JSON).
+
+### 37. D-Bus `setActiveApp()` → tray refresh
+
+**Status:** Zrealizowane. Ręczna zmiana przez D-Bus emituje `manualAppSelected`, czyści tymczasowy wybór Follow Focus i odbudowuje menu z konfiguracji. Test integracyjny obejmuje prywatną sesję D-Bus i menu Qt offscreen; nie stanowi ręcznej weryfikacji zasobnika środowiska graficznego.
 
 ### 42. Globalne skróty multimedialne (MPRIS dispatch)
 

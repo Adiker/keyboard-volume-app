@@ -1,6 +1,7 @@
 #include "trayapp.h"
 #include "aboutdialog.h"
 #include "config.h"
+#include "dbusinterface.h"
 #include "volumecontroller.h"
 #include "inputhandler.h"
 #include "i18n.h"
@@ -218,4 +219,11 @@ void TrayApp::setDisplayedApp(const QString& name)
 {
     m_displayedApp = name;
     rebuildMenu();
+}
+
+void TrayApp::connectDbus(DbusInterface* dbus)
+{
+    connect(this, &TrayApp::appChanged, dbus, &DbusInterface::onActiveAppChanged);
+    connect(dbus, &DbusInterface::manualAppSelected, this,
+            [this](const QString&) { setDisplayedApp({}); });
 }
