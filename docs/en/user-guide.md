@@ -1,10 +1,10 @@
-[Polski](../pl/user-guide.md) · [Back to README](../../README.md)
+[Polski](https://github.com/Adiker/keyboard-volume-app/blob/main/docs/pl/user-guide.md) · [Back to README](https://github.com/Adiker/keyboard-volume-app/blob/main/README.md)
 
 # User guide
 
 This guide covers the normal tray, hotkey and OSD workflow. Advanced JSON
-editing is described in the [configuration guide](configuration.md), and
-scripts/D-Bus clients in the [remote-control guide](remote-control.md).
+editing is described in the [configuration guide](https://github.com/Adiker/keyboard-volume-app/blob/main/docs/en/configuration.md), and
+scripts/D-Bus clients in the [remote-control guide](https://github.com/Adiker/keyboard-volume-app/blob/main/docs/en/remote-control.md).
 
 ## First launch and app selection
 

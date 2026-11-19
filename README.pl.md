@@ -77,6 +77,8 @@ cmake --build cpp/build -j"$(nproc)"
 
 ## Dokumentacja
 
+Dokumentacja jest również dostępna na [docs.page](https://docs.page/Adiker/keyboard-volume-app/pl).
+
 | Temat | English | Polski |
 |---|---|---|
 | Instalacja, zależności, Wayland i systemd | [Installation](docs/en/installation.md) | [Instalacja](docs/pl/installation.md) |

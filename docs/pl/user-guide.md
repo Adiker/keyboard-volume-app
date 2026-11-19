@@ -1,10 +1,10 @@
-[English](../en/user-guide.md) · [Powrót do README](../../README.pl.md)
+[English](https://github.com/Adiker/keyboard-volume-app/blob/main/docs/en/user-guide.md) · [Powrót do README](https://github.com/Adiker/keyboard-volume-app/blob/main/README.pl.md)
 
 # Przewodnik użytkownika
 
 Ten przewodnik opisuje codzienną obsługę zasobnika, skrótów i OSD. Szczegółowa
-edycja JSON jest w [przewodniku konfiguracji](configuration.md), a skrypty i
-D-Bus w [przewodniku sterowania zdalnego](remote-control.md).
+edycja JSON jest w [przewodniku konfiguracji](https://github.com/Adiker/keyboard-volume-app/blob/main/docs/pl/configuration.md), a skrypty i
+D-Bus w [przewodniku sterowania zdalnego](https://github.com/Adiker/keyboard-volume-app/blob/main/docs/pl/remote-control.md).
 
 ## Pierwsze uruchomienie i wybór aplikacji
 

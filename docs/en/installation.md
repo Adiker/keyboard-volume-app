@@ -1,4 +1,4 @@
-[Polski](../pl/installation.md) · [Back to README](../../README.md)
+[Polski](https://github.com/Adiker/keyboard-volume-app/blob/main/docs/pl/installation.md) · [Back to README](https://github.com/Adiker/keyboard-volume-app/blob/main/README.md)
 
 # Installation
 
@@ -180,5 +180,5 @@ not native Wayland windows.
 ## Testing and maintenance
 
 The complete build, CTest, private-D-Bus MPRIS and isolated PipeWire recipes
-are maintained in [ARCHITECTURE.md](../../ARCHITECTURE.md). The installation
+are maintained in [ARCHITECTURE.md](https://github.com/Adiker/keyboard-volume-app/blob/main/ARCHITECTURE.md). The installation
 guide intentionally keeps runtime setup separate from maintainer test details.

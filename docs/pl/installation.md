@@ -1,4 +1,4 @@
-[English](../en/installation.md) · [Powrót do README](../../README.pl.md)
+[English](https://github.com/Adiker/keyboard-volume-app/blob/main/docs/en/installation.md) · [Powrót do README](https://github.com/Adiker/keyboard-volume-app/blob/main/README.pl.md)
 
 # Instalacja
 
@@ -176,6 +176,6 @@ okna X11/XWayland, ale nie natywne okna Wayland.
 ## Testy i utrzymanie
 
 Pełne przepisy budowania, CTest, prywatnej sesji D-Bus dla MPRIS i izolowanej
-regresji PipeWire znajdują się w [ARCHITECTURE.md](../../ARCHITECTURE.md).
+regresji PipeWire znajdują się w [ARCHITECTURE.md](https://github.com/Adiker/keyboard-volume-app/blob/main/ARCHITECTURE.md).
 Przewodnik instalacji nie miesza konfiguracji użytkownika ze szczegółami testów
 utrzymaniowych.
