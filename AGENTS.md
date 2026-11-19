@@ -108,7 +108,7 @@ The app registers two D-Bus services on the session bus:
 - `Qt6::DBus` is a separate CMake component — requires `find_package(Qt6 REQUIRED COMPONENTS ... DBus)`.
 - The MPRIS `Volume` property maps to `DbusInterface::volume()`. `PlaybackStatus` is always `"Stopped"`. Play/Pause/Next/Previous are no-ops. `Quit` → `qApp->quit()`.
 
-For script-friendly `dbus-send` recipes (debugging without `kv-ctl` or `qdbus`), see **D-Bus / MPRIS → `dbus-send` recipes** in `ARCHITECTURE.md`. End-user `qdbus` examples are in `docs/en/remote-control.md` and `docs/pl/remote-control.md`.
+For script-friendly `dbus-send` recipes (debugging without `kv-ctl` or `qdbus`), see **D-Bus / MPRIS → `dbus-send` recipes** in `ARCHITECTURE.md`. End-user `qdbus` examples are in `docs/en/remote-control.mdx` and `docs/pl/remote-control.mdx`.
 
 ## Icon / QRC
 

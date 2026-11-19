@@ -161,7 +161,7 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 
 ### 11. Systemd user service
 
-**Status:** Zrealizowane. Dodano user unit z `ExecStart=/usr/bin/keyboard-volume-app`, restartem `on-failure` i `WantedBy=default.target`. CMake instaluje go do `lib/systemd/user`, czyli przy prefixie `/usr` do `/usr/lib/systemd/user/keyboard-volume-app.service`; `$HOME/.config/systemd/user` opisano w [przewodniku instalacji](docs/pl/installation.md) jako wariant ręcznej per-user instalacji. Paczka Arch nie wymaga zmian, bo korzysta z `cmake --install`.
+**Status:** Zrealizowane. Dodano user unit z `ExecStart=/usr/bin/keyboard-volume-app`, restartem `on-failure` i `WantedBy=default.target`. CMake instaluje go do `lib/systemd/user`, czyli przy prefixie `/usr` do `/usr/lib/systemd/user/keyboard-volume-app.service`; `$HOME/.config/systemd/user` opisano w [przewodniku instalacji](docs/pl/installation.mdx) jako wariant ręcznej per-user instalacji. Paczka Arch nie wymaga zmian, bo korzysta z `cmake --install`.
 
 ### 12. Refaktoryzacja — deduplikacja kodu evdev
 

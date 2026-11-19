@@ -688,7 +688,7 @@ D-Bus calls arrive on the main thread and are forwarded to `VolumeController` (w
 
 ## D-Bus / MPRIS — `dbus-send` recipes
 
-`kv-ctl` is the recommended client. When debugging without a `kv-ctl` build, or scripting on systems that do not ship `qdbus` (Qt6 makes it an optional package on several distros), use `dbus-send`. End-user `qdbus` examples live in [`docs/en/remote-control.md`](docs/en/remote-control.md) and [`docs/pl/remote-control.md`](docs/pl/remote-control.md).
+`kv-ctl` is the recommended client. When debugging without a `kv-ctl` build, or scripting on systems that do not ship `qdbus` (Qt6 makes it an optional package on several distros), use `dbus-send`. End-user `qdbus` examples live in [`docs/en/remote-control.mdx`](docs/en/remote-control.mdx) and [`docs/pl/remote-control.mdx`](docs/pl/remote-control.mdx).
 
 ```bash
 # Bump volume / mute on the default profile
@@ -998,5 +998,5 @@ npx @docs.page/cli check --external-links off
 npx @docs.page/cli preview
 ```
 
-The CLI checker scans MDX pages; also verify the Markdown guides and their
-links in the rendered site.
+The site serves the `.mdx` guides directly. Verify navigation and rendering in
+the browser as well as running the CLI check.

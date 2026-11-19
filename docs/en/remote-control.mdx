@@ -1,34 +1,34 @@
-[English](https://github.com/Adiker/keyboard-volume-app/blob/main/docs/en/remote-control.md) · [Powrót do README](https://github.com/Adiker/keyboard-volume-app/blob/main/README.pl.md)
+[Polski](https://github.com/Adiker/keyboard-volume-app/blob/main/docs/pl/remote-control.mdx) · [Back to README](https://github.com/Adiker/keyboard-volume-app/blob/main/README.md)
 
-# Sterowanie zdalne
+# Remote control
 
-`kv-ctl` jest zalecanym klientem do skryptów. Aplikacja zasobnika musi już
-działać, ponieważ klient korzysta z jej usługi na sesyjnej szynie D-Bus.
+`kv-ctl` is the recommended script-friendly client. The tray app must already
+be running because the client talks to its session-bus service.
 
 ## `kv-ctl`
 
 ```bash
-# Zmiana względna i wyciszenie
+# Relative volume and mute actions
 kv-ctl up [--profile ID]
 kv-ctl down [--profile ID]
-kv-ctl mute                 # przełącz
+kv-ctl mute                 # toggle
 kv-ctl mute on [--profile ID]
 kv-ctl mute off [--profile ID]
 
-# Profile, ducking i sceny
+# Profiles, ducking and scenes
 kv-ctl duck [--profile ID]
-kv-ctl show [--profile ID]       # pokaż bez zmiany
+kv-ctl show [--profile ID]       # display volume without changing it
 kv-ctl get profiles
 kv-ctl get scenes
 kv-ctl scene meeting
 
-# Wykrywanie i wybór aplikacji
+# App discovery and selection
 kv-ctl refresh
 kv-ctl get apps
 kv-ctl get active-app
 kv-ctl set active-app Firefox
 
-# Wartości bezwzględne i ustawienia
+# Absolute values and settings
 kv-ctl get volume
 kv-ctl set volume 35 [--profile ID]
 kv-ctl get muted
@@ -36,45 +36,46 @@ kv-ctl set muted true
 kv-ctl get step
 kv-ctl set step 5
 
-# Przełączniki w trakcie działania
+# Runtime switches
 kv-ctl get progress-enabled
 kv-ctl set progress-enabled true
 kv-ctl get auto-profile-switch
 kv-ctl set auto-profile-switch false
 
-# Sink i routing ad-hoc
+# Sinks and ad-hoc routing
 kv-ctl get sinks
 kv-ctl set sink chromium alsa_output.usb-headset
 
-# Przekazywanie sterowania MPRIS
+# MPRIS media forwarding
 kv-ctl media play-pause
 kv-ctl media next
 kv-ctl media previous
 kv-ctl media stop
 ```
 
-`--profile ID` działa dla `up`, `down`, `mute`, `duck`, `show` i `set volume`.
-Nazwy aplikacji rozróżniają wielkość liter; dokładne wartości pokazuje
-`kv-ctl get apps`. `kv-ctl get profiles` zachowuje pierwsze sześć kolumn
-rozdzielonych tabulatorami i dodaje pełne pola `apps=` oraz `regex=`.
+`--profile ID` applies to `up`, `down`, `mute`, `duck`, `show` and `set
+volume`. App names are case-sensitive; use `kv-ctl get apps` for the exact
+names known by the daemon. `kv-ctl get profiles` retains its original first six
+tab-separated columns and appends complete `apps=` and `regex=` fields.
 
-`kv-ctl --help` pokazuje aktualny skrót składni. `kv-ctl` nie edytuje pliku
-konfiguracyjnego bezpośrednio: deleguje zmiany do działającej aplikacji, dzięki
-czemu obowiązują te same walidacje, limity profili i asynchroniczny worker audio.
+Use `kv-ctl --help` for the version-specific synopsis. `kv-ctl` has no direct
+configuration-file mode; it delegates changes to the running app so the same
+validation, profile limits and asynchronous audio worker are used as for tray
+actions.
 
-## Własna usługa D-Bus
+## Custom D-Bus service
 
-Aplikacja zawsze rejestruje na sesyjnej szynie:
+The app always registers this session-bus endpoint:
 
 ```text
-service:   org.keyboardvolumeapp
-path:      /org/keyboardvolumeapp
+service: org.keyboardvolumeapp
+path:    /org/keyboardvolumeapp
 interface: org.keyboardvolumeapp.VolumeControl
 ```
 
-Poniższe przykłady używają `qdbus`.
+The following examples use `qdbus`.
 
-### Właściwości
+### Properties
 
 ```bash
 qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
@@ -102,10 +103,10 @@ qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
   org.keyboardvolumeapp.VolumeControl ActiveApp Firefox
 ```
 
-### Metody
+### Methods
 
 ```bash
-# Profil domyślny
+# Default profile
 qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
   org.keyboardvolumeapp.VolumeControl.VolumeUp
 qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
@@ -121,7 +122,7 @@ qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
 qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
   org.keyboardvolumeapp.VolumeControl.RefreshApps
 
-# Profile i sceny
+# Profile and scene actions
 qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
   org.keyboardvolumeapp.VolumeControl.VolumeUpProfile firefox-ctrl
 qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
@@ -141,7 +142,7 @@ qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
 qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
   org.keyboardvolumeapp.VolumeControl.SetAppSink chromium alsa_output.usb-headset
 
-# Akcje multimedialne przekazywane do wybranego odtwarzacza MPRIS
+# Media actions forwarded to the selected MPRIS player
 qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
   org.keyboardvolumeapp.VolumeControl.MediaPlayPause
 qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
@@ -152,7 +153,7 @@ qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
   org.keyboardvolumeapp.VolumeControl.MediaStop
 ```
 
-Do wyszukiwania i diagnozowania:
+For discovery and debugging:
 
 ```bash
 qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
@@ -162,23 +163,23 @@ qdbus org.keyboardvolumeapp /org/keyboardvolumeapp \
   org.freedesktop.DBus.Introspectable.Introspect
 ```
 
-Właściwości `VolumeControl` to `Volume`, `Muted`, `ActiveApp`, `Apps`,
-`VolumeStep`, `Profiles`, `Scenes`, `Sinks`, `ProgressEnabled` i
-`AutoProfileSwitch`. Dla zapisywalnych właściwości używaj `Get`, `Set` i
-`GetAll`; `Profiles`, `Scenes` i `Sinks` są listami tylko do odczytu.
+The `VolumeControl` properties are `Volume`, `Muted`, `ActiveApp`, `Apps`,
+`VolumeStep`, `Profiles`, `Scenes`, `Sinks`, `ProgressEnabled` and
+`AutoProfileSwitch`. Use the standard `Get`, `Set` and `GetAll` calls above for
+the writable properties; `Profiles`, `Scenes` and `Sinks` are read-only lists.
 
-## Opcjonalny fałszywy endpoint MPRIS
+## Optional fake MPRIS endpoint
 
-Po włączeniu Ustawienia → Postęp odtwarzania → **Eksponuj fałszywy endpoint
-MPRIS** aplikacja dodatkowo rejestruje:
+When Settings → Playback progress → **Expose fake MPRIS player endpoint** is
+enabled, the app additionally registers:
 
 ```text
 service: org.mpris.MediaPlayer2.keyboardvolumeapp
 path:    /org/mpris/MediaPlayer2
 ```
 
-Domyślnie endpoint jest wyłączony, aby nie był wykrywany jako prawdziwy
-odtwarzacz przez np. Discord Music Presence. Przykłady:
+It is disabled by default to avoid being mistaken for a real player by clients
+such as Discord Music Presence. Example calls:
 
 ```bash
 qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
@@ -191,6 +192,6 @@ qdbus org.mpris.MediaPlayer2.keyboardvolumeapp /org/mpris/MediaPlayer2 \
   org.mpris.MediaPlayer2.Quit
 ```
 
-`qdbus` jest opcjonalny na części dystrybucji Qt6. Typowane przepisy
-`dbus-send` dla własnego interfejsu i endpointu MPRIS są w sekcji D-Bus pliku
+`qdbus` is optional on some Qt6 distributions. Typed `dbus-send` recipes for
+the custom interface and MPRIS endpoint are maintained in the D-Bus section of
 [ARCHITECTURE.md](https://github.com/Adiker/keyboard-volume-app/blob/main/ARCHITECTURE.md).

@@ -48,7 +48,7 @@ GitHub Releases publish `.deb`, `.rpm` and Arch `.pkg.tar.zst` packages for each
 tagged version. Download the package for your distribution from the
 [latest release](https://github.com/Adiker/keyboard-volume-app/releases/latest)
 and install it with the system package manager. Full package and dependency
-details are in the [installation guide](docs/en/installation.md).
+details are in the [installation guide](docs/en/installation.mdx).
 
 To build the current source tree:
 
@@ -80,10 +80,10 @@ The documentation is also available on [docs.page](https://docs.page/Adiker/keyb
 
 | Topic | English | Polski |
 |---|---|---|
-| Installation, dependencies, Wayland and systemd | [Installation](docs/en/installation.md) | [Instalacja](docs/pl/installation.md) |
-| Everyday use, profiles, OSD, scenes and troubleshooting | [User guide](docs/en/user-guide.md) | [Przewodnik użytkownika](docs/pl/user-guide.md) |
-| `config.json`, hotkey formats and migrations | [Configuration](docs/en/configuration.md) | [Konfiguracja](docs/pl/configuration.md) |
-| `kv-ctl`, `qdbus`, D-Bus and MPRIS | [Remote control](docs/en/remote-control.md) | [Sterowanie zdalne](docs/pl/remote-control.md) |
+| Installation, dependencies, Wayland and systemd | [Installation](docs/en/installation.mdx) | [Instalacja](docs/pl/installation.mdx) |
+| Everyday use, profiles, OSD, scenes and troubleshooting | [User guide](docs/en/user-guide.mdx) | [Przewodnik użytkownika](docs/pl/user-guide.mdx) |
+| `config.json`, hotkey formats and migrations | [Configuration](docs/en/configuration.mdx) | [Konfiguracja](docs/pl/configuration.mdx) |
+| `kv-ctl`, `qdbus`, D-Bus and MPRIS | [Remote control](docs/en/remote-control.mdx) | [Sterowanie zdalne](docs/pl/remote-control.mdx) |
 | Architecture, tests and maintainer workflows | [ARCHITECTURE.md](ARCHITECTURE.md) | — |
 | Contributing and reporting issues | [CONTRIBUTING.md](CONTRIBUTING.md) | — |
 
@@ -99,7 +99,7 @@ kv-ctl get apps
 kv-ctl set volume 35
 ```
 
-See the [remote-control guide](docs/en/remote-control.md) for the complete
+See the [remote-control guide](docs/en/remote-control.mdx) for the complete
 command list and typed D-Bus examples. Test recipes and the isolated PipeWire
 regression are maintained in [ARCHITECTURE.md](ARCHITECTURE.md).
 
