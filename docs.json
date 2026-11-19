@@ -57,5 +57,8 @@
         ]
       }
     ]
+  },
+  "theme": {
+    "backgroundDark": "#000000"
   }
 }
