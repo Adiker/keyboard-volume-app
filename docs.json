@@ -59,6 +59,7 @@
     ]
   },
   "theme": {
-    "backgroundDark": "#000000"
+    "backgroundDark": "#000000",
+    "preset": "bcj0c6sa"
   }
 }
