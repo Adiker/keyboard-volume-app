@@ -104,3 +104,9 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 @media (max-width: 430px) {
   .brand > span:last-child { display: none; }
 }
+.markdown-section strong { color: var(--heading); }
+.markdown-section h1, .markdown-section h2, .markdown-section h3, .markdown-section h4 { scroll-margin-top: calc(var(--header-height) + 16px); }
+@media (max-width: 768px) {
+  /* Docsify makes .content static on mobile, so its top offset has no effect. */
+  .content { padding-top: var(--header-height); }
+}
