@@ -76,6 +76,8 @@ cmake --build cpp/build -j"$(nproc)"
 
 ## Documentation
 
+Browse the [Docsify documentation](https://adiker.github.io/keyboard-volume-app/) online.
+
 | Topic | English | Polski |
 |---|---|---|
 | Installation, dependencies, Wayland and systemd | [Installation](docs/en/installation.md) | [Instalacja](docs/pl/installation.md) |

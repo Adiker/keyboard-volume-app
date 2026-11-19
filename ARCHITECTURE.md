@@ -985,3 +985,22 @@ pull-request code.
 - **Profiles are the source of truth** for hotkey → app mapping. Legacy `selected_app` and top-level `hotkeys` are deprecated mirrors of `profiles[0]`, kept in sync on every write for one release cycle of backwards compat (D-Bus/MPRIS callers reading the old fields keep working).
 - **Scenes are additive mixer presets** — they do not change the active app/profile, and applying one only posts absolute per-app volume/mute operations to the existing audio worker.
 - **Modifiers tracked only from grabbed devices** — a modifier key on a separate keyboard with no hotkey bindings won't be observed in v1. Documented limitation; v2 may add passive read-only opens for modifier-only devices.
+
+## Docsify site
+
+The GitHub Pages site uses Docsify to render the repository Markdown at runtime.
+The workflow `.github/workflows/docsify-pages.yml` publishes on relevant changes
+to `main` and can also be run manually. GitHub Pages must use GitHub Actions as
+its source. The entry point and sidebar live in `docsify/`; keep the sidebar in
+sync when adding or renaming guides. The site loads pinned Docsify assets from
+jsDelivr, so visitors need network access to that CDN.
+
+To preview the same assembled files locally:
+
+```bash
+.github/scripts/build-docsify.sh /tmp/keyboard-volume-docsify-site
+python3 -m http.server --directory /tmp/keyboard-volume-docsify-site 8000
+```
+
+Open `http://localhost:8000/`. Use an empty output directory to avoid serving
+stale files. The source Markdown remains usable directly on GitHub.
