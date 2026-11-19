@@ -66,3 +66,46 @@ html[data-theme="oled"] .markdown-section .anchor span { color: var(--text); }
 html[data-theme="dark"] .search input, html[data-theme="oled"] .search input {
   background: var(--panel);
 }
+
+/* Comfortable documentation typography, using the visitor's system font. */
+body, .theme-switcher, .search input {
+  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  -webkit-font-smoothing: antialiased;
+}
+body { font-size: 16px; }
+.markdown-section {
+  max-width: 860px;
+  padding: 54px 40px 100px;
+  font-size: 16px;
+  line-height: 1.75;
+}
+.markdown-section h1, .markdown-section h2, .markdown-section h3,
+.markdown-section h4 { font-weight: 600; letter-spacing: -.025em; line-height: 1.25; }
+.markdown-section h1 { font-size: 2.25rem; margin: 1.2rem 0; }
+.markdown-section h2 { font-size: 1.5rem; margin: 2.5rem 0 1rem; }
+.markdown-section h3 { font-size: 1.25rem; margin: 2rem 0 1rem; }
+.markdown-section p, .markdown-section ul, .markdown-section ol { line-height: 1.75; }
+.markdown-section pre {
+  border: 1px solid #e3e5e8;
+  border-radius: 9px;
+  padding: 1.25rem;
+}
+.markdown-section code { border-radius: 5px; font-size: .875em; }
+.markdown-section pre > code { font-size: .875rem; line-height: 1.65; }
+.markdown-section table { border-collapse: collapse; }
+.sidebar { padding: 20px 14px 60px; }
+.sidebar .app-name { font-size: 1rem; font-weight: 600; margin: 1rem 0 1.5rem; }
+.sidebar-nav { font-size: .875rem; }
+.sidebar ul li a { border-radius: 6px; padding: 4px 8px; }
+.sidebar ul li.active > a { font-weight: 600; }
+.search input { border-radius: 6px; font-size: .875rem; }
+html[data-theme="dark"] { --page: #101010; --panel: #1b1b1b; --text: #f0f0f0; --muted: #b7b7b7; --border: #393939; }
+html[data-theme="oled"] { --page: #000; --panel: #111; }
+html[data-theme="dark"] .markdown-section pre,
+html[data-theme="oled"] .markdown-section pre { border-color: var(--border); }
+html[data-theme="dark"] .sidebar ul li.active > a,
+html[data-theme="oled"] .sidebar ul li.active > a { background: var(--panel); }
+@media (max-width: 768px) {
+  .markdown-section { padding: 40px 24px 100px; }
+  .markdown-section h1 { font-size: 2rem; }
+}
