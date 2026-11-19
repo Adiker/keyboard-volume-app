@@ -2,7 +2,7 @@ name: Deploy Docsify to GitHub Pages
 
 on:
   push:
-    branches: [main, feature/docsify]
+    branches: [main]
     paths:
       - 'docs/**'
       - 'docsify/**'
