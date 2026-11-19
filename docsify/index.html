@@ -6,10 +6,35 @@
   <meta name="description" content="Keyboard Volume App documentation in English and Polish">
   <title>Keyboard Volume App documentation</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4.13.1/lib/themes/vue.css">
+  <link rel="stylesheet" href="theme.css">
+  <script>
+    // Apply before the page is painted to avoid flashing the wrong theme.
+    try {
+      const saved = localStorage.getItem('kva-docs-theme');
+      document.documentElement.dataset.theme = ['light', 'dark', 'oled'].includes(saved)
+        ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    } catch (_) {
+      document.documentElement.dataset.theme = 'light';
+    }
+  </script>
 </head>
 <body>
+  <div class="theme-switcher">
+    <label for="theme-select">Theme / Motyw</label>
+    <select id="theme-select" aria-label="Theme / Motyw">
+      <option value="light">Light / Jasny</option>
+      <option value="dark">Dark / Ciemny</option>
+      <option value="oled">OLED</option>
+    </select>
+  </div>
   <div id="app">Loading documentation…</div>
   <script>
+    const themeSelect = document.getElementById('theme-select');
+    themeSelect.value = document.documentElement.dataset.theme;
+    themeSelect.addEventListener('change', () => {
+      document.documentElement.dataset.theme = themeSelect.value;
+      try { localStorage.setItem('kva-docs-theme', themeSelect.value); } catch (_) { /* Optional persistence. */ }
+    });
     window.$docsify = {
       name: 'Keyboard Volume App',
       repo: 'Adiker/keyboard-volume-app',

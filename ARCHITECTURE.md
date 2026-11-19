@@ -992,7 +992,9 @@ The GitHub Pages site uses Docsify to render the repository Markdown at runtime.
 The workflow `.github/workflows/docsify-pages.yml` publishes on relevant changes
 to `main` and can also be run manually. GitHub Pages must use GitHub Actions as
 its source. The entry point and sidebar live in `docsify/`; keep the sidebar in
-sync when adding or renaming guides. The site loads pinned Docsify assets from
+sync when adding or renaming guides. The theme selector supports light, dark and
+OLED modes; it remembers the selection in browser local storage and defaults to
+the system color scheme. The site loads pinned Docsify assets from
 jsDelivr, so visitors need network access to that CDN.
 
 To preview the same assembled files locally:

@@ -1,0 +1,68 @@
+.theme-switcher {
+  position: fixed;
+  z-index: 40;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .45rem .65rem;
+  border: 1px solid #c9d1d9;
+  border-radius: .5rem;
+  background: #fff;
+  color: #34495e;
+  box-shadow: 0 2px 8px #0002;
+  font: 14px/1.4 sans-serif;
+}
+.theme-switcher select {
+  max-width: 9rem;
+  padding: .25rem;
+  border: 1px solid #9ca9b4;
+  border-radius: .25rem;
+  background: inherit;
+  color: inherit;
+  font: inherit;
+}
+html[data-theme="dark"], html[data-theme="oled"] {
+  color-scheme: dark;
+  --page: #171b22;
+  --panel: #20262e;
+  --text: #e1e7ed;
+  --muted: #b1bcc8;
+  --border: #46515d;
+  --accent: #68d9aa;
+}
+html[data-theme="oled"] { --page: #000; --panel: #101010; --border: #555; }
+html[data-theme="dark"] body, html[data-theme="oled"] body,
+html[data-theme="dark"] .sidebar, html[data-theme="oled"] .sidebar {
+  background: var(--page);
+  color: var(--text);
+}
+html[data-theme="dark"] .sidebar, html[data-theme="oled"] .sidebar { border-color: var(--border); }
+html[data-theme="dark"] .markdown-section, html[data-theme="oled"] .markdown-section,
+html[data-theme="dark"] .markdown-section h1, html[data-theme="oled"] .markdown-section h1,
+html[data-theme="dark"] .markdown-section h2, html[data-theme="oled"] .markdown-section h2,
+html[data-theme="dark"] .markdown-section h3, html[data-theme="oled"] .markdown-section h3,
+html[data-theme="dark"] .markdown-section h4, html[data-theme="oled"] .markdown-section h4,
+html[data-theme="dark"] .sidebar ul li a, html[data-theme="oled"] .sidebar ul li a,
+html[data-theme="dark"] .app-name-link, html[data-theme="oled"] .app-name-link { color: var(--text); }
+html[data-theme="dark"] .markdown-section a, html[data-theme="oled"] .markdown-section a,
+html[data-theme="dark"] .sidebar ul li.active > a, html[data-theme="oled"] .sidebar ul li.active > a { color: var(--accent); }
+html[data-theme="dark"] .markdown-section pre, html[data-theme="oled"] .markdown-section pre,
+html[data-theme="dark"] .markdown-section code, html[data-theme="oled"] .markdown-section code,
+html[data-theme="dark"] .markdown-section tr:nth-child(2n), html[data-theme="oled"] .markdown-section tr:nth-child(2n),
+html[data-theme="dark"] .theme-switcher, html[data-theme="oled"] .theme-switcher { background: var(--panel); color: var(--text); }
+html[data-theme="dark"] .markdown-section tr, html[data-theme="oled"] .markdown-section tr { background: var(--page); }
+html[data-theme="dark"] .markdown-section td, html[data-theme="oled"] .markdown-section td,
+html[data-theme="dark"] .markdown-section th, html[data-theme="oled"] .markdown-section th,
+html[data-theme="dark"] .theme-switcher, html[data-theme="oled"] .theme-switcher { border-color: var(--border); }
+html[data-theme="dark"] .search input, html[data-theme="oled"] .search input,
+html[data-theme="dark"] .search .matching-post h2, html[data-theme="oled"] .search .matching-post h2 { color: var(--text); }
+html[data-theme="dark"] .search .matching-post p, html[data-theme="oled"] .search .matching-post p,
+html[data-theme="dark"] .markdown-section blockquote, html[data-theme="oled"] .markdown-section blockquote { color: var(--muted); }
+html[data-theme="dark"] .sidebar-toggle, html[data-theme="oled"] .sidebar-toggle { background: var(--page); }
+html[data-theme="dark"] .markdown-section .anchor span,
+html[data-theme="oled"] .markdown-section .anchor span { color: var(--text); }
+html[data-theme="dark"] .search input, html[data-theme="oled"] .search input {
+  background: var(--panel);
+}
