@@ -64,8 +64,35 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .markdown-section p, .markdown-section ul, .markdown-section ol { line-height: 1.8; }
 .markdown-section a { color: var(--accent); font-weight: 600; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .markdown-section blockquote { color: var(--muted); border-color: var(--accent); }
-.markdown-section pre { box-sizing: border-box; margin: 1.1rem 0 1.5rem; padding: 1.35rem; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
-.markdown-section pre > code { color: var(--text); background: transparent; font-size: 14px; line-height: 1.7; }
+.markdown-section pre {
+  box-sizing: border-box;
+  margin: .8rem 0 1.1rem;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.markdown-section pre > code {
+  margin: 0;
+  padding: .65rem 1rem;
+  overflow-x: auto;
+  color: var(--text);
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.6;
+}
+/* Keep the language label above the code so it cannot cover a long line. */
+.markdown-section pre::after { content: none; }
+.markdown-section pre[data-lang]:not([data-lang=""])::before {
+  content: attr(data-lang);
+  display: block;
+  padding: .45rem 1rem 0;
+  color: var(--muted);
+  font-size: .7rem;
+  line-height: 1;
+}
+.markdown-section pre[data-lang]:not([data-lang=""]) > code { padding-top: .3rem; }
 .markdown-section code { color: var(--text); background: var(--code); border-radius: 5px; padding: .18em .35em; font-size: .875em; }
 .markdown-section table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
 .markdown-section tr { background: var(--page); border-color: var(--border); }
