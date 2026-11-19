@@ -98,3 +98,9 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 }
 .page-toc nav { position: static; margin: 0; text-align: left; }
 .page-toc nav a { font-size: 13px; font-weight: 400; }
+@media (max-width: 768px) {
+  .theme-switcher select { width: 150px; max-width: none; }
+}
+@media (max-width: 430px) {
+  .brand > span:last-child { display: none; }
+}
