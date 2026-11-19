@@ -56,6 +56,8 @@
       loadSidebar: true,
       subMaxLevel: 0,
       auto2top: true,
+      // Docsify scrolls section links itself, so CSS scroll margins are not enough.
+      topMargin: document.querySelector('.site-header').offsetHeight + 16,
       relativePath: true,
       plugins: [function (hook) {
         hook.doneEach(function () {
