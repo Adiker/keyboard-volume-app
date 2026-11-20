@@ -92,10 +92,17 @@ target_link_libraries(test_kvctloutput PRIVATE
 )
 add_test(NAME test_kvctloutput COMMAND test_kvctloutput)
 
+set(TEST_VOLUME_CONTROLLER_SOURCES
+    ../src/volumecontroller.cpp
+    ../src/paworker.cpp
+    ../src/pawatcherthread.cpp
+    ../src/pabackend_helpers.cpp
+)
+
 # ─── test_volumecontroller (smoke) ──────────────────────────────────────────────
 add_executable(test_volumecontroller
     test_volumecontroller.cpp
-    ../src/volumecontroller.cpp
+    ${TEST_VOLUME_CONTROLLER_SOURCES}
     ../src/config.cpp
     ../src/appaudiofilters.cpp
     ../src/pwutils.cpp
@@ -242,7 +249,7 @@ add_executable(test_dbusinterface
     ../src/dbusinterface.cpp
     ../src/config.cpp
     ../src/appaudiofilters.cpp
-    ../src/volumecontroller.cpp
+    ${TEST_VOLUME_CONTROLLER_SOURCES}
     ../src/pwutils.cpp
 )
 target_include_directories(test_dbusinterface PRIVATE
@@ -262,7 +269,7 @@ add_test(NAME test_dbusinterface COMMAND test_dbusinterface)
 add_executable(test_tray_dbus
     test_tray_dbus.cpp
     ../src/trayapp.cpp ../src/dbusinterface.cpp ../src/config.cpp
-    ../src/volumecontroller.cpp ../src/pwutils.cpp ../src/appaudiofilters.cpp
+    ${TEST_VOLUME_CONTROLLER_SOURCES} ../src/pwutils.cpp ../src/appaudiofilters.cpp
     ../src/inputhandler.cpp ../src/evdevdevice.cpp ../src/i18n.cpp
     ../src/aboutdialog.cpp ../src/settingsdialog.cpp ../src/appselectordialog.cpp
     ../src/applistwidget.cpp ../src/profileeditdialog.cpp ../src/sceneeditdialog.cpp

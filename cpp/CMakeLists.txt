@@ -18,13 +18,20 @@ pkg_check_modules(LIBPIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
 pkg_check_modules(TAGLIB    REQUIRED IMPORTED_TARGET taglib)
 pkg_check_modules(XCB       REQUIRED IMPORTED_TARGET xcb)
 
+set(VOLUME_CONTROLLER_SOURCES
+    src/volumecontroller.cpp
+    src/paworker.cpp
+    src/pawatcherthread.cpp
+    src/pabackend_helpers.cpp
+)
+
 # Sources
 set(SOURCES
     src/main.cpp
     src/app.cpp
     src/config.cpp
     src/i18n.cpp
-    src/volumecontroller.cpp
+    ${VOLUME_CONTROLLER_SOURCES}
     src/inputhandler.cpp
     src/osdwindow.cpp
     src/osdlabelformat.cpp

@@ -41,13 +41,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Pliki:** `cpp/src/config.h`, `cpp/src/config.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/tests/test_config.cpp`
 **Status:** Planowane.
 
-### 34. Podział `volumecontroller.cpp`
-
-**Problem:** Plik łączy `VolumeController`, `PaWorker`, `PaWatcherThread`, sink-input introspection, stream-restore, pending queue, reconnect/backoff oraz orchestrację fallbacku PipeWire. Trudny w review i ryzykowny przy kolejnych zmianach hot patha.
-**Rekomendacja:** Wydzielić: `paworker.h/cpp` (właściciel kontekstu PA i operacji volume/mute), `pawatcherthread.h/cpp` (subskrypcja sink-input + reconnect watcher), wewnętrzny namespace lub `pabackend_helpers.h/cpp` na callback data i stream-restore helpery. `volumecontroller.cpp` zostaje cienką fasadą Qt API.
-**Pliki:** Nowe `cpp/src/paworker.h/cpp`, `cpp/src/pawatcherthread.h/cpp`, refactor `cpp/src/volumecontroller.{h,cpp}`, `cpp/CMakeLists.txt`, `cpp/tests/test_volumecontroller.cpp`.
-**Status:** Planowane. Wymaga zachowania threading contract (libpulse tylko z `PaWorker`, `std::atomic<bool>` dla flag, brak ścieżki do main thread).
-
 ### 35. Podział `pwutils.cpp`
 
 **Problem:** Plik miesza snapshot registry, listowanie klientów, filtrowanie, odczyt node'ów i zapis `SPA_PARAM_Props`. Aliasowanie (#7b) zostało już dodane.
@@ -223,6 +216,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 33. Wydzielenie klasy `App` z `main.cpp`
 
 **Status:** Zrealizowane. Klasa `App` oraz `osdLayoutInputFromConfig()` wydzielone do `cpp/src/app.{h,cpp}` z opcjonalnym wstrzykiwaniem konfiguracji i `AppInitOptions` pod testy. `main.cpp` obsługuje wyłącznie startup (Wayland/XCB, sygnały UNIX, CLI, singleton, FirstRunWizard) bez `main.moc`.
+
+### 34. Podział `volumecontroller.cpp`
+
+**Status:** Zrealizowane. `volumecontroller.cpp` zredukowany do cienkiej fasady Qt; wydzielono `cpp/src/paworker.{h,cpp}`, `cpp/src/pawatcherthread.{h,cpp}` oraz `cpp/src/pabackend_helpers.{h,cpp}` z pełnym zachowaniem kontraktu wątkowego (`PaWorker` w dedykowanym wątku, `std::atomic<bool>`, brak `volumecontroller.moc`).
 
 ### 36. Konfigurowalne filtry aplikacji audio
 
