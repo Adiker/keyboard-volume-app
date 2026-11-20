@@ -222,12 +222,13 @@ void PaWorker::doChangeVolume(const QString& appName, double delta, double minVo
         if (!pipeWireVolume) pipeWireVolume = newVol;
         pipeWireMuted = node.muted;
     }
-    if (pipeWireVolume)
+    if (pipeWireVolume.has_value())
     {
-        m_appVolumes[appName] = *pipeWireVolume;
+        const double appliedVolume = *pipeWireVolume;
+        m_appVolumes[appName] = appliedVolume;
         m_appMutes[appName] = pipeWireMuted;
         removePendingVolume(appName);
-        emit volumeChanged(appName, *pipeWireVolume, pipeWireMuted);
+        emit volumeChanged(appName, appliedVolume, pipeWireMuted);
         return;
     }
 
@@ -557,21 +558,24 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
             entry.volume = input.volume;
 
             if (!node) node = pipeWireStateFor(input);
-            if (node)
+            bool hasHiddenMultiplier = false;
+            if (node.has_value())
             {
-                entry.pipeWireNodeId = node->id;
-                handledPipeWireNodes.insert(node->id);
-                reportHiddenVolume(input.displayName(), *node);
-                if (node->channelVolumes.isEmpty())
+                const PipeWireNode& pwNode = *node;
+                hasHiddenMultiplier = pwNode.hasHiddenVolumeMultiplier();
+                entry.pipeWireNodeId = pwNode.id;
+                handledPipeWireNodes.insert(pwNode.id);
+                reportHiddenVolume(input.displayName(), pwNode);
+                if (pwNode.channelVolumes.isEmpty())
                 {
                     const int count = std::max<int>(1, input.channelVolume.channels);
-                    entry.visibleChannelVolumes = QList<double>(count, node->effectiveVolume());
+                    entry.visibleChannelVolumes = QList<double>(count, pwNode.effectiveVolume());
                 }
                 else
                 {
-                    entry.visibleChannelVolumes = node->channelVolumes;
+                    entry.visibleChannelVolumes = pwNode.channelVolumes;
                     for (double& value : entry.visibleChannelVolumes)
-                        value = std::cbrt(std::max(0.0, value * node->rawVolume));
+                        value = std::cbrt(std::max(0.0, value * pwNode.rawVolume));
                 }
                 entry.volume = std::accumulate(entry.visibleChannelVolumes.cbegin(),
                                                entry.visibleChannelVolumes.cend(), 0.0) /
@@ -579,8 +583,7 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
             }
 
             handledApps.insert(entry.app.toLower());
-            const bool needsWrite = qAbs(entry.volume - duckVolume) > 0.0001 ||
-                                    (node && node->hasHiddenVolumeMultiplier());
+            const bool needsWrite = qAbs(entry.volume - duckVolume) > 0.0001 || hasHiddenMultiplier;
             if (needsWrite && setActiveStreamVisibleVolume(input, duckVolume))
                 snapshot.append(std::move(entry));
         }
