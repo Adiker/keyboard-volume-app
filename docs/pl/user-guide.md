@@ -154,10 +154,10 @@ akcję do wybranego odtwarzacza i są niezależne od profili głośności. Jeśl
 sam skrót posiada aktywny profil, profil wygrywa. OSD multimediów może być
 wyłączone, pokazywać tylko akcję albo pełny OSD głośności.
 
-Opcjonalny fałszywy endpoint
-`org.mpris.MediaPlayer2.keyboardvolumeapp` jest domyślnie wyłączony. Włącz go
-w Ustawienia → Postęp odtwarzania tylko wtedy, gdy widget lub inny klient MPRIS
-ma widzieć aplikację jako odtwarzacz.
+> [!TIP]
+> Opcjonalny fałszywy endpoint `org.mpris.MediaPlayer2.keyboardvolumeapp` jest
+> domyślnie wyłączony. Włącz go w Ustawienia → Postęp odtwarzania tylko wtedy,
+> gdy widget lub inny klient MPRIS ma widzieć aplikację jako odtwarzacz.
 
 ## Ostrzeżenie o głośności PipeWire
 
@@ -167,8 +167,9 @@ Wykrywanie przy starcie, odświeżeniu, reconnect, zmianie profilu i pojawieniu
 się streamu jest tylko do odczytu. Następna jawna zmiana głośności składa gain
 w kanałach i zeruje surowy mnożnik; migracja konfiguracji nie jest potrzebna.
 
-Natywny PulseAudio nie ma osobnego mnożnika PipeWire i nadal używa libpulse oraz
-stream-restore.
+> [!NOTE]
+> Natywny PulseAudio nie ma osobnego mnożnika PipeWire i nadal używa libpulse
+> oraz stream-restore.
 
 ## Diagnozowanie
 

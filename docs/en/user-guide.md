@@ -157,10 +157,10 @@ profile volume bindings. If an active profile claims the same binding, the
 profile wins. The media-controls OSD can be disabled, limited to the pressed
 action or shown as the full volume OSD.
 
-The optional fake MPRIS endpoint
-`org.mpris.MediaPlayer2.keyboardvolumeapp` is disabled by default. Enable it
-under Settings → Playback progress only when desktop widgets or another MPRIS
-client should see the app as a player.
+> [!TIP]
+> The optional fake MPRIS endpoint `org.mpris.MediaPlayer2.keyboardvolumeapp`
+> is disabled by default. Enable it under Settings → Playback progress only when
+> desktop widgets or another MPRIS client should see the app as a player.
 
 ## PipeWire volume warning
 
@@ -171,8 +171,9 @@ read-only. The next explicit volume action folds the effective gain into the
 visible channels and resets the raw multiplier to `1.0`; no config migration is
 needed.
 
-Native PulseAudio has no separate PipeWire raw multiplier, so it continues to
-use libpulse and stream-restore channel volumes.
+> [!NOTE]
+> Native PulseAudio has no separate PipeWire raw multiplier, so it continues to
+> use libpulse and stream-restore channel volumes.
 
 ## Troubleshooting
 

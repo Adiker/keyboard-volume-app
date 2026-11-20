@@ -985,3 +985,88 @@ pull-request code.
 - **Profiles are the source of truth** for hotkey → app mapping. Legacy `selected_app` and top-level `hotkeys` are deprecated mirrors of `profiles[0]`, kept in sync on every write for one release cycle of backwards compat (D-Bus/MPRIS callers reading the old fields keep working).
 - **Scenes are additive mixer presets** — they do not change the active app/profile, and applying one only posts absolute per-app volume/mute operations to the existing audio worker.
 - **Modifiers tracked only from grabbed devices** — a modifier key on a separate keyboard with no hotkey bindings won't be observed in v1. Documented limitation; v2 may add passive read-only opens for modifier-only devices.
+
+## Docsify site
+
+The GitHub Pages site uses Docsify to render the repository Markdown at runtime.
+The workflow `.github/workflows/docsify-pages.yml` publishes on relevant changes
+to `main` and can also be run manually. GitHub Pages must use GitHub Actions as
+its source. `.github/workflows/docsify-check.yml` builds the site and runs
+`.github/scripts/check-docs-links.py` (relative-link check) on pull requests that
+touch docs or `docsify/`.
+
+Files in `docsify/`:
+
+- `index.html` — page shell (header, backdrop, TOC container) and CDN scripts.
+- `app.js` — `$docsify` configuration and the UI plugin: theme selector, mobile
+  navigation (backdrop, `Esc`, `inert` on the hidden sidebar), EN/PL language
+  detection from the route (sets `<html lang>`, header labels and the language
+  switch), collapsible sidebar groups, code-block toolbar with a copy button,
+  edit-on-GitHub link, previous/next pager and the on-page table of contents.
+  A `beforeEach` hook rewrites GitHub-style `page.md#anchor` links to Docsify's
+  `page.md?id=anchor`, so Markdown stays valid on both GitHub and the site.
+  It also exposes `window.KVA` (`lang()`, `go(hash)`, `setTheme()`,
+  `counterpartRoute()`) for the scripts below. Docsify re-renders the sidebar on
+  every route change, so sidebar group state is kept in JS and re-applied.
+- `effects.js` — motion and reading aids, registered as an extra Docsify plugin
+  (scripts load in the order `app.js`, `effects.js`, `palette.js`, `resize.js`,
+  then Docsify):
+  page transitions through the View Transitions API (`html.vt-active` names the
+  fixed header/sidebar/TOC so only the article animates; the transition callback
+  waits for `doneEach`), a keyframe fallback (`html.page-enter`, also used on first
+  load and when `?no-vt` is in the URL), route and reading progress bars,
+  back-to-top button, TOC scrollspy with a sliding indicator, callouts and the
+  theme switch. The theme switch (`KVA.changeTheme`) cross-fades two viewport
+  snapshots through a view transition (`html.vt-theme`); do not animate colours
+  on every element instead, that drops frames on long pages (thousands of nodes).
+  Without the API, or with reduced motion, the theme changes instantly.
+- `palette.js` — command palette (`Ctrl/Cmd+K` or `/`) built on a native
+  `<dialog>`. It searches sidebar pages, section headings and body text from the
+  `docsify.search.index` entry in `localStorage` (built by Docsify's search plugin,
+  so keep that plugin), ignores diacritics, and also offers theme/language/GitHub
+  actions and recently opened pages (`kva-docs-recent`). The palette replaces the
+  plugin's sidebar search box, which is hidden with CSS (`.sidebar .search`) but
+  must stay in the plugin configuration because it builds the index.
+- `resize.js` — user-adjustable sidebar (200-480 px) and TOC (160-420 px) widths.
+  Thin `role="separator"` handles drag with the pointer, move with the arrow keys
+  (`Shift` = larger step), jump with `Home`/`End`, and reset on double-click or
+  `Enter`. Widths are stored in `localStorage` (`kva-docs-sidebar-width`,
+  `kva-docs-toc-width`), applied as the `--sidebar-width` / `--toc-width` CSS
+  variables and clamped so the article keeps at least 600 px. Mobile ignores the
+  preference (fixed 280 px off-canvas sidebar, no handles).
+- `theme.css` — layout and the light/dark/OLED themes layered on Docsify's
+  `vue.css`, including Prism token colors (`--tok-*` variables). Docsify's search
+  plugin and `vue.css` override some sidebar paddings, so sidebar spacing is set on
+  `.sidebar .search`; the page-TOC wraps long headings (`<wbr>` after `/`).
+- `motion.css` — motion tokens (`--ease-out`, `--dur-*`), micro-interactions,
+  skeleton, progress bars, callout and palette styling. Every animation lives in
+  `@media (prefers-reduced-motion: no-preference)`; animate only `transform` and
+  `opacity` (the sidebar group collapse is the one `grid-template-rows` exception).
+- `_sidebar.md` — navigation; keep it in sync when adding or renaming guides.
+- `_404.md` — bilingual not-found page (`notFoundPage: true`).
+
+`build-docsify.sh` copies these files plus the Markdown sources and
+`resources/icon.png` (favicon) into the output directory and replaces the
+`?v=dev` query on the local assets with the current commit SHA, so no manual
+cache-busting is needed. The theme selector supports light, dark and OLED modes;
+it remembers the selection in browser local storage and defaults to the system
+color scheme. The site loads pinned Docsify and Prism assets from jsDelivr, so
+visitors need network access to that CDN. Prism language packs are loaded for
+`bash`, `json` and `cpp`; add another pack to `index.html` when the docs start
+using a new fence language. The TOC column is shown from 1381 px up; below that
+the article uses the full width.
+
+Callouts use GitHub's alert syntax (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`,
+`[!WARNING]`, `[!CAUTION]` on the first line of a blockquote). GitHub renders them
+natively and `effects.js` styles them on the site, so write them in the guides
+instead of ad-hoc bold "Note:" paragraphs.
+
+To preview the same assembled files locally:
+
+```bash
+.github/scripts/build-docsify.sh /tmp/keyboard-volume-docsify-site
+python3 -m http.server --directory /tmp/keyboard-volume-docsify-site 8000
+```
+
+Open `http://localhost:8000/`. Use an empty output directory to avoid serving
+stale files. The source Markdown remains usable directly on GitHub.

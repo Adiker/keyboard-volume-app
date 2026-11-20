@@ -1,0 +1,268 @@
+/* ==========================================================================
+   Motion and polish layer for the documentation site.
+   Loaded after theme.css. Rules:
+   - animate transform/opacity (grid-template-rows only for group collapse);
+   - every animation lives inside prefers-reduced-motion: no-preference, so the
+     reduced-motion state is the plain static theme.
+   Sections: tokens, static polish, skeleton, route/read progress, header,
+   links and headings, sidebar, TOC, page footer, code, callouts, back-to-top,
+   command palette, page transitions.
+   ========================================================================== */
+
+/* ---- Tokens ------------------------------------------------------------- */
+:root {
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+  --shadow-sm: 0 1px 2px #0000000d, 0 2px 8px #0000000f;
+  --shadow-lg: 0 18px 50px #00000040;
+  --callout-note: #2868be; --callout-note-bg: #e8f0fc;
+  --callout-tip: #17794a; --callout-tip-bg: #e6f5ed;
+  --callout-important: #7c3aed; --callout-important-bg: #f1eafe;
+  --callout-warning: #a8480b; --callout-warning-bg: #fdf0e3;
+  --callout-caution: #c0262d; --callout-caution-bg: #fdeaea;
+}
+html[data-theme="dark"] {
+  --shadow-sm: 0 1px 2px #0006, 0 2px 8px #0004;
+  --callout-note: #8bbdff; --callout-note-bg: #1b2c43;
+  --callout-tip: #8fd19e; --callout-tip-bg: #17302a;
+  --callout-important: #c4a7ff; --callout-important-bg: #2a2240;
+  --callout-warning: #f0b072; --callout-warning-bg: #3a2a17;
+  --callout-caution: #ff9b9b; --callout-caution-bg: #3d2020;
+}
+html[data-theme="oled"] {
+  --shadow-sm: 0 1px 2px #000, 0 2px 8px #000;
+  --callout-note: #91c0ff; --callout-note-bg: #0f1d30;
+  --callout-tip: #95d9a4; --callout-tip-bg: #0d241d;
+  --callout-important: #c9adff; --callout-important-bg: #1c1530;
+  --callout-warning: #f5b97c; --callout-warning-bg: #2c1e0e;
+  --callout-caution: #ff9fa0; --callout-caution-bg: #2e1313;
+}
+
+/* ---- Static polish (no motion involved) --------------------------------- */
+::selection { background: var(--accent-bg); color: var(--heading); }
+html { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.sidebar, .page-toc, .markdown-section pre > code { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.markdown-section tbody tr:hover { background: var(--accent-bg); }
+.markdown-section pre:focus-within { box-shadow: 0 0 0 2px var(--accent-bg); }
+.site-header.scrolled { box-shadow: var(--shadow-sm); }
+@supports (backdrop-filter: blur(1px)) {
+  .site-header.scrolled { background: color-mix(in srgb, var(--page) 86%, transparent); backdrop-filter: blur(10px) saturate(1.2); }
+}
+
+/* Underline that grows from the left on hover; replaces the default underline. */
+.markdown-section a:not(.anchor) {
+  text-decoration: none;
+  background:
+    linear-gradient(currentColor, currentColor) left 100% / 0 1.5px no-repeat,
+    linear-gradient(color-mix(in srgb, currentColor 35%, transparent), color-mix(in srgb, currentColor 35%, transparent)) left 100% / 100% 1px no-repeat;
+  box-decoration-break: clone; -webkit-box-decoration-break: clone;
+}
+.markdown-section a:not(.anchor):hover, .markdown-section a:not(.anchor):focus-visible { background-size: 100% 1.5px, 100% 1px; }
+.markdown-section .pager a { background: none; }
+/* The collapsible sidebar groups clip overflow, so keep focus rings inside the link. */
+.sidebar a:focus-visible { outline-offset: -2px; }
+.markdown-section .anchor { text-decoration: none; }
+.markdown-section .anchor::after { content: "#"; margin-left: .4em; color: var(--muted); opacity: 0; font-weight: 400; }
+.markdown-section h2:hover .anchor::after, .markdown-section h3:hover .anchor::after,
+.markdown-section h4:hover .anchor::after, .markdown-section .anchor:focus-visible::after { opacity: .7; }
+
+/* ---- Skeleton shown while Docsify loads --------------------------------- */
+.skeleton { box-sizing: border-box; max-width: 928px; margin: 0 0 0 var(--sidebar-width); padding: calc(var(--header-height) + 56px) 48px; }
+.skeleton .sk { display: block; position: relative; overflow: hidden; height: 14px; margin: 0 0 14px; border-radius: 7px; background: var(--panel); }
+.skeleton .sk-title { width: 45%; height: 34px; margin-bottom: 28px; border-radius: 9px; }
+.skeleton .sk-short { width: 62%; }
+.skeleton .sk-block { height: 96px; border-radius: 10px; margin-bottom: 24px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 768px) { .skeleton { margin-left: 0; padding: calc(var(--header-height) + 36px) 24px; } }
+
+/* ---- Route and reading progress ----------------------------------------- */
+.route-progress { position: fixed; z-index: 60; inset: 0 0 auto; height: 2px; background: var(--accent); opacity: 0; transform: scaleX(0); transform-origin: left; pointer-events: none; }
+.read-progress { position: fixed; z-index: 34; top: var(--header-height); left: 0; right: 0; height: 3px; pointer-events: none; opacity: 0; }
+.read-progress.visible { opacity: 1; }
+.read-progress span { display: block; height: 100%; background: var(--accent); transform: scaleX(0); transform-origin: left; }
+
+/* ---- Back to top -------------------------------------------------------- */
+.to-top {
+  position: fixed; z-index: 30; right: 24px; bottom: 24px; display: grid; place-items: center;
+  width: 44px; height: 44px; padding: 0; border: 1px solid var(--border); border-radius: 50%;
+  color: var(--text); background: var(--panel); box-shadow: var(--shadow-sm); cursor: pointer;
+  opacity: 0; visibility: hidden;
+}
+.to-top.visible { opacity: 1; visibility: visible; }
+.to-top:hover { color: var(--accent); border-color: var(--accent); }
+.to-top svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- TOC scrollspy ------------------------------------------------------ */
+.page-toc nav { position: relative; }
+.toc-indicator { position: absolute; left: -1px; top: 0; width: 2px; height: 0; border-radius: 2px; background: var(--accent); opacity: 0; pointer-events: none; }
+.page-toc a[aria-current="location"] { color: var(--accent); font-weight: 600; }
+
+/* ---- Callouts (GitHub alert syntax) ------------------------------------- */
+.markdown-section blockquote.callout {
+  --c: var(--callout-note); --c-bg: var(--callout-note-bg);
+  margin: 1.4rem 0; padding: .9rem 1.1rem 1rem; color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--c) 35%, transparent); border-left: 4px solid var(--c);
+  border-radius: 10px; background: var(--c-bg);
+}
+.callout-tip { --c: var(--callout-tip); --c-bg: var(--callout-tip-bg); }
+.callout-important { --c: var(--callout-important); --c-bg: var(--callout-important-bg); }
+.callout-warning { --c: var(--callout-warning); --c-bg: var(--callout-warning-bg); }
+.callout-caution { --c: var(--callout-caution); --c-bg: var(--callout-caution-bg); }
+.markdown-section blockquote.callout p { margin: 0 0 .5rem; font-weight: 400; }
+.markdown-section blockquote.callout > :last-child { margin-bottom: 0; }
+.markdown-section blockquote.callout .callout-title { display: flex; align-items: center; gap: .5rem; margin: 0 0 .4rem; color: var(--c); font-weight: 700; font-size: .95rem; letter-spacing: .01em; }
+.callout-title svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- Command palette ---------------------------------------------------- */
+.palette-btn {
+  box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; height: var(--control-h); padding: 0 8px 0 10px;
+  border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--panel);
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.palette-btn:hover { color: var(--accent); border-color: var(--accent); }
+.palette-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.palette-btn kbd, .palette-foot kbd {
+  padding: 1px 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px;
+  color: var(--muted); background: var(--page); font: 600 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+dialog.palette {
+  box-sizing: border-box; width: min(640px, calc(100vw - 24px)); max-height: min(70vh, 560px); margin: 12vh auto auto; padding: 0; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 14px; color: var(--text); background: var(--page); box-shadow: var(--shadow-lg);
+}
+dialog.palette[open] { display: flex; flex-direction: column; }
+dialog.palette::backdrop { background: #0009; }
+.palette-input-row { position: relative; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--border); }
+.palette-input-row svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+.palette-input { flex: 1; min-width: 0; height: 54px; border: 0; color: var(--text); background: transparent; font-size: 16px; }
+.palette-input::placeholder { color: var(--muted); }
+/* The global input:focus-visible ring would be clipped by the dialog, so the row signals focus instead. */
+dialog.palette:focus, dialog.palette:focus-visible,
+dialog.palette .palette-input:focus, dialog.palette .palette-input:focus-visible { outline: none; box-shadow: none; }
+.palette-input-row::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent); transform: scaleX(0); transform-origin: left; }
+.palette-input-row:focus-within::after { transform: scaleX(1); }
+.palette-input-row:focus-within svg { stroke: var(--accent); }
+.palette-list { flex: 1; margin: 0; padding: 8px; overflow-y: auto; list-style: none; overscroll-behavior: contain; }
+.palette-group { padding: 10px 10px 4px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.palette-item { display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border-radius: 9px; cursor: pointer; }
+.palette-item[aria-selected="true"] { background: var(--accent-bg); }
+.palette-title { color: var(--heading); font-size: 14px; font-weight: 600; line-height: 1.35; }
+.palette-sub { overflow: hidden; color: var(--muted); font-size: 12.5px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.palette-item mark { color: var(--accent); background: transparent; font-weight: 700; }
+.palette-empty { padding: 28px 16px; color: var(--muted); text-align: center; font-size: 14px; }
+.palette-foot { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+@media (max-width: 768px) {
+  .palette-btn { width: var(--control-h); padding: 0; justify-content: center; }
+  .palette-btn span, .palette-btn kbd, .palette-foot { display: none; }
+  dialog.palette { margin-top: 8vh; }
+  .to-top { right: 14px; bottom: 14px; }
+}
+
+/* ==========================================================================
+   Animations (only when the user has not asked for reduced motion)
+   ========================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  /* Theme switch: cross-fade of two viewport snapshots (effects.js sets html.vt-theme).
+     No per-element colour transitions: they stutter on pages with thousands of nodes. */
+  html.vt-theme::view-transition-group(root),
+  html.vt-theme::view-transition-old(root),
+  html.vt-theme::view-transition-new(root) { animation-duration: 380ms; animation-timing-function: ease-in-out; }
+  /* The live new view must not also animate its own colours underneath the cross-fade. */
+  html.vt-theme *, html.vt-theme *::before, html.vt-theme *::after { transition: none !important; }
+
+  .site-header { transition: box-shadow var(--dur-base) ease, background-color var(--dur-base) ease; }
+  .markdown-section a:not(.anchor) { transition: background-size var(--dur-base) var(--ease-out), color var(--dur-fast) ease; }
+  .markdown-section .anchor::after { transition: opacity var(--dur-fast) ease; }
+  .markdown-section tbody tr { transition: background-color var(--dur-fast) ease; }
+  .markdown-section pre { transition: box-shadow var(--dur-base) ease; }
+
+  /* Buttons: tactile press. */
+  .copy-btn, .to-top, .palette-btn, .lang-link, .mobile-menu, .pager a { transition: transform var(--dur-fast) var(--ease-out), color var(--dur-fast) ease, border-color var(--dur-fast) ease, background-color var(--dur-fast) ease, box-shadow var(--dur-base) ease; }
+  .copy-btn:active, .to-top:active, .palette-btn:active, .lang-link:active, .mobile-menu:active { transform: scale(.96); }
+  .copy-btn.copied::before {
+    content: ""; display: inline-block; width: 11px; height: 11px; margin-right: 5px; vertical-align: -1px; background: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12.5l5 5L20 6.5'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 12.5l5 5L20 6.5'/%3E%3C/svg%3E") center / contain no-repeat;
+    animation: kva-pop var(--dur-base) var(--ease-out);
+  }
+
+  /* Prev/next cards. */
+  .pager a:hover { transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+  .pager small { transition: transform var(--dur-base) var(--ease-out); }
+  .pager .next:hover small { transform: translateX(4px); }
+  .pager .prev:hover small { transform: translateX(-4px); }
+
+  /* Sidebar: sliding indicator and smooth group collapse. */
+  .sidebar ul li > a { position: relative; transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease; }
+  .sidebar ul ul li > a::before {
+    content: ""; position: absolute; left: 0; top: 22%; bottom: 22%; width: 3px; border-radius: 2px; background: var(--accent);
+    transform: scaleY(0); transition: transform var(--dur-base) var(--ease-out);
+  }
+  .sidebar ul ul li.active > a::before { transform: scaleY(1); }
+  .sidebar-nav > ul > li { display: grid; grid-template-rows: auto 1fr; transition: grid-template-rows var(--dur-slow) var(--ease-out); }
+  .sidebar-nav > ul > li > .nav-group-toggle { margin-bottom: 8px; transition: margin-bottom var(--dur-slow) var(--ease-out), color var(--dur-fast) ease; }
+  .sidebar-nav > ul > li > ul { display: block; min-height: 0; margin: 0; overflow: hidden; }
+  .sidebar-nav > ul > li.collapsed { grid-template-rows: auto 0fr; }
+  .sidebar-nav > ul > li.collapsed > .nav-group-toggle { margin-bottom: 0; }
+  .sidebar-nav > ul > li.collapsed > ul { display: block; visibility: hidden; transition: visibility 0s var(--dur-slow); }
+
+  /* Route progress bar: crawls toward 70%, then completes and fades. */
+  .route-progress.running { opacity: 1; transform: scaleX(.7); transition: transform 2.4s cubic-bezier(.1, .7, .2, 1), opacity var(--dur-fast) ease; }
+  .route-progress.done { opacity: 0; transform: scaleX(1); transition: transform var(--dur-base) ease, opacity var(--dur-slow) ease var(--dur-base); }
+
+  .read-progress { transition: opacity var(--dur-base) ease; }
+
+  /* Back to top. */
+  .to-top { transform: translateY(12px); transition: opacity var(--dur-base) ease, transform var(--dur-base) var(--ease-out), visibility 0s var(--dur-base), color var(--dur-fast) ease, border-color var(--dur-fast) ease; }
+  .to-top.visible { transform: none; transition-delay: 0s; }
+  .to-top:active { transform: scale(.96); }
+
+  /* TOC indicator. */
+  .toc-indicator { transition: transform var(--dur-base) var(--ease-out), height var(--dur-base) var(--ease-out), opacity var(--dur-fast) ease; }
+  .page-toc a { transition: color var(--dur-fast) ease; }
+
+  /* Skeleton shimmer. */
+  .skeleton .sk::after {
+    content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 9%, transparent), transparent);
+    animation: kva-shimmer 1.3s ease-in-out infinite;
+  }
+
+  /* Page entrance: used on first load and when View Transitions are unavailable. */
+  html.page-enter .markdown-section > .rise { animation: kva-rise var(--dur-slow) var(--ease-out) both; animation-delay: calc(var(--i, 0) * 35ms); }
+  .callout { animation: kva-rise var(--dur-slow) var(--ease-out) both; }
+
+  /* Command palette. */
+  dialog.palette { opacity: 0; transform: translateY(-8px) scale(.975); transition: opacity var(--dur-base) ease, transform var(--dur-base) var(--ease-out); }
+  dialog.palette.is-open { opacity: 1; transform: none; }
+  dialog.palette::backdrop { opacity: 0; transition: opacity var(--dur-base) ease; }
+  dialog.palette.is-open::backdrop { opacity: 1; }
+  .palette-item { transition: background-color var(--dur-fast) ease; }
+  .palette-input-row::after { transition: transform var(--dur-base) var(--ease-out); }
+  .sidebar-toggle { transition: border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out); }
+  .sidebar-toggle:active { transform: scale(.94); }
+
+  /* View Transitions: only the content area moves; chrome stays put. */
+  html.vt-active .site-header { view-transition-name: kva-header; }
+  html.vt-active .sidebar { view-transition-name: kva-sidebar; }
+  html.vt-active .page-toc { view-transition-name: kva-toc; }
+  html.vt-active .read-progress { view-transition-name: kva-progress; }
+  html.vt-active .to-top { view-transition-name: kva-top; }
+  html.vt-active .sidebar-toggle { view-transition-name: kva-toggle; }
+  html.vt-active .resizer-sidebar { view-transition-name: kva-resize-sidebar; }
+  html.vt-active .resizer-toc { view-transition-name: kva-resize-toc; }
+  html.vt-active::view-transition-old(root), html.vt-active::view-transition-new(root) { mix-blend-mode: normal; }
+  html.vt-active::view-transition-old(root) { animation: kva-fade-out var(--dur-fast) ease both; }
+  html.vt-active::view-transition-new(root) { animation: kva-rise var(--dur-slow) var(--ease-out) both; }
+  html.vt-active::view-transition-group(*) { animation-duration: var(--dur-base); }
+
+  @keyframes kva-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes kva-fade-out { to { opacity: 0; } }
+  @keyframes kva-pop { 0% { transform: scale(.4); opacity: 0; } 70% { transform: scale(1.2); } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes kva-shimmer { to { transform: translateX(100%); } }
+}
+
+@media print {
+  .route-progress, .read-progress, .to-top, .palette-btn, dialog.palette { display: none !important; }
+}
