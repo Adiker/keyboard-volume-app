@@ -41,13 +41,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Pliki:** `cpp/src/config.h`, `cpp/src/config.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/tests/test_config.cpp`
 **Status:** Planowane.
 
-### 33. Wydzielenie klasy `App` z `main.cpp`
-
-**Problem:** `cpp/src/main.cpp` nadal trzyma klasę koordynatora `App` razem z `main()`. To już nie jest błąd lifetime, ale utrudnia testowanie wiringu i wymusza obecność `main.moc`. Konstrukcja oraz rejestracja D-Bus/MPRIS są sprzężone z wejściem aplikacji.
-**Rekomendacja:** Wydzielić `App` do `cpp/src/app.h/cpp`. W `main.cpp` zostawić tylko: setup środowiska (Wayland/XCB decision logic), CLI (`QCommandLineParser`), singleton check przez D-Bus name, first-run i `app.exec()`.
-**Pliki:** Nowy `cpp/src/app.h`, `cpp/src/app.cpp`, `cpp/src/main.cpp`, `cpp/CMakeLists.txt`.
-**Status:** Planowane.
-
 ### 34. Podział `volumecontroller.cpp`
 
 **Problem:** Plik łączy `VolumeController`, `PaWorker`, `PaWatcherThread`, sink-input introspection, stream-restore, pending queue, reconnect/backoff oraz orchestrację fallbacku PipeWire. Trudny w review i ryzykowny przy kolejnych zmianach hot patha.
@@ -226,6 +219,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 32. Przyciski sterowania odtwarzaniem na OSD + skalowanie OSD
 
 **Status:** Zrealizowane. OSD ma przyciski sterowania odtwarzaniem oraz konfigurowalną skalę; obsługuje też zmianę rozmiaru myszą.
+
+### 33. Wydzielenie klasy `App` z `main.cpp`
+
+**Status:** Zrealizowane. Klasa `App` oraz `osdLayoutInputFromConfig()` wydzielone do `cpp/src/app.{h,cpp}` z opcjonalnym wstrzykiwaniem konfiguracji i `AppInitOptions` pod testy. `main.cpp` obsługuje wyłącznie startup (Wayland/XCB, sygnały UNIX, CLI, singleton, FirstRunWizard) bez `main.moc`.
 
 ### 36. Konfigurowalne filtry aplikacji audio
 

@@ -44,7 +44,8 @@ keyboard-volume-app/
 │   ├── protocols/               # Wayland protocol XML definitions for window-tracker
 │   │   └── wlr-foreign-toplevel-management-unstable-v1.xml
 │   └── src/
-│       ├── main.cpp             # Entry point; App class wires all modules
+│       ├── main.cpp             # Entry point (Wayland/XCB probe, CLI, singleton, first-run)
+│       ├── app.h/cpp            # Root coordinator App class wiring all modules
 │       ├── config.h/cpp         # JSON config r/w (XDG config dir via QStandardPaths)
 │       ├── i18n.h/cpp           # PL/EN translations; tr() lookup function
 │       ├── volumecontroller.h/cpp  # Per-app volume/mute via libpulse + libpipewire
@@ -90,11 +91,11 @@ keyboard-volume-app/
 
 ## Module Reference
 
-### `cpp/src/main.cpp` — `App`, `main()`
+### `cpp/src/main.cpp` & `cpp/src/app.h/cpp` — `main()`, `App`
 
-The root coordinator. `App` uses **two-phase initialization**:
-- **Constructor** creates only `Config`
-- **`init()`** creates all remaining components, connects signals, starts evdev, and registers D-Bus interfaces
+`main.cpp` handles process bootstrap (Wayland/XCB `QT_QPA_PLATFORM` probe, Unix signal self-pipe, CLI `--version`/`--help` via `QCommandLineParser`, D-Bus singleton guard, `FirstRunWizard`, and restart-after-import). `App` lives in `cpp/src/app.h/cpp` as the root coordinator using **two-phase initialization**:
+- **Constructor** takes an optional `std::unique_ptr<Config>` (creating a default `Config` in production)
+- **`init(AppInitOptions)`** creates all remaining components, connects signals, starts evdev, registers D-Bus/MPRIS interfaces, and starts `WindowTracker` when enabled. `AppInitOptions` lets tests inject a mock `VolumeController` and opt out of hardware evdev/WindowTracker/default D-Bus names without changing production startup.
 
 On first run (`Config::isFirstRun()`), a `FirstRunWizard` is shown before `App::init()` to guide the user through language, input device, and default application selection. If the wizard is cancelled the app exits immediately.
 
@@ -310,7 +311,7 @@ inline void centerDialogOnScreenAt(QWidget *window, const QPoint &globalPos,
 
 **Call sites:** All 4 parentless dialogs capture `QCursor::pos()` before construction and call `centerDialogOnScreenAt()` before `exec()`:
 - `SettingsDialog` and `AppSelectorDialog` in `cpp/src/trayapp.cpp`
-- `DeviceSelectorDialog` and `FirstRunWizard` in `cpp/src/main.cpp`
+- `DeviceSelectorDialog` in `cpp/src/app.cpp` and `FirstRunWizard` in `cpp/src/main.cpp`
 
 ### `cpp/src/appmatcher.h` — `matchBinaryToApp()`
 
@@ -451,7 +452,7 @@ Album art. `m_albumArt` is a square `QLabel` (`scaled(36)`) placed to the left o
 Media controls row (inside `m_progressRow`, below the progress bar):
 - `setMediaControlsEnabled(bool)` — shows/hides `m_controlsRow` (⏮ prev / ⏵⏸ play-pause / ⏭ next buttons) and calls `applySize()` to resize the window. Called from `reloadStyles()`.
 - `updatePlaybackStatus(status)` — switches the play/pause button glyph: `\u23F5` (▶) when Paused/Stopped, `\u23F8` (⏸) when Playing. Connected from `MprisClient::playbackStatusChanged`.
-- Clicking the buttons emits `playPauseRequested()`, `previousRequested()`, `nextRequested()` — wired to `MprisClient::playPause`, `previous`, `next` in `main.cpp`.
+- Clicking the buttons emits `playPauseRequested()`, `previousRequested()`, `nextRequested()` — wired to `MprisClient::playPause`, `previous`, `next` in `app.cpp`.
 - Button styling: transparent background, OSD text color, hover = bar color; applied in `applyColorStyles()`.
 - `applySize()` uses three-way logic: base / progress / progress+controls.
 
