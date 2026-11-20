@@ -85,7 +85,7 @@ class DbusInterface : public QObject
     void reloadSinks();
 
     // Update the cached active-app state when the tray (or any other source)
-    // changes the selected application. Wired up by main.cpp.
+    // changes the selected application. Wired up by App.
     void onActiveAppChanged(const QString& name);
     void setFocusedApp(const QString& name);
 
