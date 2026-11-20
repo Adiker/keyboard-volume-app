@@ -921,10 +921,9 @@ publishes a GitHub Release whose body is the matching section of `CHANGELOG.md`
 (no auto-generated PR dump). Project version comes from
 `project(... VERSION ...)` in `cpp/CMakeLists.txt` (injected as `APP_VERSION` /
 `CPACK_PACKAGE_VERSION`).
-`clang-tidy` runs in CI as a warning-only job ("Clang-Tidy changed C++ files") on
-changed `.cpp`/`.cc`/`.cxx` files under `cpp/src` and `cpp/tests`. It does **not**
-block merge (`continue-on-error: true`). Configuration lives in `.clang-tidy` at
-the repo root.
+`clang-tidy` runs in CI as a blocking check ("Clang-Tidy changed C++ files") on
+changed `.cpp`/`.cc`/`.cxx` files under `cpp/src` and `cpp/tests`, with
+`WarningsAsErrors: "*"` configured in `.clang-tidy` at the repo root.
 
 To run clang-tidy locally on changed files (requires a Debug build with
 `compile_commands.json`):

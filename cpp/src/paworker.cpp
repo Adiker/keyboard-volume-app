@@ -653,7 +653,7 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
 
     m_duckingActive = true;
     m_duckingKeepApp = keepApp;
-    m_duckingSnapshot = snapshot;
+    m_duckingSnapshot = std::move(snapshot);
 }
 
 void PaWorker::doQueryVolume(const QString& appName, bool silent)

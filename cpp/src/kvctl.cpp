@@ -25,10 +25,22 @@ constexpr int ExitUnavailable = 2;
 constexpr int ExitDbusError = 3;
 constexpr int ExitInvalidValue = 4;
 
-const QString Service = QStringLiteral("org.keyboardvolumeapp");
-const QString ObjectPath = QStringLiteral("/org/keyboardvolumeapp");
-const QString ControlInterface = QStringLiteral("org.keyboardvolumeapp.VolumeControl");
-const QString PropertiesInterface = QStringLiteral("org.freedesktop.DBus.Properties");
+QString serviceName()
+{
+    return QStringLiteral("org.keyboardvolumeapp");
+}
+QString objectPath()
+{
+    return QStringLiteral("/org/keyboardvolumeapp");
+}
+QString controlInterface()
+{
+    return QStringLiteral("org.keyboardvolumeapp.VolumeControl");
+}
+QString propertiesInterface()
+{
+    return QStringLiteral("org.freedesktop.DBus.Properties");
+}
 
 void printLine(const QString& text)
 {
@@ -231,7 +243,7 @@ bool ensureServiceAvailable(QDBusConnectionInterface* iface)
 {
     if (!iface) return false;
 
-    QDBusReply<bool> registered = iface->isServiceRegistered(Service);
+    QDBusReply<bool> registered = iface->isServiceRegistered(serviceName());
     return registered.isValid() && registered.value();
 }
 
@@ -248,7 +260,8 @@ int callControlMethod(const KvCtlCommand& cmd)
 {
     if (!ensureDaemonAvailable()) return ExitUnavailable;
 
-    QDBusInterface control(Service, ObjectPath, ControlInterface, QDBusConnection::sessionBus());
+    QDBusInterface control(serviceName(), objectPath(), controlInterface(),
+                           QDBusConnection::sessionBus());
     if (!control.isValid())
     {
         printError(control.lastError().message());
@@ -288,9 +301,10 @@ int getProperty(KvCtlCommand::Field field)
 {
     if (!ensureDaemonAvailable()) return ExitUnavailable;
 
-    QDBusInterface props(Service, ObjectPath, PropertiesInterface, QDBusConnection::sessionBus());
+    QDBusInterface props(serviceName(), objectPath(), propertiesInterface(),
+                         QDBusConnection::sessionBus());
     QDBusReply<QVariant> reply =
-        props.call(QStringLiteral("Get"), ControlInterface, propertyName(field));
+        props.call(QStringLiteral("Get"), controlInterface(), propertyName(field));
     if (!reply.isValid())
     {
         printError(reply.error().message());
@@ -321,7 +335,7 @@ int setProperty(const KvCtlCommand& cmd)
         }
         if (!ensureDaemonAvailable()) return ExitUnavailable;
 
-        QDBusInterface control(Service, ObjectPath, ControlInterface,
+        QDBusInterface control(serviceName(), objectPath(), controlInterface(),
                                QDBusConnection::sessionBus());
         if (!control.isValid())
         {
@@ -353,7 +367,7 @@ int setProperty(const KvCtlCommand& cmd)
     // `kv-ctl mute on|off --profile id` form (see PR #47).
     if (!cmd.profile.isEmpty())
     {
-        QDBusInterface control(Service, ObjectPath, ControlInterface,
+        QDBusInterface control(serviceName(), objectPath(), controlInterface(),
                                QDBusConnection::sessionBus());
         if (!control.isValid())
         {
@@ -370,9 +384,10 @@ int setProperty(const KvCtlCommand& cmd)
         return ExitOk;
     }
 
-    QDBusInterface props(Service, ObjectPath, PropertiesInterface, QDBusConnection::sessionBus());
+    QDBusInterface props(serviceName(), objectPath(), propertiesInterface(),
+                         QDBusConnection::sessionBus());
     QDBusMessage reply =
-        props.call(QStringLiteral("Set"), ControlInterface, propertyName(cmd.field),
+        props.call(QStringLiteral("Set"), controlInterface(), propertyName(cmd.field),
                    QVariant::fromValue(QDBusVariant(value)));
     if (reply.type() == QDBusMessage::ErrorMessage)
     {

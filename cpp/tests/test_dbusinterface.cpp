@@ -204,7 +204,8 @@ TEST(DbusInterface, MediaMethodsAreScriptable)
             QMetaMethod m = mo->method(i);
             if (m.methodType() != QMetaMethod::Slot) continue;
             if (m.name() != QByteArray(name)) continue;
-            return (m.attributes() & QMetaMethod::Scriptable) != 0;
+            return (static_cast<unsigned int>(m.attributes()) &
+                    static_cast<unsigned int>(QMetaMethod::Scriptable)) != 0U;
         }
         return false;
     };

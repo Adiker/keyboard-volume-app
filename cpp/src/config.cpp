@@ -1338,7 +1338,7 @@ QStringList stringListFromJsonArray(const QJsonArray& arr)
 {
     QStringList out;
     out.reserve(arr.size());
-    for (const QJsonValue& v : arr)
+    for (const QJsonValue v : arr)
     {
         if (!v.isString()) continue;
         const QString s = v.toString().trimmed();
@@ -1418,7 +1418,7 @@ QList<AppAlias> Config::appAliases() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     QList<AppAlias> out;
-    for (const QJsonValue& v : m_data[QStringLiteral("app_aliases")].toArray())
+    for (const QJsonValue v : m_data[QStringLiteral("app_aliases")].toArray())
     {
         if (!v.isObject()) continue;
         AppAlias alias = aliasFromJson(v.toObject());

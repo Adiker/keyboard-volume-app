@@ -1890,10 +1890,12 @@ TEST(ConfigScenes, RoundTripSceneTargetWithSink)
     const auto scenes = config2.scenes();
     ASSERT_EQ(scenes.size(), 1);
     ASSERT_EQ(scenes[0].targets.size(), 3);
-    EXPECT_EQ(scenes[0].targets[0].sink->toStdString(), "alsa_output.usb-headset");
+    EXPECT_EQ(scenes[0].targets[0].sink,
+              std::optional<QString>(QStringLiteral("alsa_output.usb-headset")));
     EXPECT_FALSE(scenes[0].targets[0].volume.has_value());
     EXPECT_FALSE(scenes[0].targets[0].muted.has_value());
-    EXPECT_EQ(scenes[0].targets[1].sink->toStdString(), "alsa_output.speakers");
+    EXPECT_EQ(scenes[0].targets[1].sink,
+              std::optional<QString>(QStringLiteral("alsa_output.speakers")));
     EXPECT_EQ(scenes[0].targets[1].volume, std::optional<int>(10));
     EXPECT_FALSE(scenes[0].targets[2].sink.has_value());
 }
@@ -1917,7 +1919,8 @@ TEST(ConfigScenes, SinkOnlyTargetPersists)
     const auto scenes = config.scenes();
     ASSERT_EQ(scenes.size(), 1);
     ASSERT_EQ(scenes[0].targets.size(), 1);
-    EXPECT_EQ(scenes[0].targets[0].sink->toStdString(), "alsa_output.headset");
+    EXPECT_EQ(scenes[0].targets[0].sink,
+              std::optional<QString>(QStringLiteral("alsa_output.headset")));
 }
 
 TEST(ConfigScenes, EmptySinkStringIsDropped)

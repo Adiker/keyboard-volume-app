@@ -113,8 +113,11 @@ EvdevDevice& EvdevDevice::operator=(EvdevDevice&& other) noexcept
 bool EvdevDevice::open(const QString& path, OpenMode mode)
 {
     close();
-    const int accessMode = mode == OpenMode::ReadWrite ? O_RDWR : O_RDONLY;
-    m_fd = ::open(path.toLocal8Bit().constData(), accessMode | O_NONBLOCK);
+    const unsigned int accessMode = mode == OpenMode::ReadWrite
+                                        ? static_cast<unsigned int>(O_RDWR)
+                                        : static_cast<unsigned int>(O_RDONLY);
+    const int openFlags = static_cast<int>(accessMode | static_cast<unsigned int>(O_NONBLOCK));
+    m_fd = ::open(path.toLocal8Bit().constData(), openFlags);
     if (m_fd < 0) return false;
     if (libevdev_new_from_fd(m_fd, &m_dev) < 0)
     {

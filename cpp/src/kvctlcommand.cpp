@@ -129,7 +129,7 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
         if (positionalArgs.size() != 2)
             return fail(QStringLiteral("usage: kv-ctl media play-pause|next|previous|stop"));
 
-        const QString sub = positionalArgs[1];
+        const QString& sub = positionalArgs[1];
         if (sub == QStringLiteral("play-pause"))
             cmd.action = KvCtlCommand::Action::MediaPlayPause;
         else if (sub == QStringLiteral("next"))

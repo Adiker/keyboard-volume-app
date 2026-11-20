@@ -22,7 +22,7 @@ class SceneEditDialog : public QDialog
 
     // Scene assembled from the dialog widgets after acceptance.
     // Preserves the original id (or leaves it empty for SettingsDialog to assign).
-    AudioScene result() const;
+    AudioScene scene() const;
 
   private slots:
     void onAddTarget();
