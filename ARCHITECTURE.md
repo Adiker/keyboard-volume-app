@@ -910,7 +910,7 @@ GitHub Actions CI is enabled in `.github/workflows/ci.yml` for PRs and pushes to
 `clang-format` only for changed C++ files under `cpp/src` and `cpp/tests`.
 The CI workflow is path-filtered: docs-only changes such as Markdown updates do
 not run CI, while changes under `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake
-files, or `.github/workflows/ci.yml` do.
+files, `.github/workflows/ci.yml`, or `.clang-tidy` do.
 On Release builds it also runs CPack (`DEB`/`RPM`) and uploads the packages as
 workflow artifacts.
 
@@ -921,10 +921,11 @@ publishes a GitHub Release whose body is the matching section of `CHANGELOG.md`
 (no auto-generated PR dump). Project version comes from
 `project(... VERSION ...)` in `cpp/CMakeLists.txt` (injected as `APP_VERSION` /
 `CPACK_PACKAGE_VERSION`).
-`clang-tidy` runs in CI as a warning-only job ("Clang-Tidy changed C++ files") on
-changed `.cpp`/`.cc`/`.cxx` files under `cpp/src` and `cpp/tests`. It does **not**
-block merge (`continue-on-error: true`). Configuration lives in `.clang-tidy` at
-the repo root.
+`clang-tidy` runs in CI as a blocking check ("Clang-Tidy changed C++ files") on
+changed `.cpp`/`.cc`/`.cxx` files under `cpp/src` and `cpp/tests`, with
+`WarningsAsErrors: "*"` configured in `.clang-tidy` at the repo root. When
+`.clang-tidy` itself changes, that job analyzes every such translation unit so
+the new configuration is applied to the tree.
 
 To run clang-tidy locally on changed files (requires a Debug build with
 `compile_commands.json`):

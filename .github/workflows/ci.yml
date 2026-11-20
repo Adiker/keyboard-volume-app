@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ci.yml"
+      - ".clang-tidy"
       - "cpp/**"
       - "pkg/**"
       - "deploy/**"
@@ -15,6 +16,7 @@ on:
       - main
     paths:
       - ".github/workflows/ci.yml"
+      - ".clang-tidy"
       - "cpp/**"
       - "pkg/**"
       - "deploy/**"
@@ -77,7 +79,6 @@ jobs:
   clang-tidy:
     name: Clang-Tidy changed C++ files
     runs-on: ubuntu-24.04
-    continue-on-error: true
     permissions:
       contents: read
 
@@ -120,8 +121,28 @@ jobs:
           -DCMAKE_C_COMPILER=clang
           -DCMAKE_CXX_COMPILER=clang++
 
-      - name: Generate automoc files
-        run: cmake --build cpp/build-tidy --target keyboard-volume-app_autogen
+      - name: Build generated headers and automoc files
+        run: |
+          cmake --build cpp/build-tidy -j$(nproc)
+          # Deduplicate compile_commands.json by canonical source path (preferring
+          # the primary app target over duplicate test target entries) so clang-tidy
+          # analyzes each changed translation unit once instead of up to 11 times.
+          python3 - <<'PY'
+          import json, os
+          path = "cpp/build-tidy/compile_commands.json"
+          with open(path) as f:
+              entries = json.load(f)
+          seen = set()
+          deduped = []
+          for e in entries:
+              key = os.path.realpath(e["file"])
+              if key in seen:
+                  continue
+              seen.add(key)
+              deduped.append(e)
+          with open(path, "w") as f:
+              json.dump(deduped, f, indent=2)
+          PY
 
       - name: Run clang-tidy on changed C++ files
         shell: bash
@@ -146,6 +167,18 @@ jobs:
               || true
           )
 
+          # A config-only diff matches the workflow path filter but changes no
+          # translation unit. Analyze the whole tree so a broken or stricter
+          # .clang-tidy still fails this job.
+          if git diff --name-only --diff-filter=ACMR "${range}" | grep -qx '.clang-tidy'; then
+            echo ".clang-tidy changed; analyzing all C++ sources under cpp/src and cpp/tests."
+            mapfile -t files < <(
+              git ls-files 'cpp/src' 'cpp/tests' \
+                | grep -E '^cpp/(src|tests)/.*\.(cpp|cc|cxx)$' \
+                || true
+            )
+          fi
+
           if [[ "${#files[@]}" -eq 0 ]]; then
             echo "No changed C++ source files under cpp/src or cpp/tests."
             exit 0
@@ -155,14 +188,14 @@ jobs:
           printf '  %s\n' "${files[@]}"
 
           exit_code=0
-          for f in "${files[@]}"; do
-            clang-tidy -p cpp/build-tidy "${f}" || exit_code=$?
-          done
+          printf '%s\0' "${files[@]}" \
+            | xargs -0 -P "$(nproc)" -n 1 clang-tidy -p cpp/build-tidy \
+            || exit_code=$?
 
           if [[ "${exit_code}" -ne 0 ]]; then
-            echo "::warning::clang-tidy reported issues (warning-only, not blocking merge)."
+            echo "::error::clang-tidy reported issues."
+            exit "${exit_code}"
           fi
-          exit 0
 
   build:
     name: Build and test (${{ matrix.build_type }})

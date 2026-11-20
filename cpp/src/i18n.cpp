@@ -681,7 +681,14 @@ static const QMap<QString, QMap<QString, QString>>& strings()
 }
 
 // ─── State ────────────────────────────────────────────────────────────────────
-static QString s_current = QStringLiteral("en");
+namespace
+{
+QString& currentLanguageStorage()
+{
+    static QString current = QStringLiteral("en");
+    return current;
+}
+} // namespace
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 const QMap<QString, QString>& languages()
@@ -695,18 +702,18 @@ const QMap<QString, QString>& languages()
 
 void setLanguage(const QString& code)
 {
-    if (strings().contains(code)) s_current = code;
+    if (strings().contains(code)) currentLanguageStorage() = code;
 }
 
 QString currentLanguage()
 {
-    return s_current;
+    return currentLanguageStorage();
 }
 
 QString tr(const QString& key)
 {
     const auto& table = strings();
-    auto langIt = table.find(s_current);
+    auto langIt = table.find(currentLanguageStorage());
     if (langIt != table.end())
     {
         auto keyIt = langIt->find(key);

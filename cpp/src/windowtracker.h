@@ -2,6 +2,7 @@
 #include <QThread>
 #include <QString>
 #include <atomic>
+#include <cstdint>
 
 class WindowTracker : public QThread
 {
@@ -24,7 +25,7 @@ class WindowTracker : public QThread
     void run() override;
 
   private:
-    enum class Backend
+    enum class Backend : std::uint8_t
     {
         None,
         Xcb,

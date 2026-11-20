@@ -19,11 +19,13 @@
 #include <QListWidget>
 
 #include <algorithm>
+#include <cstdint>
+#include <utility>
 
 namespace
 {
 // Mute-mode combo indices, kept in one place so add/read stay in sync.
-enum MuteMode
+enum MuteMode : std::uint8_t
 {
     MuteLeave = 0, // std::nullopt — leave unchanged
     MuteOn = 1,    // true  — mute
@@ -252,7 +254,7 @@ void SceneEditDialog::onEditTarget()
     if (row < 0 || row >= m_targets.size()) return;
     SceneTarget target = m_targets[row];
     if (!editTargetDialog(target)) return;
-    m_targets[row] = target;
+    m_targets[row] = std::move(target);
     refreshTargetsTable();
     m_targetsTable->selectRow(row);
 }
@@ -267,7 +269,7 @@ void SceneEditDialog::onRemoveTarget()
         m_targetsTable->selectRow(qMin(row, static_cast<int>(m_targets.size()) - 1));
 }
 
-AudioScene SceneEditDialog::result() const
+AudioScene SceneEditDialog::scene() const
 {
     AudioScene scene;
     scene.id = m_initial.id; // preserve id; SettingsDialog assigns one for new

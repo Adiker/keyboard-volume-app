@@ -4,7 +4,7 @@ Stan względem `main`: 5 listopada 2026. Roadmapa zachowuje pierwotne numery poz
 
 ## Otwarte i częściowo zrealizowane
 
-Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej kolejności realizacji. Wcześniejsza notatka z przeglądu kodu wskazywała w pierwszej kolejności #37 (zrealizowane), następnie #33, #34, #22 i #38; statusy zweryfikowano poniżej.
+Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej kolejności realizacji. Priorytety z wcześniejszego przeglądu kodu (`#37`, `#33`, `#34`, `#38` i `#22`) zostały zrealizowane i przeniesione poniżej do sekcji „Zrealizowane".
 
 ### 16. Tryb "Follow Focus" (Dynamiczne śledzenie aktywnego okna)
 
@@ -19,13 +19,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Rekomendacja:** Zastąpienie X/Y kotwicami (np. `anchor: "bottom-right", margin: 20`) oraz rozważenie zewnętrznego motywu OSD. Tło przezroczystego okna jest rysowane ręcznie, więc sam Qt Stylesheet nie wystarczy do jego stylizacji.
 **Pliki:** `cpp/src/config.cpp`, `cpp/src/osdwindow.cpp`, `cpp/src/settingsdialog.cpp`.
 **Status:** Planowane.
-
-### 22. clang-tidy w CI
-
-**Problem:** Analiza `clang-tidy` działa w CI, ale jej wyniki nie blokują merge; część reguł pozostaje wyłączona.
-**Rekomendacja:** Stopniowo usuwać istniejące ostrzeżenia i rozważyć rozszerzenie zestawu reguł oraz blokowanie merge po uzyskaniu stabilnych wyników.
-**Pliki:** `.github/workflows/ci.yml`, `.clang-tidy`
-**Status:** Częściowo wdrożone / warning-only. Job "Clang-Tidy changed C++ files" dodany do CI z `continue-on-error: true` — nie blokuje merge. Plik `.clang-tidy` w katalogu głównym z konserwatywnym zestawem checkerów: `bugprone-*`, `performance-*`, `clang-analyzer-*`, wybrane `modernize-*` i `cppcoreguidelines-pro-type-member-init`. `readability-*` i `WarningsAsErrors` wyłączone do czasu wyczyszczenia istniejących ostrzeżeń.
 
 ### 23. Pasywne śledzenie modyfikatorów z niezależnych klawiatur (v2)
 
@@ -170,6 +163,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 21. Sceny audio / Mixer Presets
 
 **Status:** Zrealizowane. `Config` serializuje i sanityzuje sceny, `DbusInterface` wystawia property `Scenes` i metodę `ApplyScene(id)`, `kv-ctl` obsługuje `scene ID` oraz `get scenes`. Sceny można edytować i uruchamiać w GUI, z użyciem hotkeya, D-Bus lub CLI; operacje głośności i wyciszenia są wykonywane asynchronicznie na `PaWorker`.
+
+### 22. clang-tidy w CI
+
+**Status:** Zrealizowane. Wyczyszczono zaległe ostrzeżenia `clang-tidy` w całym `cpp/src` i `cpp/tests`, wyłączono eksport `compile_commands.json` dla `EXCLUDE_FROM_ALL` targetu `kwin_tracker_live`, naprawiono budowanie nagłówków/autogen w jobie CI, włączono `WarningsAsErrors: "*"` w `.clang-tidy` i usunięto `continue-on-error: true` w `.github/workflows/ci.yml`.
 
 ### 24. Hotkey „Pokaż głośność" (OSD bez zmiany głośności)
 

@@ -654,22 +654,25 @@ TEST(InputDevices, WheelBindingsRequireMatchingAxisButEitherDirection)
 TEST(InputDevices, SysfsBitmapNativeAndCompatWordOrder)
 {
     const auto native = parseInputCapabilityBitmap("1000000000000000 0 8000000000000001\n", 64);
-    ASSERT_TRUE(native);
+    ASSERT_TRUE(native.has_value());
+    if (!native) return;
     EXPECT_TRUE(native->testBit(0));
     EXPECT_TRUE(native->testBit(63));
     EXPECT_FALSE(native->testBit(64));
     EXPECT_TRUE(native->testBit(188));
     const auto compat = parseInputCapabilityBitmap("10000000 0 0 0 80000000 1", 32);
-    ASSERT_TRUE(compat);
+    ASSERT_TRUE(compat.has_value());
+    if (!compat) return;
     EXPECT_EQ(*native, *compat);
     const auto zero = parseInputCapabilityBitmap("0\n", 64);
-    ASSERT_TRUE(zero);
+    ASSERT_TRUE(zero.has_value());
+    if (!zero) return;
     EXPECT_EQ(zero->count(true), 0);
 }
 
 TEST(InputDevices, InvalidSysfsBitmapFallsBack)
 {
-    for (const QByteArray text :
+    for (const QByteArray& text :
          {QByteArray{}, QByteArray("garbage"), QByteArray("-1"), QByteArray("+1"),
           QByteArray("0x10"), QByteArray("10000000000000000")})
         EXPECT_FALSE(parseInputCapabilityBitmap(text, 64));

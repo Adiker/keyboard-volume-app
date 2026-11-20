@@ -130,7 +130,7 @@ std::optional<QBitArray> parseInputCapabilityBitmap(const QByteArray& text, int 
     if (clean.isEmpty()) return std::nullopt;
     const auto words = clean.split(' ');
     if (words.size() > (KEY_CNT + wordBits - 1) / wordBits) return std::nullopt;
-    QBitArray bits(static_cast<int>(words.size()) * wordBits);
+    QBitArray bits(static_cast<int>(words.size() * static_cast<qsizetype>(wordBits)));
     for (qsizetype i = 0; i < words.size(); ++i)
     {
         const auto& word = words[words.size() - 1 - i];
@@ -141,9 +141,9 @@ std::optional<QBitArray> parseInputCapabilityBitmap(const QByteArray& text, int 
         bool ok = false;
         const quint64 value = word.toULongLong(&ok, 16);
         if (!ok) return std::nullopt;
-        for (int bit = 0; bit < wordBits; ++bit)
+        for (unsigned int bit = 0; bit < static_cast<unsigned int>(wordBits); ++bit)
             if ((value & (quint64{1} << bit)) != 0)
-                bits.setBit(static_cast<int>(i) * wordBits + bit);
+                bits.setBit(static_cast<int>(i) * wordBits + static_cast<int>(bit));
     }
     return bits;
 }
@@ -161,7 +161,7 @@ std::optional<QByteArray> readInputAttribute(const QString& path)
 {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return std::nullopt;
-    const QByteArray data = file.readAll();
+    QByteArray data = file.readAll();
     if (file.error() != QFileDevice::NoError) return std::nullopt;
     return data;
 }
@@ -397,8 +397,10 @@ bool setFdNonBlocking(int fd)
 {
     const int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0) return false;
-    if ((flags & O_NONBLOCK) != 0) return true;
-    return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+    const auto uflags = static_cast<unsigned int>(flags);
+    const auto nonBlock = static_cast<unsigned int>(O_NONBLOCK);
+    if ((uflags & nonBlock) != 0U) return true;
+    return fcntl(fd, F_SETFL, static_cast<int>(uflags | nonBlock)) == 0;
 }
 
 void mirrorLedToPhysical(EvdevDevice* dev, unsigned int code, bool enabled)
