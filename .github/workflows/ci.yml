@@ -120,7 +120,27 @@ jobs:
           -DCMAKE_CXX_COMPILER=clang++
 
       - name: Build generated headers and automoc files
-        run: cmake --build cpp/build-tidy -j$(nproc)
+        run: |
+          cmake --build cpp/build-tidy -j$(nproc)
+          # Deduplicate compile_commands.json by canonical source path (preferring
+          # the primary app target over duplicate test target entries) so clang-tidy
+          # analyzes each changed translation unit once instead of up to 11 times.
+          python3 - <<'PY'
+          import json, os
+          path = "cpp/build-tidy/compile_commands.json"
+          with open(path) as f:
+              entries = json.load(f)
+          seen = set()
+          deduped = []
+          for e in entries:
+              key = os.path.realpath(e["file"])
+              if key in seen:
+                  continue
+              seen.add(key)
+              deduped.append(e)
+          with open(path, "w") as f:
+              json.dump(deduped, f, indent=2)
+          PY
 
       - name: Run clang-tidy on changed C++ files
         shell: bash
