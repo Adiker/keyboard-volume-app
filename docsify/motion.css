@@ -163,10 +163,13 @@ dialog.palette .palette-input:focus, dialog.palette .palette-input:focus-visible
    Animations (only when the user has not asked for reduced motion)
    ========================================================================== */
 @media (prefers-reduced-motion: no-preference) {
-  /* Smooth theme switch (class is set for ~350 ms by effects.js). */
-  html.theme-transition, html.theme-transition *, html.theme-transition *::before, html.theme-transition *::after {
-    transition: background-color var(--dur-slow) ease, color var(--dur-slow) ease, border-color var(--dur-slow) ease, fill var(--dur-slow) ease !important;
-  }
+  /* Theme switch: cross-fade of two viewport snapshots (effects.js sets html.vt-theme).
+     No per-element colour transitions: they stutter on pages with thousands of nodes. */
+  html.vt-theme::view-transition-group(root),
+  html.vt-theme::view-transition-old(root),
+  html.vt-theme::view-transition-new(root) { animation-duration: 380ms; animation-timing-function: ease-in-out; }
+  /* The live new view must not also animate its own colours underneath the cross-fade. */
+  html.vt-theme *, html.vt-theme *::before, html.vt-theme *::after { transition: none !important; }
 
   .site-header { transition: box-shadow var(--dur-base) ease, background-color var(--dur-base) ease; }
   .markdown-section a:not(.anchor) { transition: background-size var(--dur-base) var(--ease-out), color var(--dur-fast) ease; }

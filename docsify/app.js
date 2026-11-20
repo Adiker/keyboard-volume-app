@@ -34,10 +34,14 @@
 
   // ---- Theme -------------------------------------------------------------
   themeSelect.value = doc.documentElement.dataset.theme;
-  themeSelect.addEventListener('change', function () {
-    doc.documentElement.dataset.theme = themeSelect.value;
-    try { localStorage.setItem('kva-docs-theme', themeSelect.value); } catch (_) { /* Optional persistence. */ }
-  });
+  function applyTheme(name) {
+    if (['light', 'dark', 'oled'].indexOf(name) < 0) return;
+    doc.documentElement.dataset.theme = name;
+    themeSelect.value = name;
+    try { localStorage.setItem('kva-docs-theme', name); } catch (_) { /* Optional persistence. */ }
+  }
+  // KVA.changeTheme is replaced by effects.js with a crossfading version.
+  themeSelect.addEventListener('change', function () { window.KVA.changeTheme(themeSelect.value); });
 
   // ---- Mobile navigation -------------------------------------------------
   function syncSidebarInert() {
@@ -304,10 +308,8 @@
     // effects.js wraps this to run a view transition before the route changes.
     go: function (hash) { location.hash = hash; },
     theme: function () { return themeSelect.value; },
-    setTheme: function (name) {
-      themeSelect.value = name;
-      themeSelect.dispatchEvent(new Event('change'));
-    }
+    changeTheme: applyTheme,
+    setTheme: function (name) { window.KVA.changeTheme(name); }
   };
 
   // ---- Docsify ------------------------------------------------------------

@@ -1015,8 +1015,11 @@ Files in `docsify/`:
   fixed header/sidebar/TOC so only the article animates; the transition callback
   waits for `doneEach`), a keyframe fallback (`html.page-enter`, also used on first
   load and when `?no-vt` is in the URL), route and reading progress bars,
-  back-to-top button, TOC scrollspy with a sliding indicator, smooth theme switch
-  (`html.theme-transition`) and callouts.
+  back-to-top button, TOC scrollspy with a sliding indicator, callouts and the
+  theme switch. The theme switch (`KVA.changeTheme`) cross-fades two viewport
+  snapshots through a view transition (`html.vt-theme`); do not animate colours
+  on every element instead, that drops frames on long pages (thousands of nodes).
+  Without the API, or with reduced motion, the theme changes instantly.
 - `palette.js` — command palette (`Ctrl/Cmd+K` or `/`) built on a native
   `<dialog>`. It searches sidebar pages, section headings and body text from the
   `docsify.search.index` entry in `localStorage` (built by Docsify's search plugin,

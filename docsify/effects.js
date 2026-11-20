@@ -26,13 +26,24 @@
   }
 
   // ---- Smooth theme switch -----------------------------------------------
-  // Capture phase: the class must exist before app.js changes data-theme.
-  let themeTimer = 0;
-  doc.getElementById('theme-select').addEventListener('change', function () {
-    root.classList.add('theme-transition');
-    clearTimeout(themeTimer);
-    themeTimer = setTimeout(function () { root.classList.remove('theme-transition'); }, 400);
-  }, true);
+  // The viewport is cross-faded as two GPU snapshots. Transitioning the colours of
+  // every element instead stutters on long pages (thousands of nodes); without the
+  // View Transitions API (or with reduced motion) the theme simply switches at once.
+  const applyTheme = KVA.changeTheme;
+  KVA.changeTheme = function (name) {
+    if (!supportsVT || reduceMotion.matches || name === root.dataset.theme) {
+      applyTheme(name);
+      return;
+    }
+    root.classList.add('vt-theme');
+    const cleanup = function () { root.classList.remove('vt-theme'); };
+    try {
+      doc.startViewTransition(function () { applyTheme(name); }).finished.then(cleanup, cleanup);
+    } catch (_) {
+      cleanup();
+      applyTheme(name);
+    }
+  };
 
   // ---- Route progress bar --------------------------------------------------
   const routeBar = doc.querySelector('.route-progress');
