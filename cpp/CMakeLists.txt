@@ -21,6 +21,7 @@ pkg_check_modules(XCB       REQUIRED IMPORTED_TARGET xcb)
 # Sources
 set(SOURCES
     src/main.cpp
+    src/app.cpp
     src/config.cpp
     src/i18n.cpp
     src/volumecontroller.cpp
