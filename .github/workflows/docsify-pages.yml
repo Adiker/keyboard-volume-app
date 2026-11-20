@@ -8,7 +8,9 @@ on:
       - 'docsify/**'
       - '*.md'
       - 'LICENSE'
+      - 'resources/icon.png'
       - '.github/scripts/build-docsify.sh'
+      - '.github/scripts/check-docs-links.py'
       - '.github/workflows/docsify-pages.yml'
   workflow_dispatch:
 

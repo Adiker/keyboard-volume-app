@@ -1,22 +1,40 @@
+/* ==========================================================================
+   Keyboard Volume App documentation theme (layered on top of docsify vue.css)
+   Sections: tokens, base, header, sidebar, content, code, page footer,
+   page TOC, responsive, accessibility/print.
+   ========================================================================== */
+
+/* ---- Tokens ------------------------------------------------------------- */
 :root {
   color-scheme: light;
   --page: #fff; --sidebar: #f8fafc; --panel: #f3f5f8; --text: #202938;
   --muted: #64748b; --heading: #111827; --border: #e2e8f0;
   --accent: #2868be; --accent-bg: #e8f0fc; --code: #eff3f8;
+  --tok-comment: #66738a; --tok-string: #17794a; --tok-keyword: #7c3aed;
+  --tok-number: #a8480b; --tok-function: #1d5fb4; --tok-variable: #b4410e;
   --header-height: 64px;
+  --sidebar-width: 280px;
+  --toc-width: 205px;
+  --toc-gutter: 240px;
 }
 html[data-theme="dark"] {
   color-scheme: dark;
   --page: #101318; --sidebar: #151a21; --panel: #1c222c; --text: #dce3ec;
   --muted: #a0adbd; --heading: #f5f7fa; --border: #303945;
   --accent: #8bbdff; --accent-bg: #20344d; --code: #252d39;
+  --tok-comment: #8b98a9; --tok-string: #8fd19e; --tok-keyword: #c4a7ff;
+  --tok-number: #f0b072; --tok-function: #8bbdff; --tok-variable: #ff9e7a;
 }
 html[data-theme="oled"] {
   color-scheme: dark;
   --page: #000; --sidebar: #080808; --panel: #121212; --text: #e5e7eb;
   --muted: #a9b1bd; --heading: #fff; --border: #303030;
   --accent: #91c0ff; --accent-bg: #15243a; --code: #1c1c1c;
+  --tok-comment: #8e97a4; --tok-string: #95d9a4; --tok-keyword: #c9adff;
+  --tok-number: #f5b97c; --tok-function: #91c0ff; --tok-variable: #ffa583;
 }
+
+/* ---- Base --------------------------------------------------------------- */
 html, body { background: var(--page); color: var(--text); }
 body, input, select, button {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -26,7 +44,9 @@ body { font-size: 16px; }
 a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible {
   outline: 3px solid var(--accent); outline-offset: 3px;
 }
-.mobile-menu { display: none; }
+.mobile-menu, .nav-backdrop { display: none; }
+
+/* ---- Header ------------------------------------------------------------- */
 .site-header {
   position: fixed; z-index: 35; inset: 0 0 auto; height: var(--header-height);
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
@@ -38,102 +58,151 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .header-actions { display: flex; align-items: center; gap: 20px; }
 .github-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 600; }
 .github-link:hover { color: var(--accent); }
+.lang-link { padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--panel); text-decoration: none; font-size: 13px; font-weight: 700; letter-spacing: .04em; }
+.lang-link:hover { color: var(--accent); border-color: var(--accent); }
 .theme-switcher { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 600; }
 .theme-switcher select { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--panel); font-size: 13px; }
-.sidebar { top: var(--header-height); width: 280px; padding: 24px 16px 60px; background: var(--sidebar); border-right: 1px solid var(--border); }
+
+/* ---- Sidebar ------------------------------------------------------------ */
+.sidebar { z-index: 20; top: var(--header-height); width: var(--sidebar-width); padding: 24px 16px 60px; background: var(--sidebar); border-right: 1px solid var(--border); }
 .sidebar .app-name { display: none; }
 .sidebar-nav { font-size: 14px; line-height: 1.45; }
 .sidebar-nav > ul > li { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin: 22px 0 12px; }
 .sidebar-nav > ul > li > ul { margin: 8px 0 0; }
+.sidebar-nav > ul > li.collapsed > ul { display: none; }
+.nav-group-toggle {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: 2px 10px; border: 0; background: none; cursor: pointer; text-align: left;
+  color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+.nav-group-toggle::after { content: "▾"; font-size: 12px; transition: transform .15s; }
+.sidebar-nav > ul > li.collapsed > .nav-group-toggle::after { transform: rotate(-90deg); }
+.nav-group-toggle:hover { color: var(--accent); }
 .sidebar ul li a { display: block; border-radius: 8px; padding: 8px 10px; color: var(--text); font-size: 14px; font-weight: 450; letter-spacing: 0; text-transform: none; }
 .sidebar ul li a:hover { color: var(--accent); text-decoration: none; background: var(--panel); }
 .sidebar ul li.active > a { color: var(--accent); background: var(--accent-bg); font-weight: 650; border: 0; }
 .sidebar-toggle { background: var(--sidebar); }
 .sidebar-toggle span { background-color: var(--accent); }
-.search { margin: 0 !important; padding: 0 0 12px !important; border-color: var(--border) !important; }
-.search input { box-sizing: border-box; padding: 10px 12px !important; color: var(--text) !important; background: var(--page); border: 1px solid var(--border) !important; border-radius: 8px; font-size: 14px; }
-.search .matching-post h2 { color: var(--heading) !important; }
-.search .matching-post p, .search .empty { color: var(--muted) !important; }
-.content { top: var(--header-height); left: 280px; right: 250px; padding: 0; }
-.markdown-section { box-sizing: border-box; max-width: 860px; padding: 56px 48px 120px; color: var(--text); font-size: 16px; line-height: 1.75; }
-.markdown-section h1, .markdown-section h2, .markdown-section h3, .markdown-section h4 { color: var(--heading); font-weight: 700; letter-spacing: -.025em; line-height: 1.25; }
+
+/* Search (docsify search plugin) */
+.sidebar .search { margin: 0; padding: 0 0 12px; border-color: var(--border); }
+.sidebar .search input { box-sizing: border-box; padding: 10px 12px; color: var(--text); background: var(--page); border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+.sidebar .search .matching-post h2 { color: var(--heading); }
+.sidebar .search .matching-post p, .sidebar .search .empty { color: var(--muted); }
+
+/* ---- Content ------------------------------------------------------------ */
+.content { top: var(--header-height); left: var(--sidebar-width); right: var(--toc-gutter); padding: 0; }
+.markdown-section { box-sizing: border-box; max-width: 880px; padding: 56px 48px 120px; color: var(--text); font-size: 16px; line-height: 1.75; }
+.markdown-section h1, .markdown-section h2, .markdown-section h3, .markdown-section h4 {
+  color: var(--heading); font-weight: 700; letter-spacing: -.025em; line-height: 1.25;
+  scroll-margin-top: calc(var(--header-height) + 16px);
+}
 .markdown-section h1 { font-size: 2.35rem; margin: 1.2rem 0; }
 .markdown-section h2 { font-size: 1.55rem; margin: 2.75rem 0 1.1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .markdown-section h3 { font-size: 1.2rem; margin: 2rem 0 .85rem; }
-.markdown-section .anchor span { color: var(--heading) !important; }
+.markdown-section .anchor span { color: var(--heading); }
 .markdown-section p, .markdown-section ul, .markdown-section ol { line-height: 1.8; }
-.markdown-section a { color: var(--accent); font-weight: 600; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.markdown-section strong { color: var(--heading); }
+.markdown-section a { color: var(--accent); font-weight: 500; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .markdown-section blockquote { color: var(--muted); border-color: var(--accent); }
-.markdown-section pre {
-  box-sizing: border-box;
-  margin: .8rem 0 1.1rem;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel);
-}
-.markdown-section pre > code {
-  margin: 0;
-  padding: .65rem 1rem;
-  overflow-x: auto;
-  color: var(--text);
-  background: transparent;
-  font-size: 14px;
-  line-height: 1.6;
-}
-/* Keep the language label above the code so it cannot cover a long line. */
-.markdown-section pre::after { content: none; }
-.markdown-section pre[data-lang]:not([data-lang=""])::before {
-  content: attr(data-lang);
-  display: block;
-  padding: .45rem 1rem 0;
-  color: var(--muted);
-  font-size: .7rem;
-  line-height: 1;
-}
-.markdown-section pre[data-lang]:not([data-lang=""]) > code { padding-top: .3rem; }
 .markdown-section code { color: var(--text); background: var(--code); border-radius: 5px; padding: .18em .35em; font-size: .875em; }
 .markdown-section table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
 .markdown-section tr { background: var(--page); border-color: var(--border); }
 .markdown-section tr:nth-child(2n) { background: var(--panel); }
 .markdown-section th, .markdown-section td { border-color: var(--border); }
-.page-toc { box-sizing: border-box; position: fixed; top: calc(var(--header-height) + 48px); right: 26px; width: 205px; max-height: calc(100vh - var(--header-height) - 70px); overflow-y: auto; font-size: 13px; }
+
+/* ---- Code blocks -------------------------------------------------------- */
+.markdown-section pre {
+  box-sizing: border-box; position: relative;
+  margin: .8rem 0 1.1rem; padding: 0; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--panel);
+}
+.markdown-section pre::after, .markdown-section pre::before { content: none; }
+.markdown-section pre > code {
+  margin: 0; padding: .3rem 1rem .75rem; overflow-x: auto;
+  color: var(--text); background: transparent; font-size: 14px; line-height: 1.6;
+}
+.code-toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 28px; padding: 2px 6px 0 1rem; }
+.code-lang { color: var(--muted); font-size: .7rem; line-height: 1; }
+.copy-btn {
+  padding: 3px 9px; border: 1px solid transparent; border-radius: 6px; cursor: pointer;
+  color: var(--muted); background: transparent; font-size: 12px; font-weight: 600;
+}
+.copy-btn:hover, .copy-btn:focus-visible { color: var(--accent); border-color: var(--border); background: var(--page); }
+.copy-btn.copied { color: var(--tok-string); }
+
+.markdown-section .token.comment, .markdown-section .token.prolog,
+.markdown-section .token.doctype, .markdown-section .token.cdata { color: var(--tok-comment); }
+.markdown-section .token.punctuation, .markdown-section .token.operator,
+.markdown-section .token.entity, .markdown-section .token.url { color: var(--text); background: none; }
+.markdown-section .token.property, .markdown-section .token.tag, .markdown-section .token.boolean,
+.markdown-section .token.number, .markdown-section .token.constant, .markdown-section .token.symbol,
+.markdown-section .token.deleted { color: var(--tok-number); }
+.markdown-section .token.selector, .markdown-section .token.attr-name, .markdown-section .token.string,
+.markdown-section .token.char, .markdown-section .token.builtin, .markdown-section .token.inserted { color: var(--tok-string); }
+.markdown-section .token.atrule, .markdown-section .token.attr-value, .markdown-section .token.keyword { color: var(--tok-keyword); }
+.markdown-section .token.function, .markdown-section .token.class-name { color: var(--tok-function); }
+.markdown-section .token.regex, .markdown-section .token.important, .markdown-section .token.variable { color: var(--tok-variable); }
+
+/* ---- Page footer: edit link and previous/next -------------------------- */
+.page-footer { margin-top: 4rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
+.edit-link { display: inline-block; color: var(--muted); font-size: 14px; }
+.pager { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 1.25rem; }
+.pager a {
+  display: block; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); background: var(--panel); text-decoration: none; font-weight: 600; line-height: 1.4;
+}
+.pager a:hover { border-color: var(--accent); color: var(--accent); }
+.pager small { display: block; margin-bottom: 2px; color: var(--muted); font-size: 12px; font-weight: 500; }
+.pager .next { grid-column: 2; text-align: right; }
+.pager .prev { grid-column: 1; }
+
+/* ---- Page TOC ----------------------------------------------------------- */
+.page-toc { box-sizing: border-box; position: fixed; top: calc(var(--header-height) + 48px); right: 26px; width: var(--toc-width); max-height: calc(100vh - var(--header-height) - 70px); overflow-y: auto; font-size: 13px; }
 .page-toc[hidden] { display: none; }
 .toc-heading { margin-bottom: 14px; color: var(--heading); font-weight: 700; }
-.toc-heading span { color: var(--muted); font-weight: 400; }
-.page-toc nav { display: grid; gap: 2px; border-left: 1px solid var(--border); }
-.page-toc a { padding: 5px 0 5px 14px; color: var(--muted); text-decoration: none; line-height: 1.4; }
+.page-toc nav { position: static; display: grid; gap: 2px; margin: 0; border-left: 1px solid var(--border); text-align: left; }
+.page-toc a { padding: 5px 0 5px 14px; color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 400; line-height: 1.4; }
 .page-toc a:hover { color: var(--accent); }
 .page-toc .toc-subheading { padding-left: 26px; }
-@media (max-width: 1180px) { .page-toc { display: none; } .content { right: 0; } }
+
+/* ---- Responsive --------------------------------------------------------- */
+/* The TOC column is only shown when the article keeps a comfortable measure. */
+@media (max-width: 1380px) {
+  .page-toc { display: none; }
+  .content { right: 0; }
+}
 @media (max-width: 768px) {
   .site-header { padding: 0 14px 0 56px; }
   .brand small, .theme-switcher label, .github-link { display: none; }
   .brand { font-size: 13px; }
   .brand-icon { width: 28px; height: 28px; }
   .header-actions { gap: 8px; }
-  .theme-switcher select { max-width: 115px; }
-  .sidebar { top: var(--header-height); }
+  .theme-switcher select { width: 110px; }
   .sidebar-toggle { display: none; }
   .mobile-menu { display: block; position: absolute; left: 12px; top: 14px; width: 36px; height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font-size: 19px; cursor: pointer; }
   body.mobile-nav-open .sidebar { transform: translateX(300px); box-shadow: 6px 0 30px #0005; }
   body.mobile-nav-open .content { transform: none; }
-  .content { left: 0; right: 0; }
+  .nav-backdrop { position: fixed; z-index: 15; inset: var(--header-height) 0 0; background: #0006; }
+  body.mobile-nav-open .nav-backdrop { display: block; }
+  /* Docsify makes .content static on mobile, so its top offset has no effect. */
+  .content { left: 0; right: 0; padding-top: var(--header-height); }
   .markdown-section { padding: 36px 24px 90px; }
   .markdown-section h1 { font-size: 2rem; }
-}
-.page-toc nav { position: static; margin: 0; text-align: left; }
-.page-toc nav a { font-size: 13px; font-weight: 400; }
-@media (max-width: 768px) {
-  .theme-switcher select { width: 150px; max-width: none; }
+  .pager { grid-template-columns: 1fr; }
+  .pager .next, .pager .prev { grid-column: 1; text-align: left; }
 }
 @media (max-width: 430px) {
   .brand > span:last-child { display: none; }
 }
-.markdown-section strong { color: var(--heading); }
-.markdown-section h1, .markdown-section h2, .markdown-section h3, .markdown-section h4 { scroll-margin-top: calc(var(--header-height) + 16px); }
-@media (max-width: 768px) {
-  /* Docsify makes .content static on mobile, so its top offset has no effect. */
-  .content { padding-top: var(--header-height); }
+
+/* ---- Accessibility and print ------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+@media print {
+  .site-header, .sidebar, .sidebar-toggle, .page-toc, .nav-backdrop, .code-toolbar .copy-btn, .pager, .edit-link { display: none !important; }
+  .content { position: static; left: 0; right: 0; padding: 0; }
+  .markdown-section { max-width: none; padding: 0; }
+  html, body { background: #fff; color: #000; }
 }

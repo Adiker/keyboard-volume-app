@@ -1,0 +1,26 @@
+name: Check Docsify site
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'docsify/**'
+      - '*.md'
+      - 'LICENSE'
+      - 'resources/icon.png'
+      - '.github/scripts/build-docsify.sh'
+      - '.github/scripts/check-docs-links.py'
+      - '.github/workflows/docsify-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build site
+        run: .github/scripts/build-docsify.sh "$RUNNER_TEMP/docsify-site"
+      - name: Check relative links
+        run: python3 .github/scripts/check-docs-links.py "$RUNNER_TEMP/docsify-site"

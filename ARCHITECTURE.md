@@ -991,13 +991,35 @@ pull-request code.
 The GitHub Pages site uses Docsify to render the repository Markdown at runtime.
 The workflow `.github/workflows/docsify-pages.yml` publishes on relevant changes
 to `main` and can also be run manually. GitHub Pages must use GitHub Actions as
-its source. The entry point and sidebar live in `docsify/`; keep the sidebar in
-sync when adding or renaming guides. A Docsify hook builds the on-page table of
-contents from rendered headings. Bump the `theme.css` query version in
-`docsify/index.html` when changing styles so browsers fetch the update. The theme selector supports light, dark and
-OLED modes; it remembers the selection in browser local storage and defaults to
-the system color scheme. The site loads pinned Docsify assets from
-jsDelivr, so visitors need network access to that CDN.
+its source. `.github/workflows/docsify-check.yml` builds the site and runs
+`.github/scripts/check-docs-links.py` (relative-link check) on pull requests that
+touch docs or `docsify/`.
+
+Files in `docsify/`:
+
+- `index.html` — page shell (header, backdrop, TOC container) and CDN scripts.
+- `app.js` — `$docsify` configuration and the UI plugin: theme selector, mobile
+  navigation (backdrop, `Esc`, `inert` on the hidden sidebar), EN/PL language
+  detection from the route (sets `<html lang>`, header labels and the language
+  switch), collapsible sidebar groups, code-block toolbar with a copy button,
+  edit-on-GitHub link, previous/next pager and the on-page table of contents.
+  A `beforeEach` hook rewrites GitHub-style `page.md#anchor` links to Docsify's
+  `page.md?id=anchor`, so Markdown stays valid on both GitHub and the site.
+- `theme.css` — layout and the light/dark/OLED themes layered on Docsify's
+  `vue.css`, including Prism token colors (`--tok-*` variables).
+- `_sidebar.md` — navigation; keep it in sync when adding or renaming guides.
+- `_404.md` — bilingual not-found page (`notFoundPage: true`).
+
+`build-docsify.sh` copies these files plus the Markdown sources and
+`resources/icon.png` (favicon) into the output directory and replaces the
+`?v=dev` query on the local assets with the current commit SHA, so no manual
+cache-busting is needed. The theme selector supports light, dark and OLED modes;
+it remembers the selection in browser local storage and defaults to the system
+color scheme. The site loads pinned Docsify and Prism assets from jsDelivr, so
+visitors need network access to that CDN. Prism language packs are loaded for
+`bash`, `json` and `cpp`; add another pack to `index.html` when the docs start
+using a new fence language. The TOC column is shown from 1381 px up; below that
+the article uses the full width.
 
 To preview the same assembled files locally:
 
