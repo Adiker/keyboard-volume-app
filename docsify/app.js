@@ -57,7 +57,7 @@
     menuButton.setAttribute('aria-label', STRINGS[currentLang][open ? 'menuClose' : 'menu']);
     syncSidebarInert();
     if (open) {
-      const target = doc.querySelector('.sidebar input, .sidebar a');
+      const target = doc.querySelector('.sidebar-nav .nav-group-toggle, .sidebar-nav a');
       if (target) target.focus();
     } else if (options && options.restoreFocus) {
       menuButton.focus();
@@ -113,8 +113,6 @@
     doc.querySelector('.toc-heading').textContent = t.toc;
     doc.querySelector('.page-toc').setAttribute('aria-label', t.toc);
     menuButton.setAttribute('aria-label', t[body.classList.contains('mobile-nav-open') ? 'menuClose' : 'menu']);
-    const search = doc.querySelector('.sidebar .search input[type="search"]');
-    if (search) search.placeholder = t.search;
     syncSidebarToggle();
   }
 

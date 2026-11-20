@@ -37,11 +37,14 @@
       <a class="github-link" href="https://github.com/Adiker/keyboard-volume-app">GitHub <span aria-hidden="true">↗</span></a>
       <div class="theme-switcher">
         <label for="theme-select">Theme</label>
-        <select id="theme-select" aria-label="Theme">
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-          <option value="oled">OLED</option>
-        </select>
+        <span class="select-wrap">
+          <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z"/></svg>
+          <select id="theme-select" aria-label="Theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="oled">OLED</option>
+          </select>
+        </span>
       </div>
     </div>
   </header>

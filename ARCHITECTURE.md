@@ -1024,7 +1024,9 @@ Files in `docsify/`:
   `<dialog>`. It searches sidebar pages, section headings and body text from the
   `docsify.search.index` entry in `localStorage` (built by Docsify's search plugin,
   so keep that plugin), ignores diacritics, and also offers theme/language/GitHub
-  actions and recently opened pages (`kva-docs-recent`).
+  actions and recently opened pages (`kva-docs-recent`). The palette replaces the
+  plugin's sidebar search box, which is hidden with CSS (`.sidebar .search`) but
+  must stay in the plugin configuration because it builds the index.
 - `resize.js` — user-adjustable sidebar (200-480 px) and TOC (160-420 px) widths.
   Thin `role="separator"` handles drag with the pointer, move with the arrow keys
   (`Shift` = larger step), jump with `Home`/`End`, and reset on double-click or

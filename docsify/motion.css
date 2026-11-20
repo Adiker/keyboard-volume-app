@@ -117,7 +117,7 @@ html { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
 /* ---- Command palette ---------------------------------------------------- */
 .palette-btn {
-  display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px 0 10px;
+  box-sizing: border-box; display: inline-flex; align-items: center; gap: 8px; height: var(--control-h); padding: 0 8px 0 10px;
   border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--panel);
   font-size: 13px; font-weight: 600; cursor: pointer;
 }
@@ -153,7 +153,7 @@ dialog.palette .palette-input:focus, dialog.palette .palette-input:focus-visible
 .palette-empty { padding: 28px 16px; color: var(--muted); text-align: center; font-size: 14px; }
 .palette-foot { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
 @media (max-width: 768px) {
-  .palette-btn { width: 36px; height: 36px; padding: 0; justify-content: center; }
+  .palette-btn { width: var(--control-h); padding: 0; justify-content: center; }
   .palette-btn span, .palette-btn kbd, .palette-foot { display: none; }
   dialog.palette { margin-top: 8vh; }
   .to-top { right: 14px; bottom: 14px; }

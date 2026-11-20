@@ -13,6 +13,7 @@
   --tok-comment: #66738a; --tok-string: #17794a; --tok-keyword: #7c3aed;
   --tok-number: #a8480b; --tok-function: #1d5fb4; --tok-variable: #b4410e;
   --header-height: 64px;
+  --control-h: 34px;
   --sidebar-width: 280px;
   --toc-width: 205px;
   /* Room reserved for the TOC column: its width plus the gap to the content. */
@@ -59,10 +60,31 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .header-actions { display: flex; align-items: center; gap: 20px; }
 .github-link { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 600; }
 .github-link:hover { color: var(--accent); }
-.lang-link { padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--panel); text-decoration: none; font-size: 13px; font-weight: 700; letter-spacing: .04em; }
+/* Header controls share one height, radius and border so they line up. */
+.lang-link { box-sizing: border-box; display: inline-flex; align-items: center; height: var(--control-h); padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--panel); text-decoration: none; font-size: 13px; font-weight: 700; letter-spacing: .04em; }
 .lang-link:hover { color: var(--accent); border-color: var(--accent); }
-.theme-switcher { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; font-weight: 600; }
-.theme-switcher select { padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--panel); font-size: 13px; }
+/* Theme selector: one pill (icon, current theme, chevron) around a native select. */
+.theme-switcher { display: flex; align-items: center; }
+.theme-switcher label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.select-wrap {
+  position: relative; box-sizing: border-box; display: inline-flex; align-items: center; height: var(--control-h);
+  border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--panel);
+  transition: border-color .15s ease, box-shadow .15s ease, color .15s ease;
+}
+.select-wrap:hover { color: var(--accent); border-color: var(--accent); }
+.select-wrap:has(select:focus-visible) { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.select-wrap .theme-icon { position: absolute; left: 10px; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; pointer-events: none; }
+.select-wrap .theme-icon path { fill: currentColor; stroke: none; }
+.select-wrap::after {
+  content: ""; position: absolute; right: 12px; top: 50%; width: 6px; height: 6px; pointer-events: none;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: translateY(-70%) rotate(45deg);
+}
+.theme-switcher select {
+  -webkit-appearance: none; appearance: none; height: 100%; margin: 0; padding: 0 32px 0 34px;
+  border: 0; border-radius: 8px; outline: none; color: var(--text); background: transparent;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.theme-switcher select option { color: var(--text); background: var(--page); }
 
 /* ---- Sidebar ------------------------------------------------------------ */
 .sidebar { z-index: 20; top: var(--header-height); width: var(--sidebar-width); padding: 24px 16px 60px; background: var(--sidebar); border-right: 1px solid var(--border); }
@@ -98,11 +120,9 @@ body.close .sidebar-toggle { width: 40px; }
   body.close .sidebar { transform: translateX(calc(-1 * (var(--sidebar-width) + 20px))); }
 }
 
-/* Search (docsify search plugin): breathing room below the header, divider below. */
-.sidebar .search { margin: 0 0 4px; padding: 20px 0 16px; border-bottom: 1px solid var(--border); }
-.sidebar .search input { box-sizing: border-box; padding: 10px 12px; color: var(--text); background: var(--page); border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
-.sidebar .search .matching-post h2 { color: var(--heading); }
-.sidebar .search .matching-post p, .sidebar .search .empty { color: var(--muted); }
+/* The command palette (Ctrl/Cmd+K, header button) replaces the sidebar search box.
+   Docsify's search plugin must keep running: it builds the index the palette reads. */
+.sidebar .search { display: none; }
 
 /* ---- Content ------------------------------------------------------------ */
 .content { top: var(--header-height); left: var(--sidebar-width); right: var(--toc-gutter); padding: 0; }
@@ -210,7 +230,8 @@ body.resizing * { cursor: col-resize !important; }
   .brand { font-size: 13px; }
   .brand-icon { width: 28px; height: 28px; }
   .header-actions { gap: 8px; }
-  .theme-switcher select { width: 110px; }
+  :root { --control-h: 36px; }
+  .theme-switcher select { padding-right: 28px; }
   .sidebar-toggle, .resizer { display: none; }
   /* Docsify's off-canvas offsets assume a fixed width, so ignore the desktop preference. */
   .sidebar { width: 280px; }
