@@ -119,6 +119,6 @@ The tray icon is embedded as a Qt resource: `cpp/resources.qrc` maps `../resourc
 Test inventory, `ctest` invocation, and clang-tidy local recipes live in **Tests** in `ARCHITECTURE.md`. Sharp edges only:
 
 - All C++ changes in `cpp/src` and `cpp/tests` must be `clang-format` compliant. Before opening a PR that touches those paths, run `clang-format --dry-run --Werror` on the changed files; if it fails, run `clang-format -i` only on the changed files rather than reformatting the whole repo.
-- CI is path-filtered: docs-only changes do not run CI; changes under `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake files, or `.github/workflows/ci.yml` do.
-- `clang-tidy` runs in CI as a required check (`WarningsAsErrors: "*"`) on changed `.cpp`/`.cc`/`.cxx` files under `cpp/src` and `cpp/tests`.
+- CI is path-filtered: docs-only changes do not run CI; changes under `cpp/`, `pkg/`, `deploy/`, `resources/`, CMake files, `.github/workflows/ci.yml`, or `.clang-tidy` do.
+- `clang-tidy` runs in CI as a required check (`WarningsAsErrors: "*"`) on changed `.cpp`/`.cc`/`.cxx` files under `cpp/src` and `cpp/tests`. A change to `.clang-tidy` analyzes every such translation unit.
 - `Claude Code Review` is currently disabled via `if: false` in `.github/workflows/claude-code-review.yml`.

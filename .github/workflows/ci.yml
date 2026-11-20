@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ci.yml"
+      - ".clang-tidy"
       - "cpp/**"
       - "pkg/**"
       - "deploy/**"
@@ -15,6 +16,7 @@ on:
       - main
     paths:
       - ".github/workflows/ci.yml"
+      - ".clang-tidy"
       - "cpp/**"
       - "pkg/**"
       - "deploy/**"
@@ -164,6 +166,18 @@ jobs:
               | grep -E '^cpp/(src|tests)/.*\.(cpp|cc|cxx)$' \
               || true
           )
+
+          # A config-only diff matches the workflow path filter but changes no
+          # translation unit. Analyze the whole tree so a broken or stricter
+          # .clang-tidy still fails this job.
+          if git diff --name-only --diff-filter=ACMR "${range}" | grep -qx '.clang-tidy'; then
+            echo ".clang-tidy changed; analyzing all C++ sources under cpp/src and cpp/tests."
+            mapfile -t files < <(
+              git ls-files 'cpp/src' 'cpp/tests' \
+                | grep -E '^cpp/(src|tests)/.*\.(cpp|cc|cxx)$' \
+                || true
+            )
+          fi
 
           if [[ "${#files[@]}" -eq 0 ]]; then
             echo "No changed C++ source files under cpp/src or cpp/tests."
