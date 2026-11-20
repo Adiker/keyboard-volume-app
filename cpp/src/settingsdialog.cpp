@@ -60,7 +60,7 @@ void sizeComboToContents(QComboBox* combo)
     {
         const QString& text = combo->itemText(i);
         maxTextW = qMax(maxTextW, fm.horizontalAdvance(text));
-        maxChars = qMax(maxChars, text.size());
+        maxChars = qMax(maxChars, static_cast<int>(text.size()));
     }
     if (maxChars > 0) combo->setMinimumContentsLength(maxChars);
     if (maxTextW <= 0) return;
@@ -1261,7 +1261,7 @@ void SettingsDialog::onAddProfile()
     centerDialogOnScreenAt(&dlg, anchor);
     if (dlg.exec() == QDialog::Accepted)
     {
-        m_profiles.append(dlg.result());
+        m_profiles.append(dlg.profile());
         refreshProfilesTable();
         m_profilesTable->selectRow(static_cast<int>(m_profiles.size()) - 1);
     }
@@ -1277,7 +1277,7 @@ void SettingsDialog::onEditProfile()
     centerDialogOnScreenAt(&dlg, anchor);
     if (dlg.exec() == QDialog::Accepted)
     {
-        m_profiles[row] = dlg.result();
+        m_profiles[row] = dlg.profile();
         refreshProfilesTable();
         m_profilesTable->selectRow(row);
     }
@@ -1381,7 +1381,7 @@ void SettingsDialog::onEditAlias()
     if (row < 0 || row >= m_aliases.size()) return;
     AppAlias alias = m_aliases[row];
     if (!editAliasDialog(alias)) return;
-    m_aliases[row] = alias;
+    m_aliases[row] = std::move(alias);
     refreshAliasesTable();
     m_aliasesTable->selectRow(row);
 }
@@ -1479,9 +1479,9 @@ void SettingsDialog::onAddScene()
     centerDialogOnScreenAt(&dlg, anchor);
     if (dlg.exec() == QDialog::Accepted)
     {
-        AudioScene scene = dlg.result();
+        AudioScene scene = dlg.scene();
         scene.id = sceneSlug(scene.name);
-        m_scenes.append(scene);
+        m_scenes.append(std::move(scene));
         refreshScenesTable();
         m_scenesTable->selectRow(static_cast<int>(m_scenes.size()) - 1);
     }
@@ -1497,11 +1497,11 @@ void SettingsDialog::onEditScene()
     centerDialogOnScreenAt(&dlg, anchor);
     if (dlg.exec() == QDialog::Accepted)
     {
-        AudioScene scene = dlg.result();
+        AudioScene scene = dlg.scene();
         // Preserve the original id on edit (SceneEditDialog already does this,
         // but a freshly-named scene with an empty id gets a slug).
         if (scene.id.isEmpty()) scene.id = sceneSlug(scene.name);
-        m_scenes[row] = scene;
+        m_scenes[row] = std::move(scene);
         refreshScenesTable();
         m_scenesTable->selectRow(row);
     }

@@ -77,11 +77,12 @@ bool PaWatcherThread::connectOnce()
         pa_context_state_t st = pa_context_get_state(m_ctx);
         if (st == PA_CONTEXT_READY)
         {
-            pa_context_subscribe(m_ctx,
-                                 static_cast<pa_subscription_mask_t>(
-                                     PA_SUBSCRIPTION_MASK_SINK_INPUT | PA_SUBSCRIPTION_MASK_SINK |
-                                     PA_SUBSCRIPTION_MASK_SERVER),
-                                 nullptr, nullptr);
+            // PulseAudio combines bitmask flags in pa_subscription_mask_t.
+            // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+            const auto mask = static_cast<pa_subscription_mask_t>(PA_SUBSCRIPTION_MASK_SINK_INPUT |
+                                                                  PA_SUBSCRIPTION_MASK_SINK |
+                                                                  PA_SUBSCRIPTION_MASK_SERVER);
+            pa_context_subscribe(m_ctx, mask, nullptr, nullptr);
             pa_context_set_subscribe_callback(m_ctx, subscribeCallback, this);
             pa_threaded_mainloop_unlock(m_mainloop);
             return true;

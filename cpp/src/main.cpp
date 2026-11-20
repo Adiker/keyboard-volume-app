@@ -48,7 +48,12 @@ void handleUnixSignal(int signo)
 void setFdFlag(int fd, int command, int flag)
 {
     const int flags = fcntl(fd, command, 0);
-    if (flags >= 0) fcntl(fd, command == F_GETFD ? F_SETFD : F_SETFL, flags | flag);
+    if (flags >= 0)
+    {
+        const int updated =
+            static_cast<int>(static_cast<unsigned int>(flags) | static_cast<unsigned int>(flag));
+        fcntl(fd, command == F_GETFD ? F_SETFD : F_SETFL, updated);
+    }
 }
 
 std::unique_ptr<QSocketNotifier> installUnixSignalHandlers(QObject* parent)
@@ -64,8 +69,7 @@ std::unique_ptr<QSocketNotifier> installUnixSignalHandlers(QObject* parent)
     setFdFlag(g_signalPipe[0], F_GETFD, FD_CLOEXEC);
     setFdFlag(g_signalPipe[1], F_GETFD, FD_CLOEXEC);
 
-    struct sigaction action;
-    std::memset(&action, 0, sizeof(action));
+    struct sigaction action{};
     action.sa_handler = handleUnixSignal;
     sigemptyset(&action.sa_mask);
     action.sa_flags = 0;

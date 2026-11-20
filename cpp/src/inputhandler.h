@@ -8,6 +8,7 @@
 #include <QPair>
 #include <QMutex>
 #include <atomic>
+#include <cstdint>
 #include <optional>
 #include <QBitArray>
 #include <linux/input.h>
@@ -46,7 +47,7 @@ QList<std::pair<QString, QString>> getVolumeDevices();
 
 // ─── Profile resolution helpers (point 8) ────────────────────────────────────
 // Pure functions — no I/O — so unit tests can drive them directly.
-enum class ProfileHotkeyAction
+enum class ProfileHotkeyAction : std::uint8_t
 {
     None,
     VolumeUp,
@@ -67,7 +68,7 @@ struct ProfileHotkeyMatch
 // bindings keep priority when a user has chosen to bind the same key with
 // modifiers (e.g. Ctrl+KEY_PLAYPAUSE → VolumeUp on a profile, bare
 // KEY_PLAYPAUSE → media play/pause).
-enum class MediaAction
+enum class MediaAction : std::uint8_t
 {
     None,
     PlayPause,
@@ -80,7 +81,7 @@ MediaAction resolveMediaHotkey(const HotkeyBinding& binding, const MediaHotkeyCo
 MediaAction resolveMediaHotkey(int code, const MediaHotkeyConfig& cfg);
 
 // ─── OSD layout hotkey resolution (visible-gated in InputHandler) ────────────
-enum class OsdLayoutAction
+enum class OsdLayoutAction : std::uint8_t
 {
     None,
     SnapUp,

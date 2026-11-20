@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <cstdint>
 
 struct libevdev;
 struct libevdev_uinput;
@@ -8,7 +9,7 @@ struct libevdev_uinput;
 class EvdevDevice
 {
   public:
-    enum class OpenMode
+    enum class OpenMode : std::uint8_t
     {
         ReadOnly,
         ReadWrite,

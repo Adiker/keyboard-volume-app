@@ -873,13 +873,17 @@ bool WindowTracker::runWayland()
 
         pollfd pfd = {fd, POLLIN, 0};
         const int pollResult = poll(&pfd, 1, 50);
-        if (pollResult > 0 && (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)))
+        const auto revents = static_cast<unsigned int>(pfd.revents);
+        const auto errMask = static_cast<unsigned int>(POLLERR) |
+                             static_cast<unsigned int>(POLLHUP) |
+                             static_cast<unsigned int>(POLLNVAL);
+        if (pollResult > 0 && (revents & errMask) != 0U)
         {
             wl_display_cancel_read(state.display);
             emit error(QStringLiteral("Wayland display connection closed"));
             break;
         }
-        if (pollResult > 0 && (pfd.revents & POLLIN))
+        if (pollResult > 0 && (revents & static_cast<unsigned int>(POLLIN)) != 0U)
         {
             if (wl_display_read_events(state.display) < 0)
             {

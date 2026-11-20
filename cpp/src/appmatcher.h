@@ -141,7 +141,7 @@ inline QString matchBinaryToApp(const QString& binary, const QList<AudioApp>& ca
         // Cache may already hold the remapped alias target (youtube-music) while
         // WindowTracker still reports the source binary (chromium). Expand through
         // aliases so Follow Focus can resolve the control target.
-        const QString control = app.binary.isEmpty() ? app.name : app.binary;
+        QString control = app.binary.isEmpty() ? app.name : app.binary;
         if (control.isEmpty() && app.name.isEmpty()) continue;
         for (const QString& candidate : appMatchCandidates(control, aliases))
         {
@@ -263,7 +263,7 @@ inline QString resolveStickyAutoProfileTarget(const QString& focusedBinary,
     if (focusedBinary.isEmpty()) return currentTarget;
 
     const QString matchedApp = matchBinaryToApp(focusedBinary, cache, aliases);
-    const QString preferredTarget = matchedApp.isEmpty() ? focusedBinary : matchedApp;
+    QString preferredTarget = matchedApp.isEmpty() ? focusedBinary : matchedApp;
 
     // Collect focused binary + remapped target + alias siblings so regex profiles
     // that list the source name (chromium) still fire when cache only has the

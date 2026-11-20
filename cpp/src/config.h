@@ -7,10 +7,11 @@
 #include <QHashFunctions>
 #include <QMetaType>
 #include <algorithm>
+#include <cstdint>
 #include <mutex>
 #include <optional>
 
-enum class MediaKeysOsdMode
+enum class MediaKeysOsdMode : std::uint8_t
 {
     Off,
     Action,
@@ -18,7 +19,7 @@ enum class MediaKeysOsdMode
 };
 
 // ─── Hotkey binding (shared by profiles, media, scenes, OSD layout) ───────────
-enum class HotkeyBindingType
+enum class HotkeyBindingType : std::uint8_t
 {
     Key,
     Relative,
@@ -190,7 +191,7 @@ struct AudioScene
 
 // ─── Modifier set for profile matching ───────────────────────────────────────
 // L/R variants of each modifier collapse to a single canonical value.
-enum class Modifier
+enum class Modifier : std::uint8_t
 {
     Ctrl,
     Shift
@@ -218,8 +219,8 @@ inline bool operator<(const HotkeyBinding& a, const HotkeyBinding& b)
 
 inline size_t qHash(const HotkeyBinding& b, size_t seed = 0) noexcept
 {
-    return ::qHash(static_cast<int>(b.type), seed) ^ ::qHash(b.code, seed << 1) ^
-           ::qHash(b.direction, seed << 2);
+    return ::qHash(static_cast<int>(b.type), seed) ^ ::qHash(b.code, seed << 1U) ^
+           ::qHash(b.direction, seed << 2U);
 }
 
 // ─── Audio profile (point 8) ──────────────────────────────────────────────────
