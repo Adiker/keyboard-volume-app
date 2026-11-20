@@ -43,6 +43,9 @@ body, input, select, button {
   -webkit-font-smoothing: antialiased;
 }
 body { font-size: 16px; }
+/* Docsify's theme sizes <main> at 100vw, which is wider than the viewport by the
+   scrollbar width and adds a horizontal scrollbar. */
+main { width: 100%; }
 a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible {
   outline: 3px solid var(--accent); outline-offset: 3px;
 }
@@ -140,6 +143,9 @@ body.close .sidebar-toggle { width: 40px; }
 .markdown-section a { color: var(--accent); font-weight: 500; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .markdown-section blockquote { color: var(--muted); border-color: var(--accent); }
 .markdown-section code { color: var(--text); background: var(--code); border-radius: 5px; padding: .18em .35em; font-size: .875em; }
+/* Long inline paths and identifiers wrap instead of running off narrow screens. */
+.markdown-section { overflow-wrap: break-word; }
+.markdown-section :not(pre) > code { overflow-wrap: anywhere; }
 .markdown-section table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
 .markdown-section tr { background: var(--page); border-color: var(--border); }
 .markdown-section tr:nth-child(2n) { background: var(--panel); }
@@ -192,7 +198,7 @@ body.close .sidebar-toggle { width: 40px; }
 .pager .prev { grid-column: 1; }
 
 /* ---- Page TOC ----------------------------------------------------------- */
-.page-toc { box-sizing: border-box; position: fixed; top: calc(var(--header-height) + 48px); right: 26px; width: var(--toc-width); max-height: calc(100vh - var(--header-height) - 70px); overflow-x: hidden; overflow-y: auto; font-size: 13px; }
+.page-toc { box-sizing: border-box; position: fixed; top: calc(var(--header-height) + 48px); right: 26px; width: var(--toc-width); /* leave room for the back-to-top button below the list */ max-height: calc(100vh - var(--header-height) - 48px - 96px); overflow-x: hidden; overflow-y: auto; font-size: 13px; }
 .page-toc[hidden] { display: none; }
 .toc-heading { margin-bottom: 14px; color: var(--heading); font-weight: 700; }
 .page-toc nav { position: static; display: grid; gap: 2px; margin: 0; border-left: 1px solid var(--border); text-align: left; }
@@ -211,7 +217,7 @@ body.close .sidebar-toggle { width: 40px; }
 .resizer:hover::after, .resizer:focus-visible::after, .resizer.active::after { opacity: 1; }
 .resizer:focus-visible { outline: none; }
 .resizer-sidebar { top: var(--header-height); bottom: 0; left: calc(var(--sidebar-width) - 5px); }
-.resizer-toc { top: calc(var(--header-height) + 40px); height: calc(100vh - var(--header-height) - 62px); right: calc(26px + var(--toc-width) - 4px); }
+.resizer-toc { top: calc(var(--header-height) + 40px); height: calc(100vh - var(--header-height) - 48px - 96px + 8px); right: calc(26px + var(--toc-width) - 4px); }
 body.close .resizer-sidebar { display: none; }
 body.resizing { cursor: col-resize; user-select: none; -webkit-user-select: none; }
 /* Docsify animates .content/.sidebar offsets; while dragging they must follow the pointer 1:1. */

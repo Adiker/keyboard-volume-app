@@ -175,7 +175,14 @@
 
   // ---- Code blocks: toolbar with copy button -----------------------------
   function copyText(text) {
-    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+    // Fall back to the legacy command when the async API is missing or refuses (no focus/permission).
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(text).catch(function () { return legacyCopy(text); });
+    }
+    return legacyCopy(text);
+  }
+
+  function legacyCopy(text) {
     return new Promise(function (resolve, reject) {
       const area = doc.createElement('textarea');
       area.value = text;

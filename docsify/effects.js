@@ -20,6 +20,17 @@
   };
   function t() { return STRINGS[KVA.lang()] || STRINGS.en; }
 
+  // Starts a view transition. A transition that is skipped (a newer one starts, the tab
+  // is hidden) rejects ready/updateCallbackDone with an AbortError; that is expected,
+  // so swallow it instead of logging "Uncaught (in promise)".
+  function startTransition(update) {
+    const transition = doc.startViewTransition(update);
+    const ignore = function () { /* skipped transitions are fine */ };
+    transition.ready.catch(ignore);
+    transition.updateCallbackDone.catch(ignore);
+    return transition;
+  }
+
   // Route part of a "#/path.md?id=x" hash, normalised for comparisons.
   function pathOf(hash) {
     return String(hash || '').replace(/^#/, '').split('?')[0].replace(/\.md$/, '') || '/';
@@ -38,7 +49,7 @@
     root.classList.add('vt-theme');
     const cleanup = function () { root.classList.remove('vt-theme'); };
     try {
-      doc.startViewTransition(function () { applyTheme(name); }).finished.then(cleanup, cleanup);
+      startTransition(function () { applyTheme(name); }).finished.then(cleanup, cleanup);
     } catch (_) {
       cleanup();
       applyTheme(name);
@@ -94,7 +105,7 @@
     root.classList.add('vt-active'); // names the fixed chrome so only the article animates
     let transition;
     try {
-      transition = doc.startViewTransition(function () {
+      transition = startTransition(function () {
         if (navDone) return undefined; // Docsify was faster than the capture
         return new Promise(function (resolve) {
           pendingResolve = resolve;
