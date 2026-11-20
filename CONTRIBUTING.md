@@ -22,7 +22,7 @@ would help. If useful, include your audio setup or input device details.
    latest upstream `main`; use a `feature/`, `fix/`, `refactor/`, `docs/` or
    `chore/` prefix. Do not commit directly to `main`.
 2. Make the change and update relevant documentation and English/Polish
-   translations when needed. The [installation guide](docs/en/installation.md)
+   translations when needed. The [installation guide](docs/en/installation.mdx)
    lists build dependencies, and [ARCHITECTURE.md](ARCHITECTURE.md) covers the
    build, project internals and test recipes.
 3. Run the checks relevant to the change. For changed C++ files under `cpp/src`

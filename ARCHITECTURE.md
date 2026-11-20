@@ -688,7 +688,7 @@ D-Bus calls arrive on the main thread and are forwarded to `VolumeController` (w
 
 ## D-Bus / MPRIS — `dbus-send` recipes
 
-`kv-ctl` is the recommended client. When debugging without a `kv-ctl` build, or scripting on systems that do not ship `qdbus` (Qt6 makes it an optional package on several distros), use `dbus-send`. End-user `qdbus` examples live in [`docs/en/remote-control.md`](docs/en/remote-control.md) and [`docs/pl/remote-control.md`](docs/pl/remote-control.md).
+`kv-ctl` is the recommended client. When debugging without a `kv-ctl` build, or scripting on systems that do not ship `qdbus` (Qt6 makes it an optional package on several distros), use `dbus-send`. End-user `qdbus` examples live in [`docs/en/remote-control.mdx`](docs/en/remote-control.mdx) and [`docs/pl/remote-control.mdx`](docs/pl/remote-control.mdx).
 
 ```bash
 # Bump volume / mute on the default profile
@@ -985,3 +985,18 @@ pull-request code.
 - **Profiles are the source of truth** for hotkey → app mapping. Legacy `selected_app` and top-level `hotkeys` are deprecated mirrors of `profiles[0]`, kept in sync on every write for one release cycle of backwards compat (D-Bus/MPRIS callers reading the old fields keep working).
 - **Scenes are additive mixer presets** — they do not change the active app/profile, and applying one only posts absolute per-app volume/mute operations to the existing audio worker.
 - **Modifiers tracked only from grabbed devices** — a modifier key on a separate keyboard with no hotkey bindings won't be observed in v1. Documented limitation; v2 may add passive read-only opens for modifier-only devices.
+
+## Documentation site
+
+The public docs.page site uses `docs.json` and the existing English and Polish
+pages under `docs/en/` and `docs/pl/`. The default branch is published at
+https://docs.page/Adiker/keyboard-volume-app; pull requests can be previewed
+using the docs.page branch preview. To check and preview site changes locally:
+
+```bash
+npx @docs.page/cli check --external-links off
+npx @docs.page/cli preview
+```
+
+The site serves the `.mdx` guides directly. Verify navigation and rendering in
+the browser as well as running the CLI check.

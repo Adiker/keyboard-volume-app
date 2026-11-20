@@ -49,7 +49,7 @@ GitHub Releases publikują pakiety `.deb`, `.rpm` i Arch `.pkg.tar.zst` dla każ
 otagowanej wersji. Pobierz pakiet dla swojej dystrybucji z
 [najnowszego wydania](https://github.com/Adiker/keyboard-volume-app/releases/latest)
 i zainstaluj go menedżerem pakietów. Pełne informacje są w
-[przewodniku instalacji](docs/pl/installation.md).
+[przewodniku instalacji](docs/pl/installation.mdx).
 
 Aby zbudować bieżące źródła:
 
@@ -77,12 +77,14 @@ cmake --build cpp/build -j"$(nproc)"
 
 ## Dokumentacja
 
+Dokumentacja jest również dostępna na [docs.page](https://docs.page/Adiker/keyboard-volume-app/pl).
+
 | Temat | English | Polski |
 |---|---|---|
-| Instalacja, zależności, Wayland i systemd | [Installation](docs/en/installation.md) | [Instalacja](docs/pl/installation.md) |
-| Codzienna obsługa, profile, OSD, sceny i diagnozowanie | [User guide](docs/en/user-guide.md) | [Przewodnik użytkownika](docs/pl/user-guide.md) |
-| `config.json`, formaty skrótów i migracje | [Configuration](docs/en/configuration.md) | [Konfiguracja](docs/pl/configuration.md) |
-| `kv-ctl`, `qdbus`, D-Bus i MPRIS | [Remote control](docs/en/remote-control.md) | [Sterowanie zdalne](docs/pl/remote-control.md) |
+| Instalacja, zależności, Wayland i systemd | [Installation](docs/en/installation.mdx) | [Instalacja](docs/pl/installation.mdx) |
+| Codzienna obsługa, profile, OSD, sceny i diagnozowanie | [User guide](docs/en/user-guide.mdx) | [Przewodnik użytkownika](docs/pl/user-guide.mdx) |
+| `config.json`, formaty skrótów i migracje | [Configuration](docs/en/configuration.mdx) | [Konfiguracja](docs/pl/configuration.mdx) |
+| `kv-ctl`, `qdbus`, D-Bus i MPRIS | [Remote control](docs/en/remote-control.mdx) | [Sterowanie zdalne](docs/pl/remote-control.mdx) |
 | Architektura, testy i workflow utrzymania | [ARCHITECTURE.md](ARCHITECTURE.md) | — |
 | Współtworzenie i zgłaszanie problemów | [CONTRIBUTING.md](CONTRIBUTING.md) | — |
 
@@ -99,7 +101,7 @@ kv-ctl set volume 35
 ```
 
 Pełna lista poleceń i typowane przykłady D-Bus są w [przewodniku sterowania
-zdalnego](docs/pl/remote-control.md). Przepisy testów i izolowaną regresję
+zdalnego](docs/pl/remote-control.mdx). Przepisy testów i izolowaną regresję
 PipeWire opisano w [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Wartości domyślne i zgodność

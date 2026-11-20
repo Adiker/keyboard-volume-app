@@ -1,0 +1,61 @@
+{
+  "$schema": "https://docs.page/schema.json",
+  "name": "Keyboard Volume App",
+  "description": "Per-application volume control for Linux using keyboard and mouse hotkeys.",
+  "sidebar": {
+    "en": [
+      {
+        "group": "Documentation",
+        "pages": [
+          {
+            "title": "Overview",
+            "href": "/"
+          },
+          {
+            "title": "Installation",
+            "href": "/installation"
+          },
+          {
+            "title": "User guide",
+            "href": "/user-guide"
+          },
+          {
+            "title": "Configuration",
+            "href": "/configuration"
+          },
+          {
+            "title": "Remote control",
+            "href": "/remote-control"
+          }
+        ]
+      }
+    ],
+    "pl": [
+      {
+        "group": "Dokumentacja",
+        "pages": [
+          {
+            "title": "Wprowadzenie",
+            "href": "/"
+          },
+          {
+            "title": "Instalacja",
+            "href": "/installation"
+          },
+          {
+            "title": "Przewodnik użytkownika",
+            "href": "/user-guide"
+          },
+          {
+            "title": "Konfiguracja",
+            "href": "/configuration"
+          },
+          {
+            "title": "Sterowanie zdalne",
+            "href": "/remote-control"
+          }
+        ]
+      }
+    ]
+  }
+}
