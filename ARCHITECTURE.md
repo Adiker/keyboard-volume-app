@@ -1005,8 +1005,28 @@ Files in `docsify/`:
   edit-on-GitHub link, previous/next pager and the on-page table of contents.
   A `beforeEach` hook rewrites GitHub-style `page.md#anchor` links to Docsify's
   `page.md?id=anchor`, so Markdown stays valid on both GitHub and the site.
+  It also exposes `window.KVA` (`lang()`, `go(hash)`, `setTheme()`,
+  `counterpartRoute()`) for the scripts below. Docsify re-renders the sidebar on
+  every route change, so sidebar group state is kept in JS and re-applied.
+- `effects.js` — motion and reading aids, registered as an extra Docsify plugin
+  (scripts load in the order `app.js`, `effects.js`, `palette.js`, then Docsify):
+  page transitions through the View Transitions API (`html.vt-active` names the
+  fixed header/sidebar/TOC so only the article animates; the transition callback
+  waits for `doneEach`), a keyframe fallback (`html.page-enter`, also used on first
+  load and when `?no-vt` is in the URL), route and reading progress bars,
+  back-to-top button, TOC scrollspy with a sliding indicator, smooth theme switch
+  (`html.theme-transition`) and callouts.
+- `palette.js` — command palette (`Ctrl/Cmd+K` or `/`) built on a native
+  `<dialog>`. It searches sidebar pages, section headings and body text from the
+  `docsify.search.index` entry in `localStorage` (built by Docsify's search plugin,
+  so keep that plugin), ignores diacritics, and also offers theme/language/GitHub
+  actions and recently opened pages (`kva-docs-recent`).
 - `theme.css` — layout and the light/dark/OLED themes layered on Docsify's
   `vue.css`, including Prism token colors (`--tok-*` variables).
+- `motion.css` — motion tokens (`--ease-out`, `--dur-*`), micro-interactions,
+  skeleton, progress bars, callout and palette styling. Every animation lives in
+  `@media (prefers-reduced-motion: no-preference)`; animate only `transform` and
+  `opacity` (the sidebar group collapse is the one `grid-template-rows` exception).
 - `_sidebar.md` — navigation; keep it in sync when adding or renaming guides.
 - `_404.md` — bilingual not-found page (`notFoundPage: true`).
 
@@ -1020,6 +1040,11 @@ visitors need network access to that CDN. Prism language packs are loaded for
 `bash`, `json` and `cpp`; add another pack to `index.html` when the docs start
 using a new fence language. The TOC column is shown from 1381 px up; below that
 the article uses the full width.
+
+Callouts use GitHub's alert syntax (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`,
+`[!WARNING]`, `[!CAUTION]` on the first line of a blockquote). GitHub renders them
+natively and `effects.js` styles them on the site, so write them in the guides
+instead of ad-hoc bold "Note:" paragraphs.
 
 To preview the same assembled files locally:
 

@@ -114,9 +114,13 @@
   }
 
   // ---- Sidebar groups ----------------------------------------------------
+  // Docsify re-renders the sidebar on route changes, which drops our buttons and
+  // classes. Collapsed state is therefore kept here (by group index) and re-applied.
+  let groupOverride = {};
+
   function setupSidebarGroups() {
     const groups = doc.querySelectorAll('.sidebar-nav > ul > li');
-    groups.forEach(function (group) {
+    groups.forEach(function (group, index) {
       if (group.querySelector(':scope > .nav-group-toggle')) return;
       const label = Array.prototype.find.call(group.childNodes, function (node) {
         return node.nodeType === Node.TEXT_NODE && node.textContent.trim();
@@ -129,20 +133,29 @@
       group.replaceChild(toggle, label);
       toggle.addEventListener('click', function () {
         const collapsed = group.classList.toggle('collapsed');
+        groupOverride[index] = collapsed;
         toggle.setAttribute('aria-expanded', String(!collapsed));
       });
     });
-    // Collapse the group of the other language whenever the page language changes.
-    if (appliedGroupLang === currentLang) return;
-    appliedGroupLang = currentLang;
-    groups.forEach(function (group) {
+    // A language change forgets manual choices; by default the other language is collapsed.
+    if (appliedGroupLang !== currentLang) {
+      appliedGroupLang = currentLang;
+      groupOverride = {};
+    }
+    groups.forEach(function (group, index) {
       const toggle = group.querySelector(':scope > .nav-group-toggle');
       if (!toggle) return;
-      const polish = !!group.querySelector('a[href*="/docs/pl/"], a[href*="README.pl"]');
-      const english = !!group.querySelector('a[href*="/docs/en/"]');
-      const other = (polish && currentLang === 'en') || (english && currentLang === 'pl');
-      group.classList.toggle('collapsed', other && !group.querySelector('li.active'));
-      toggle.setAttribute('aria-expanded', String(!group.classList.contains('collapsed')));
+      let collapsed;
+      if (Object.prototype.hasOwnProperty.call(groupOverride, index)) {
+        collapsed = groupOverride[index];
+      } else {
+        const polish = !!group.querySelector('a[href*="/docs/pl/"], a[href*="README.pl"]');
+        const english = !!group.querySelector('a[href*="/docs/en/"]');
+        const other = (polish && currentLang === 'en') || (english && currentLang === 'pl');
+        collapsed = other && !group.querySelector('li.active');
+      }
+      group.classList.toggle('collapsed', collapsed);
+      toggle.setAttribute('aria-expanded', String(!collapsed));
     });
   }
 
@@ -262,6 +275,19 @@
     });
     toc.hidden = !nav.childElementCount;
   }
+
+  // ---- Shared API for effects.js and palette.js ---------------------------
+  window.KVA = {
+    lang: function () { return currentLang; },
+    counterpartRoute: counterpartRoute,
+    // effects.js wraps this to run a view transition before the route changes.
+    go: function (hash) { location.hash = hash; },
+    theme: function () { return themeSelect.value; },
+    setTheme: function (name) {
+      themeSelect.value = name;
+      themeSelect.dispatchEvent(new Event('change'));
+    }
+  };
 
   // ---- Docsify ------------------------------------------------------------
   window.$docsify = {
