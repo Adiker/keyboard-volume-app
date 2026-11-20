@@ -48,7 +48,10 @@ keyboard-volume-app/
 │       ├── app.h/cpp            # Root coordinator App class wiring all modules
 │       ├── config.h/cpp         # JSON config r/w (XDG config dir via QStandardPaths)
 │       ├── i18n.h/cpp           # PL/EN translations; tr() lookup function
-│       ├── volumecontroller.h/cpp  # Per-app volume/mute via libpulse + libpipewire
+│       ├── volumecontroller.h/cpp  # Thin main-thread Qt facade for per-app audio control
+│       ├── paworker.h/cpp          # PA/PipeWire worker thread (volume, mute, ducking, routing, pending)
+│       ├── pawatcherthread.h/cpp   # PA subscription thread (sink-input/sink/server events + reconnect)
+│       ├── pabackend_helpers.h/cpp # Internal PA callback structs, stream-restore and volume helpers
 │       ├── pwutils.h/cpp           # Shared PipeWire helpers (libpipewire)
 │       ├── applistwidget.h/cpp     # Reusable PW app list widget + Refresh button
 │       ├── appselectordialog.h/cpp # QDialog for changing the default audio app from tray
@@ -324,7 +327,9 @@ inline QString matchBinaryToApp(const QString &binary, const QList<AudioApp> &ap
 - Returns the `AudioApp::name` of the first app whose `name` or `binary` is a case-insensitive substring of the focused binary (or vice versa); empty otherwise.
 - **Skips candidate fields that are empty** — `QString::contains("")` returns `true`, so an `AudioApp` with an empty `name` or `binary` would otherwise match every focused window and hijack auto-switching.
 
-### `cpp/src/volumecontroller.h/cpp` — `VolumeController`, `PaWorker`, `AudioApp`
+### `cpp/src/volumecontroller.h/cpp`, `paworker.h/cpp`, `pawatcherthread.h/cpp`, `pabackend_helpers.h/cpp` — `VolumeController`, `PaWorker`, `PaWatcherThread`, `AudioApp`
+
+`volumecontroller.h/cpp` is a thin main-thread Qt facade (`QThread` lifecycle, caches, `QMetaObject::invokeMethod` dispatch). `paworker.h/cpp` implements `PaWorker`, `pawatcherthread.h/cpp` implements `PaWatcherThread`, and `pabackend_helpers.h/cpp` holds shared PA callback data and volume/stream-restore helpers in namespace `pabackend`.
 
 All PulseAudio/PipeWire operations run on a dedicated `PaWorker` thread (moved via `moveToThread`). The public API is **async**: `changeVolume`/`toggleMute`/`toggleDucking` post work via `QMetaObject::invokeMethod`; results come back as signals.
 
