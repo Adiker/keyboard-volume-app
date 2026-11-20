@@ -210,7 +210,8 @@ void PaWorker::doChangeVolume(const QString& appName, double delta, double minVo
     // for this relative user action.
     const QList<PipeWireNode> nodes =
         m_backend->pwFindNodesForApp(appName, matchCandidatesFor(appName));
-    std::optional<double> pipeWireVolume;
+    bool hasPipeWireVolume = false;
+    double pipeWireVolume = 0.0;
     bool pipeWireMuted = false;
     for (const PipeWireNode& node : nodes)
     {
@@ -219,16 +220,19 @@ void PaWorker::doChangeVolume(const QString& appName, double delta, double minVo
         const uint32_t channels =
             static_cast<uint32_t>(std::max(1, static_cast<int>(node.channelVolumes.size())));
         if (!m_backend->pwSetVisibleVolume(node.id, newVol, channels)) continue;
-        if (!pipeWireVolume) pipeWireVolume = newVol;
+        if (!hasPipeWireVolume)
+        {
+            hasPipeWireVolume = true;
+            pipeWireVolume = newVol;
+        }
         pipeWireMuted = node.muted;
     }
-    if (pipeWireVolume.has_value())
+    if (hasPipeWireVolume)
     {
-        const double appliedVolume = *pipeWireVolume;
-        m_appVolumes[appName] = appliedVolume;
+        m_appVolumes[appName] = pipeWireVolume;
         m_appMutes[appName] = pipeWireMuted;
         removePendingVolume(appName);
-        emit volumeChanged(appName, appliedVolume, pipeWireMuted);
+        emit volumeChanged(appName, pipeWireVolume, pipeWireMuted);
         return;
     }
 
