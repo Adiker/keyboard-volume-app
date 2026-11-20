@@ -3,7 +3,7 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 output="${1:?Usage: build-docsify.sh OUTPUT_DIRECTORY}"
 mkdir -p "$output"
-cp "$root"/docsify/{index.html,_sidebar.md,_404.md,theme.css,motion.css,app.js,effects.js,palette.js} "$output/"
+cp "$root"/docsify/{index.html,_sidebar.md,_404.md,theme.css,motion.css,app.js,effects.js,palette.js,resize.js} "$output/"
 cp "$root"/{README.md,README.pl.md,ARCHITECTURE.md,CONTRIBUTING.md,CHANGELOG.md,LICENSE} "$output/"
 cp "$root/LICENSE" "$output/LICENSE.md"
 cp "$root/resources/icon.png" "$output/icon.png"

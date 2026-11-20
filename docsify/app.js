@@ -9,14 +9,14 @@
     en: {
       theme: 'Theme', light: 'Light', dark: 'Dark', oled: 'OLED',
       toc: 'On this page', menu: 'Open navigation', menuClose: 'Close navigation',
-      search: 'Search', edit: 'Edit this page', prev: 'Previous', next: 'Next',
+      search: 'Search', edit: 'Edit this page', prev: 'Previous', next: 'Next', sidebar: 'Toggle sidebar',
       copy: 'Copy', copied: 'Copied', copyFailed: 'Failed', copyLabel: 'Copy code',
       switchTo: 'PL', switchTitle: 'Polski'
     },
     pl: {
       theme: 'Motyw', light: 'Jasny', dark: 'Ciemny', oled: 'OLED',
       toc: 'Na tej stronie', menu: 'Otwórz nawigację', menuClose: 'Zamknij nawigację',
-      search: 'Szukaj', edit: 'Edytuj tę stronę', prev: 'Poprzednia', next: 'Następna',
+      search: 'Szukaj', edit: 'Edytuj tę stronę', prev: 'Poprzednia', next: 'Następna', sidebar: 'Przełącz panel boczny',
       copy: 'Kopiuj', copied: 'Skopiowano', copyFailed: 'Błąd', copyLabel: 'Kopiuj kod',
       switchTo: 'EN', switchTitle: 'English'
     }
@@ -111,7 +111,19 @@
     menuButton.setAttribute('aria-label', t[body.classList.contains('mobile-nav-open') ? 'menuClose' : 'menu']);
     const search = doc.querySelector('.sidebar .search input[type="search"]');
     if (search) search.placeholder = t.search;
+    syncSidebarToggle();
   }
+
+  // Docsify's collapse button has no accessible name or state of its own.
+  function syncSidebarToggle() {
+    const button = doc.querySelector('.sidebar-toggle');
+    if (!button) return;
+    const label = STRINGS[currentLang].sidebar;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-expanded', String(!body.classList.contains('close')));
+  }
+  new MutationObserver(syncSidebarToggle).observe(body, { attributes: true, attributeFilter: ['class'] });
 
   // ---- Sidebar groups ----------------------------------------------------
   // Docsify re-renders the sidebar on route changes, which drops our buttons and
@@ -260,6 +272,15 @@
   }
 
   // ---- Page TOC ----------------------------------------------------------
+  // Offer line-break opportunities after "/" so long paths wrap at path segments.
+  function appendBreakable(link, text) {
+    const parts = text.split('/');
+    parts.forEach(function (part, index) {
+      if (index) link.appendChild(doc.createElement('wbr'));
+      link.appendChild(doc.createTextNode(index < parts.length - 1 ? part + '/' : part));
+    });
+  }
+
   function buildPageToc() {
     const toc = doc.querySelector('.page-toc');
     const nav = toc.querySelector('nav');
@@ -269,7 +290,7 @@
       if (!anchor) return;
       const link = doc.createElement('a');
       link.href = anchor.getAttribute('href');
-      link.textContent = heading.textContent.trim();
+      appendBreakable(link, heading.textContent.trim());
       if (heading.tagName === 'H3') link.className = 'toc-subheading';
       nav.appendChild(link);
     });

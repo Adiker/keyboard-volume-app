@@ -15,7 +15,8 @@
   --header-height: 64px;
   --sidebar-width: 280px;
   --toc-width: 205px;
-  --toc-gutter: 240px;
+  /* Room reserved for the TOC column: its width plus the gap to the content. */
+  --toc-gutter: calc(var(--toc-width) + 35px);
 }
 html[data-theme="dark"] {
   color-scheme: dark;
@@ -81,11 +82,24 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .sidebar ul li a { display: block; border-radius: 8px; padding: 8px 10px; color: var(--text); font-size: 14px; font-weight: 450; letter-spacing: 0; text-transform: none; }
 .sidebar ul li a:hover { color: var(--accent); text-decoration: none; background: var(--panel); }
 .sidebar ul li.active > a { color: var(--accent); background: var(--accent-bg); font-weight: 650; border: 0; }
-.sidebar-toggle { background: var(--sidebar); }
-.sidebar-toggle span { background-color: var(--accent); }
+/* Sidebar collapse button: a visible bordered button instead of three bare lines. */
+.sidebar-toggle {
+  left: 16px; bottom: 16px; width: 40px; height: 40px; padding: 0; z-index: 31;
+  display: grid; place-items: center; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--panel);
+}
+body.close .sidebar-toggle { width: 40px; }
+.sidebar-toggle:hover { border-color: var(--accent); }
+.sidebar-toggle .sidebar-toggle-button { display: grid; gap: 4px; margin: 0; padding: 0; }
+.sidebar-toggle span { display: block; width: 16px; height: 2px; margin: 0; border-radius: 1px; background-color: var(--text); }
+.sidebar-toggle:hover span { background-color: var(--accent); }
+/* The sidebar width is user-adjustable, so the collapsed offset must follow it. */
+@media (min-width: 769px) {
+  body.close .sidebar { transform: translateX(calc(-1 * (var(--sidebar-width) + 20px))); }
+}
 
-/* Search (docsify search plugin) */
-.sidebar .search { margin: 0; padding: 0 0 12px; border-color: var(--border); }
+/* Search (docsify search plugin): breathing room below the header, divider below. */
+.sidebar .search { margin: 0 0 4px; padding: 20px 0 16px; border-bottom: 1px solid var(--border); }
 .sidebar .search input { box-sizing: border-box; padding: 10px 12px; color: var(--text); background: var(--page); border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
 .sidebar .search .matching-post h2 { color: var(--heading); }
 .sidebar .search .matching-post p, .sidebar .search .empty { color: var(--muted); }
@@ -158,13 +172,31 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 .pager .prev { grid-column: 1; }
 
 /* ---- Page TOC ----------------------------------------------------------- */
-.page-toc { box-sizing: border-box; position: fixed; top: calc(var(--header-height) + 48px); right: 26px; width: var(--toc-width); max-height: calc(100vh - var(--header-height) - 70px); overflow-y: auto; font-size: 13px; }
+.page-toc { box-sizing: border-box; position: fixed; top: calc(var(--header-height) + 48px); right: 26px; width: var(--toc-width); max-height: calc(100vh - var(--header-height) - 70px); overflow-x: hidden; overflow-y: auto; font-size: 13px; }
 .page-toc[hidden] { display: none; }
 .toc-heading { margin-bottom: 14px; color: var(--heading); font-weight: 700; }
 .page-toc nav { position: static; display: grid; gap: 2px; margin: 0; border-left: 1px solid var(--border); text-align: left; }
-.page-toc a { padding: 5px 0 5px 14px; color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 400; line-height: 1.4; }
+/* Long headings (file paths, identifiers) wrap instead of being cut off. */
+.page-toc a { padding: 5px 0 5px 14px; color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 400; line-height: 1.4; overflow-wrap: break-word; }
 .page-toc a:hover { color: var(--accent); }
 .page-toc .toc-subheading { padding-left: 26px; }
+
+/* ---- Resize handles (sidebar and TOC widths, see resize.js) -------------- */
+.resizer { position: fixed; z-index: 32; width: 10px; cursor: col-resize; touch-action: none; }
+.resizer[hidden] { display: none; }
+.resizer::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; margin-left: -1px;
+  border-radius: 1px; background: var(--accent); opacity: 0; transition: opacity .15s ease;
+}
+.resizer:hover::after, .resizer:focus-visible::after, .resizer.active::after { opacity: 1; }
+.resizer:focus-visible { outline: none; }
+.resizer-sidebar { top: var(--header-height); bottom: 0; left: calc(var(--sidebar-width) - 5px); }
+.resizer-toc { top: calc(var(--header-height) + 40px); height: calc(100vh - var(--header-height) - 62px); right: calc(26px + var(--toc-width) - 4px); }
+body.close .resizer-sidebar { display: none; }
+body.resizing { cursor: col-resize; user-select: none; -webkit-user-select: none; }
+/* Docsify animates .content/.sidebar offsets; while dragging they must follow the pointer 1:1. */
+body.resizing .content, body.resizing .sidebar { transition: none !important; }
+body.resizing * { cursor: col-resize !important; }
 
 /* ---- Responsive --------------------------------------------------------- */
 /* The TOC column is only shown when the article keeps a comfortable measure. */
@@ -179,7 +211,9 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   .brand-icon { width: 28px; height: 28px; }
   .header-actions { gap: 8px; }
   .theme-switcher select { width: 110px; }
-  .sidebar-toggle { display: none; }
+  .sidebar-toggle, .resizer { display: none; }
+  /* Docsify's off-canvas offsets assume a fixed width, so ignore the desktop preference. */
+  .sidebar { width: 280px; }
   .mobile-menu { display: block; position: absolute; left: 12px; top: 14px; width: 36px; height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--text); font-size: 19px; cursor: pointer; }
   body.mobile-nav-open .sidebar { transform: translateX(300px); box-shadow: 6px 0 30px #0005; }
   body.mobile-nav-open .content { transform: none; }

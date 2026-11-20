@@ -133,10 +133,16 @@ dialog.palette {
 }
 dialog.palette[open] { display: flex; flex-direction: column; }
 dialog.palette::backdrop { background: #0009; }
-.palette-input-row { display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--border); }
+.palette-input-row { position: relative; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--border); }
 .palette-input-row svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
-.palette-input { flex: 1; min-width: 0; height: 54px; border: 0; outline: 0; color: var(--text); background: transparent; font-size: 16px; }
+.palette-input { flex: 1; min-width: 0; height: 54px; border: 0; color: var(--text); background: transparent; font-size: 16px; }
 .palette-input::placeholder { color: var(--muted); }
+/* The global input:focus-visible ring would be clipped by the dialog, so the row signals focus instead. */
+dialog.palette:focus, dialog.palette:focus-visible,
+dialog.palette .palette-input:focus, dialog.palette .palette-input:focus-visible { outline: none; box-shadow: none; }
+.palette-input-row::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent); transform: scaleX(0); transform-origin: left; }
+.palette-input-row:focus-within::after { transform: scaleX(1); }
+.palette-input-row:focus-within svg { stroke: var(--accent); }
 .palette-list { flex: 1; margin: 0; padding: 8px; overflow-y: auto; list-style: none; overscroll-behavior: contain; }
 .palette-group { padding: 10px 10px 4px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .palette-item { display: flex; flex-direction: column; gap: 2px; padding: 9px 12px; border-radius: 9px; cursor: pointer; }
@@ -230,6 +236,9 @@ dialog.palette::backdrop { background: #0009; }
   dialog.palette::backdrop { opacity: 0; transition: opacity var(--dur-base) ease; }
   dialog.palette.is-open::backdrop { opacity: 1; }
   .palette-item { transition: background-color var(--dur-fast) ease; }
+  .palette-input-row::after { transition: transform var(--dur-base) var(--ease-out); }
+  .sidebar-toggle { transition: border-color var(--dur-fast) ease, transform var(--dur-fast) var(--ease-out); }
+  .sidebar-toggle:active { transform: scale(.94); }
 
   /* View Transitions: only the content area moves; chrome stays put. */
   html.vt-active .site-header { view-transition-name: kva-header; }
@@ -237,6 +246,9 @@ dialog.palette::backdrop { background: #0009; }
   html.vt-active .page-toc { view-transition-name: kva-toc; }
   html.vt-active .read-progress { view-transition-name: kva-progress; }
   html.vt-active .to-top { view-transition-name: kva-top; }
+  html.vt-active .sidebar-toggle { view-transition-name: kva-toggle; }
+  html.vt-active .resizer-sidebar { view-transition-name: kva-resize-sidebar; }
+  html.vt-active .resizer-toc { view-transition-name: kva-resize-toc; }
   html.vt-active::view-transition-old(root), html.vt-active::view-transition-new(root) { mix-blend-mode: normal; }
   html.vt-active::view-transition-old(root) { animation: kva-fade-out var(--dur-fast) ease both; }
   html.vt-active::view-transition-new(root) { animation: kva-rise var(--dur-slow) var(--ease-out) both; }

@@ -1009,7 +1009,8 @@ Files in `docsify/`:
   `counterpartRoute()`) for the scripts below. Docsify re-renders the sidebar on
   every route change, so sidebar group state is kept in JS and re-applied.
 - `effects.js` — motion and reading aids, registered as an extra Docsify plugin
-  (scripts load in the order `app.js`, `effects.js`, `palette.js`, then Docsify):
+  (scripts load in the order `app.js`, `effects.js`, `palette.js`, `resize.js`,
+  then Docsify):
   page transitions through the View Transitions API (`html.vt-active` names the
   fixed header/sidebar/TOC so only the article animates; the transition callback
   waits for `doneEach`), a keyframe fallback (`html.page-enter`, also used on first
@@ -1021,8 +1022,17 @@ Files in `docsify/`:
   `docsify.search.index` entry in `localStorage` (built by Docsify's search plugin,
   so keep that plugin), ignores diacritics, and also offers theme/language/GitHub
   actions and recently opened pages (`kva-docs-recent`).
+- `resize.js` — user-adjustable sidebar (200-480 px) and TOC (160-420 px) widths.
+  Thin `role="separator"` handles drag with the pointer, move with the arrow keys
+  (`Shift` = larger step), jump with `Home`/`End`, and reset on double-click or
+  `Enter`. Widths are stored in `localStorage` (`kva-docs-sidebar-width`,
+  `kva-docs-toc-width`), applied as the `--sidebar-width` / `--toc-width` CSS
+  variables and clamped so the article keeps at least 600 px. Mobile ignores the
+  preference (fixed 280 px off-canvas sidebar, no handles).
 - `theme.css` — layout and the light/dark/OLED themes layered on Docsify's
-  `vue.css`, including Prism token colors (`--tok-*` variables).
+  `vue.css`, including Prism token colors (`--tok-*` variables). Docsify's search
+  plugin and `vue.css` override some sidebar paddings, so sidebar spacing is set on
+  `.sidebar .search`; the page-TOC wraps long headings (`<wbr>` after `/`).
 - `motion.css` — motion tokens (`--ease-out`, `--dur-*`), micro-interactions,
   skeleton, progress bars, callout and palette styling. Every animation lives in
   `@media (prefers-reduced-motion: no-preference)`; animate only `transform` and
