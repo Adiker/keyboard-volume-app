@@ -23,6 +23,7 @@ set(VOLUME_CONTROLLER_SOURCES
     src/paworker.cpp
     src/pawatcherthread.cpp
     src/pabackend_helpers.cpp
+    src/pabackend_pulse.cpp
 )
 
 # Sources

@@ -97,6 +97,7 @@ set(TEST_VOLUME_CONTROLLER_SOURCES
     ../src/paworker.cpp
     ../src/pawatcherthread.cpp
     ../src/pabackend_helpers.cpp
+    ../src/pabackend_pulse.cpp
 )
 
 # ─── test_volumecontroller (smoke) ──────────────────────────────────────────────
@@ -118,6 +119,29 @@ target_link_libraries(test_volumecontroller PRIVATE
     PkgConfig::LIBPIPEWIRE
 )
 add_test(NAME test_volumecontroller COMMAND test_volumecontroller)
+
+# ─── test_paworker (deterministic mock-backend reconnect/pending/ducking) ───────
+add_executable(test_paworker
+    test_paworker.cpp
+    ../src/paworker.cpp
+    ../src/pabackend_helpers.cpp
+    ../src/pabackend_pulse.cpp
+    ../src/pawatcherthread.cpp
+    ../src/config.cpp
+    ../src/appaudiofilters.cpp
+    ../src/pwutils.cpp
+)
+target_include_directories(test_paworker PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+target_link_libraries(test_paworker PRIVATE
+    GTest::gtest
+    Qt6::Core
+    Qt6::Test
+    PkgConfig::LIBPULSE
+    PkgConfig::LIBPIPEWIRE
+)
+add_test(NAME test_paworker COMMAND test_paworker)
 
 # ─── test_appmatcher ──────────────────────────────────────────────────────────
 add_executable(test_appmatcher
@@ -284,6 +308,54 @@ if(DBUS_RUN_SESSION)
     add_test(NAME test_tray_dbus COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:test_tray_dbus>)
 else()
     message(WARNING "test_tray_dbus: dbus-run-session not found; test not registered")
+endif()
+
+# ─── test_app (headless App coordinator wiring on private session D-Bus) ───────
+add_executable(test_app
+    test_app.cpp
+    ../src/app.cpp
+    ../src/albumartcache.cpp
+    ../src/osdwindow.cpp
+    ../src/osdlabelformat.cpp
+    ../src/trayapp.cpp
+    ../src/dbusinterface.cpp
+    ../src/mprisinterface.cpp
+    ../src/mprisclient.cpp
+    ../src/config.cpp
+    ${TEST_VOLUME_CONTROLLER_SOURCES}
+    ../src/pwutils.cpp
+    ../src/appaudiofilters.cpp
+    ../src/inputhandler.cpp
+    ../src/evdevdevice.cpp
+    ../src/i18n.cpp
+    ../src/aboutdialog.cpp
+    ../src/deviceselector.cpp
+    ../src/settingsdialog.cpp
+    ../src/appselectordialog.cpp
+    ../src/applistwidget.cpp
+    ../src/profileeditdialog.cpp
+    ../src/sceneeditdialog.cpp
+    ../src/windowtracker.cpp
+    ../resources.qrc
+)
+target_include_directories(test_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_link_libraries(test_app PRIVATE
+    GTest::gtest
+    Qt6::Core
+    Qt6::Widgets
+    Qt6::DBus
+    Qt6::Network
+    Qt6::Test
+    PkgConfig::LIBPULSE
+    PkgConfig::LIBPIPEWIRE
+    PkgConfig::LIBEVDEV
+    PkgConfig::TAGLIB
+    PkgConfig::XCB
+)
+if(DBUS_RUN_SESSION)
+    add_test(NAME test_app COMMAND ${DBUS_RUN_SESSION} -- $<TARGET_FILE:test_app>)
+else()
+    message(WARNING "test_app: dbus-run-session not found; test not registered")
 endif()
 
 if(ENABLE_PIPEWIRE_INTEGRATION_TESTS)

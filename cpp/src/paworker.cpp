@@ -1,19 +1,18 @@
 #include "paworker.h"
 #include "appmatcher.h"
-#include "pawatcherthread.h"
 
 #include <QDateTime>
 #include <QDebug>
-#include <QElapsedTimer>
 #include <QMutexLocker>
-#include <QThread>
 #include <QTimer>
 #include <algorithm>
 #include <cmath>
 #include <numeric>
 
-#include <pulse/ext-stream-restore.h>
-#include <pulse/introspect.h>
+PaWorker::PaWorker(std::unique_ptr<IPaBackend> backend)
+    : m_backend(backend ? std::move(backend) : createLibPulseBackend())
+{
+}
 
 PaWorker::~PaWorker()
 {
@@ -34,6 +33,36 @@ QList<AppAlias> PaWorker::currentAliases() const
 QStringList PaWorker::matchCandidatesFor(const QString& appName) const
 {
     return appMatchCandidates(appName, currentAliases());
+}
+
+bool PaWorker::hasPendingVolume(const QString& app) const
+{
+    QMutexLocker lk(&m_pendingMutex);
+    return m_pendingVolumes.contains(app);
+}
+
+bool PaWorker::hasPendingChannelVolumes(const QString& app) const
+{
+    QMutexLocker lk(&m_pendingMutex);
+    return m_pendingChannelVolumes.contains(app);
+}
+
+bool PaWorker::hasPendingMute(const QString& app) const
+{
+    QMutexLocker lk(&m_pendingMutex);
+    return m_pendingMutes.contains(app);
+}
+
+bool PaWorker::hasPendingSink(const QString& app) const
+{
+    QMutexLocker lk(&m_pendingMutex);
+    return m_pendingSinks.contains(app);
+}
+
+bool PaWorker::hasPendingSinkClear(const QString& app) const
+{
+    QMutexLocker lk(&m_pendingMutex);
+    return m_pendingSinkClears.contains(app);
 }
 
 void PaWorker::init()
@@ -83,15 +112,12 @@ void PaWorker::cleanup()
         m_sinkRefreshTimer->stop();
     }
 
-    if (m_watcher)
+    if (m_backend)
     {
-        disconnect(m_watcher, nullptr, this, nullptr);
-        m_watcher->stop();
-        delete m_watcher;
-        m_watcher = nullptr;
+        m_backend->stopWatcher();
+        m_backend->pwClose();
+        disconnectContext();
     }
-    m_pipeWire.close();
-    disconnectContext();
     m_cleanedUp = true;
     emit cleanupFinished();
 }
@@ -150,9 +176,7 @@ void PaWorker::doChangeVolume(const QString& appName, double delta, double minVo
     // multiplier can survive an explicit operation.
     if (contextReady())
     {
-        pa_threaded_mainloop_lock(m_mainloop);
-        const auto inputs = getSinkInputs();
-        pa_threaded_mainloop_unlock(m_mainloop);
+        const auto inputs = m_backend->listSinkInputs();
         std::optional<double> reportedVolume;
         bool reportedMute = false;
         for (const auto& si : inputs)
@@ -185,7 +209,7 @@ void PaWorker::doChangeVolume(const QString& appName, double delta, double minVo
     // multiplier while preserving its former effective level as the base
     // for this relative user action.
     const QList<PipeWireNode> nodes =
-        m_pipeWire.findNodesForApp(appName, matchCandidatesFor(appName));
+        m_backend->pwFindNodesForApp(appName, matchCandidatesFor(appName));
     std::optional<double> pipeWireVolume;
     bool pipeWireMuted = false;
     for (const PipeWireNode& node : nodes)
@@ -194,7 +218,7 @@ void PaWorker::doChangeVolume(const QString& appName, double delta, double minVo
         const double newVol = std::clamp(node.effectiveVolume() + delta, minVol, maxVol);
         const uint32_t channels =
             static_cast<uint32_t>(std::max(1, static_cast<int>(node.channelVolumes.size())));
-        if (!m_pipeWire.setVisibleVolume(node.id, newVol, channels)) continue;
+        if (!m_backend->pwSetVisibleVolume(node.id, newVol, channels)) continue;
         if (!pipeWireVolume) pipeWireVolume = newVol;
         pipeWireMuted = node.muted;
     }
@@ -212,7 +236,7 @@ void PaWorker::doChangeVolume(const QString& appName, double delta, double minVo
     if (vol)
     {
         m_appVolumes[appName] = *vol;
-        if (m_isPipeWirePulse)
+        if (m_backend->isPipeWirePulse())
             parkPendingVolume(appName, *vol);
         else
             removePendingVolume(appName);
@@ -236,25 +260,18 @@ void PaWorker::doToggleMute(const QString& appName)
     // 1. Active sink input
     if (contextReady())
     {
-        pa_threaded_mainloop_lock(m_mainloop);
-        const auto inputs = getSinkInputs();
-        pa_threaded_mainloop_unlock(m_mainloop);
+        const auto inputs = m_backend->listSinkInputs();
         for (const auto& si : inputs)
         {
             if (!sinkInputMatches(si, appName, aliases)) continue;
 
-            int newMute = si.muted ? 0 : 1;
-            pa_threaded_mainloop_lock(m_mainloop);
-            pa_operation* op = pa_context_set_sink_input_mute(
-                m_ctx, si.index, newMute, pabackend::operationDoneCallback, this);
-            const bool completed = waitForOperation(op, "set sink input mute");
-            pa_threaded_mainloop_unlock(m_mainloop);
-            if (!completed) return;
+            const bool newMute = !si.muted;
+            if (!m_backend->setSinkInputMute(si.index, newMute, "set sink input mute")) return;
 
             m_appVolumes[appName] = si.volume;
-            m_appMutes[appName] = static_cast<bool>(newMute);
+            m_appMutes[appName] = newMute;
             removePendingMute(appName);
-            emit volumeChanged(appName, si.volume, static_cast<bool>(newMute));
+            emit volumeChanged(appName, si.volume, newMute);
             return;
         }
     }
@@ -264,20 +281,17 @@ void PaWorker::doToggleMute(const QString& appName)
     if (result)
     {
         m_appMutes[appName] = result->first;
-        {
-            QMutexLocker lk(&m_pendingMutex);
-            m_pendingMutes.remove(appName);
-        }
+        removePendingMute(appName);
         emit volumeChanged(appName, result->second, result->first);
         return;
     }
 
     // 3. PipeWire node
-    auto node = m_pipeWire.findNodeForApp(appName, matchCandidatesFor(appName));
+    auto node = m_backend->pwFindNodeForApp(appName, matchCandidatesFor(appName));
     if (node)
     {
         bool newMuted = !node->muted;
-        if (m_pipeWire.setMute(node->id, newMuted))
+        if (m_backend->pwSetMute(node->id, newMuted))
         {
             m_appMutes[appName] = newMuted;
             removePendingMute(appName);
@@ -306,9 +320,7 @@ void PaWorker::setAppMute(const QString& appName, bool targetMuted)
     // 1. Active sink input
     if (contextReady())
     {
-        pa_threaded_mainloop_lock(m_mainloop);
-        const auto inputs = getSinkInputs();
-        pa_threaded_mainloop_unlock(m_mainloop);
+        const auto inputs = m_backend->listSinkInputs();
         for (const auto& si : inputs)
         {
             if (!sinkInputMatches(si, appName, aliases)) continue;
@@ -317,27 +329,17 @@ void PaWorker::setAppMute(const QString& appName, bool targetMuted)
             {
                 m_appVolumes[appName] = si.volume;
                 m_appMutes[appName] = targetMuted;
-                {
-                    QMutexLocker lk(&m_pendingMutex);
-                    m_pendingMutes.remove(appName);
-                }
+                removePendingMute(appName);
                 emit volumeChanged(appName, si.volume, targetMuted);
                 return;
             }
 
-            pa_threaded_mainloop_lock(m_mainloop);
-            pa_operation* op = pa_context_set_sink_input_mute(
-                m_ctx, si.index, targetMuted ? 1 : 0, pabackend::operationDoneCallback, this);
-            const bool completed = waitForOperation(op, "set sink input absolute mute");
-            pa_threaded_mainloop_unlock(m_mainloop);
-            if (!completed) return;
+            if (!m_backend->setSinkInputMute(si.index, targetMuted, "set sink input absolute mute"))
+                return;
 
             m_appVolumes[appName] = si.volume;
             m_appMutes[appName] = targetMuted;
-            {
-                QMutexLocker lk(&m_pendingMutex);
-                m_pendingMutes.remove(appName);
-            }
+            removePendingMute(appName);
             emit volumeChanged(appName, si.volume, targetMuted);
             return;
         }
@@ -348,23 +350,17 @@ void PaWorker::setAppMute(const QString& appName, bool targetMuted)
     if (result)
     {
         m_appMutes[appName] = result->first;
-        {
-            QMutexLocker lk(&m_pendingMutex);
-            m_pendingMutes.remove(appName);
-        }
+        removePendingMute(appName);
         emit volumeChanged(appName, result->second, result->first);
         return;
     }
 
     // 3. PipeWire node
-    auto node = m_pipeWire.findNodeForApp(appName, matchCandidatesFor(appName));
-    if (node && m_pipeWire.setMute(node->id, targetMuted))
+    auto node = m_backend->pwFindNodeForApp(appName, matchCandidatesFor(appName));
+    if (node && m_backend->pwSetMute(node->id, targetMuted))
     {
         m_appMutes[appName] = targetMuted;
-        {
-            QMutexLocker lk(&m_pendingMutex);
-            m_pendingMutes.remove(appName);
-        }
+        removePendingMute(appName);
         emit volumeChanged(appName, node->visibleVolume(), targetMuted);
         return;
     }
@@ -394,9 +390,7 @@ void PaWorker::setAppVolume(const QString& appName, double targetVolume, double 
     // 1. Active sink inputs (absolute target, not relative delta).
     if (contextReady())
     {
-        pa_threaded_mainloop_lock(m_mainloop);
-        const auto inputs = getSinkInputs();
-        pa_threaded_mainloop_unlock(m_mainloop);
+        const auto inputs = m_backend->listSinkInputs();
         bool applied = false;
         bool muted = false;
         for (const auto& si : inputs)
@@ -421,12 +415,12 @@ void PaWorker::setAppVolume(const QString& appName, double targetVolume, double 
     bool pipeWireApplied = false;
     bool pipeWireMuted = false;
     for (const PipeWireNode& node :
-         m_pipeWire.findNodesForApp(appName, matchCandidatesFor(appName)))
+         m_backend->pwFindNodesForApp(appName, matchCandidatesFor(appName)))
     {
         reportHiddenVolume(appName, node);
         const uint32_t channels =
             static_cast<uint32_t>(std::max(1, static_cast<int>(node.channelVolumes.size())));
-        if (!m_pipeWire.setVisibleVolume(node.id, targetVolume, channels)) continue;
+        if (!m_backend->pwSetVisibleVolume(node.id, targetVolume, channels)) continue;
         pipeWireApplied = true;
         pipeWireMuted = node.muted;
     }
@@ -443,7 +437,7 @@ void PaWorker::setAppVolume(const QString& appName, double targetVolume, double 
     if (streamRestoreSetVolume(appName, targetVolume, minVol, maxVol))
     {
         m_appVolumes[appName] = targetVolume;
-        if (m_isPipeWirePulse)
+        if (m_backend->isPipeWirePulse())
             parkPendingVolume(appName, targetVolume);
         else
             removePendingVolume(appName);
@@ -470,12 +464,7 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
         clearDuckingState();
 
         QList<pabackend::SinkInputInfo> currentInputs;
-        if (contextReady())
-        {
-            pa_threaded_mainloop_lock(m_mainloop);
-            currentInputs = getSinkInputs();
-            pa_threaded_mainloop_unlock(m_mainloop);
-        }
+        if (contextReady()) currentInputs = m_backend->listSinkInputs();
         QSet<uint32_t> restoredInputIndexes;
         QSet<uint32_t> restoredPipeWireNodes;
 
@@ -491,14 +480,14 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
                     continue;
                 if (input.pipeWireNodeId && !snapshot.visibleChannelVolumes.isEmpty())
                 {
-                    restored = m_pipeWire.setVisibleChannelVolumes(*input.pipeWireNodeId,
-                                                                   snapshot.visibleChannelVolumes);
+                    restored = m_backend->pwSetVisibleChannelVolumes(
+                        *input.pipeWireNodeId, snapshot.visibleChannelVolumes);
                 }
                 if (!restored && snapshot.pulseChannelVolume.channels > 0)
                 {
-                    restored =
-                        setPulseSinkInputChannelVolumes(input.index, snapshot.pulseChannelVolume,
-                                                        "restore exact ducked sink input volume");
+                    restored = m_backend->setSinkInputChannelVolumes(
+                        input.index, snapshot.pulseChannelVolume,
+                        "restore exact ducked sink input volume");
                 }
                 if (restored)
                 {
@@ -511,14 +500,14 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
             if (!restored && !snapshot.visibleChannelVolumes.isEmpty())
             {
                 const QList<PipeWireNode> nodes =
-                    m_pipeWire.findNodesForApp(snapshot.app, matchCandidatesFor(snapshot.app));
+                    m_backend->pwFindNodesForApp(snapshot.app, matchCandidatesFor(snapshot.app));
                 for (const PipeWireNode& node : nodes)
                 {
                     const uint32_t expectedNodeId = snapshot.pipeWireNodeId.value_or(node.id);
                     if (restoredPipeWireNodes.contains(node.id) || node.id != expectedNodeId)
                         continue;
-                    restored = m_pipeWire.setVisibleChannelVolumes(node.id,
-                                                                   snapshot.visibleChannelVolumes);
+                    restored = m_backend->pwSetVisibleChannelVolumes(
+                        node.id, snapshot.visibleChannelVolumes);
                     if (restored) restoredPipeWireNodes.insert(node.id);
                     break;
                 }
@@ -528,7 +517,7 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
                 streamRestoreSetChannelVolumes(snapshot.app, snapshot.pulseChannelVolume))
             {
                 restored = true;
-                if (m_isPipeWirePulse)
+                if (m_backend->isPipeWirePulse())
                 {
                     const QList<double> channels =
                         !snapshot.visibleChannelVolumes.isEmpty()
@@ -555,9 +544,7 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
     // normalizing the representation.
     if (contextReady())
     {
-        pa_threaded_mainloop_lock(m_mainloop);
-        const QList<pabackend::SinkInputInfo> inputs = getSinkInputs();
-        pa_threaded_mainloop_unlock(m_mainloop);
+        const QList<pabackend::SinkInputInfo> inputs = m_backend->listSinkInputs();
         for (const pabackend::SinkInputInfo& input : inputs)
         {
             std::optional<PipeWireNode> node;
@@ -611,7 +598,7 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
 
         bool handledNode = false;
         for (const PipeWireNode& node :
-             m_pipeWire.findNodesForApp(app.name, matchCandidatesFor(app.name)))
+             m_backend->pwFindNodesForApp(app.name, matchCandidatesFor(app.name)))
         {
             if (handledPipeWireNodes.contains(node.id)) continue;
             handledPipeWireNodes.insert(node.id);
@@ -635,7 +622,7 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
             const bool needsWrite =
                 qAbs(entry.volume - duckVolume) > 0.0001 || node.hasHiddenVolumeMultiplier();
             if (needsWrite &&
-                m_pipeWire.setVisibleVolume(
+                m_backend->pwSetVisibleVolume(
                     node.id, duckVolume, std::max(1, static_cast<int>(node.channelVolumes.size()))))
                 snapshot.append(std::move(entry));
         }
@@ -684,9 +671,7 @@ void PaWorker::doQueryVolume(const QString& appName, bool silent)
     // 1. Active sink input — live read, no write
     if (contextReady())
     {
-        pa_threaded_mainloop_lock(m_mainloop);
-        const auto inputs = getSinkInputs();
-        pa_threaded_mainloop_unlock(m_mainloop);
+        const auto inputs = m_backend->listSinkInputs();
         for (const auto& si : inputs)
         {
             if (!sinkInputMatches(si, appName, aliases)) continue;
@@ -709,7 +694,7 @@ void PaWorker::doQueryVolume(const QString& appName, bool silent)
     }
 
     // 3. PipeWire node (idle/paused app)
-    auto node = m_pipeWire.findNodeForApp(appName, matchCandidatesFor(appName));
+    auto node = m_backend->pwFindNodeForApp(appName, matchCandidatesFor(appName));
     if (node)
     {
         m_appVolumes[appName] = node->visibleVolume();
@@ -733,7 +718,7 @@ void PaWorker::doListApps(bool forceRefresh)
     Config* cfg = m_config.load(std::memory_order_acquire);
     const QSet<QString> systemBinaries = cfg ? cfg->effectiveSystemBinaries() : SYSTEM_BINARIES;
     const QSet<QString> skipAppNames = cfg ? cfg->effectiveSkipAppNames() : SKIP_APP_NAMES;
-    const PipeWireSnapshot pwSnapshot = m_pipeWire.inspect(systemBinaries, skipAppNames);
+    const PipeWireSnapshot pwSnapshot = m_backend->pwInspect(systemBinaries, skipAppNames);
     const auto& pwClientsRaw = pwSnapshot.clients;
     const QList<AppAlias> aliases = cfg ? cfg->appAliases() : QList<AppAlias>{};
     const auto pwClients = applyAppAliases(pwClientsRaw, aliases);
@@ -768,10 +753,7 @@ void PaWorker::doListApps(bool forceRefresh)
     // 1. Active sink inputs
     if (contextReady())
     {
-        pa_threaded_mainloop_lock(m_mainloop);
-        const auto inputs = getSinkInputs();
-        pa_threaded_mainloop_unlock(m_mainloop);
-
+        const auto inputs = m_backend->listSinkInputs();
         for (const auto& si : inputs)
         {
             if (systemBinaries.contains(si.binary)) continue;
@@ -858,9 +840,7 @@ void PaWorker::doApplyPending()
     }
 
     const QList<AppAlias> aliases = currentAliases();
-    pa_threaded_mainloop_lock(m_mainloop);
-    const auto inputs = getSinkInputs();
-    pa_threaded_mainloop_unlock(m_mainloop);
+    const auto inputs = m_backend->listSinkInputs();
     QSet<QString> applied;
     QSet<QString> appliedSinks;
 
@@ -878,15 +858,10 @@ void PaWorker::doApplyPending()
 
             const std::optional<PipeWireNode> beforeMove = pipeWireStateFor(si);
             if (beforeMove) reportHiddenVolume(si.displayName(), *beforeMove);
-            const QByteArray sinkBytes = it.value().toUtf8();
-            pabackend::OperationOutcome outcome;
-            pa_threaded_mainloop_lock(m_mainloop);
-            pa_operation* op =
-                pa_context_move_sink_input_by_name(m_ctx, si.index, sinkBytes.constData(),
-                                                   pabackend::operationOutcomeCallback, &outcome);
-            const bool completed = waitForOperation(op, "apply pending sink move");
-            pa_threaded_mainloop_unlock(m_mainloop);
-            if (completed && outcome.success)
+            bool rejectedByServer = false;
+            const bool moved = m_backend->moveSinkInputByName(
+                si.index, it.value(), "apply pending sink move", rejectedByServer);
+            if (moved)
             {
                 if (restoreActiveStreamVolume(sinkInputAfterMove(si), beforeMove))
                     appliedSinks.insert(app);
@@ -895,7 +870,7 @@ void PaWorker::doApplyPending()
                                   "restore failed for"
                                << app << "stream" << si.index;
             }
-            else if (completed)
+            else if (rejectedByServer)
                 qWarning() << "[PaWorker] pending sink move for" << app << "→" << it.value()
                            << "rejected by PA";
         }
@@ -919,11 +894,11 @@ void PaWorker::doApplyPending()
 
             bool volumeApplied = false;
             const uint32_t pipeWireNodeId = si.pipeWireNodeId.value_or(0);
-            if (m_isPipeWirePulse && pipeWireNodeId != 0)
-                volumeApplied = m_pipeWire.setVisibleChannelVolumes(pipeWireNodeId, channels);
+            if (m_backend->isPipeWirePulse() && pipeWireNodeId != 0)
+                volumeApplied = m_backend->pwSetVisibleChannelVolumes(pipeWireNodeId, channels);
             else
             {
-                volumeApplied = setPulseSinkInputChannelVolumes(
+                volumeApplied = m_backend->setSinkInputChannelVolumes(
                     si.index, pabackend::pulseVolumeFromChannels(channels),
                     "apply pending exact sink input channel volumes");
             }
@@ -931,12 +906,8 @@ void PaWorker::doApplyPending()
             bool muteApplied = true;
             if (pendMutes.contains(app))
             {
-                pa_threaded_mainloop_lock(m_mainloop);
-                muteApplied = waitForOperation(
-                    pa_context_set_sink_input_mute(m_ctx, si.index, pendMutes[app] ? 1 : 0,
-                                                   pabackend::operationDoneCallback, this),
-                    "apply pending exact-volume sink input mute");
-                pa_threaded_mainloop_unlock(m_mainloop);
+                muteApplied = m_backend->setSinkInputMute(
+                    si.index, pendMutes[app], "apply pending exact-volume sink input mute");
             }
             if (volumeApplied && muteApplied) applied.insert(app);
         }
@@ -954,12 +925,8 @@ void PaWorker::doApplyPending()
             bool muteApplied = true;
             if (pendMutes.contains(app))
             {
-                pa_threaded_mainloop_lock(m_mainloop);
-                muteApplied = waitForOperation(
-                    pa_context_set_sink_input_mute(m_ctx, si.index, pendMutes[app] ? 1 : 0,
-                                                   pabackend::operationDoneCallback, this),
-                    "apply pending sink input mute");
-                pa_threaded_mainloop_unlock(m_mainloop);
+                muteApplied = m_backend->setSinkInputMute(si.index, pendMutes[app],
+                                                          "apply pending sink input mute");
             }
 
             if (volumeApplied && muteApplied) applied.insert(app);
@@ -976,12 +943,8 @@ void PaWorker::doApplyPending()
                 continue; // already handled above
             if (!sinkInputMatches(si, app, aliases)) continue;
 
-            pa_threaded_mainloop_lock(m_mainloop);
-            const bool muteApplied = waitForOperation(
-                pa_context_set_sink_input_mute(m_ctx, si.index, it.value() ? 1 : 0,
-                                               pabackend::operationDoneCallback, this),
-                "apply pending sink input mute only");
-            pa_threaded_mainloop_unlock(m_mainloop);
+            const bool muteApplied = m_backend->setSinkInputMute(
+                si.index, it.value(), "apply pending sink input mute only");
 
             if (muteApplied) applied.insert(app);
         }
@@ -1023,18 +986,7 @@ void PaWorker::doListSinks(bool forceRefresh)
 
     QList<SinkInfo> sinks;
     QString defaultName;
-
-    pa_threaded_mainloop_lock(m_mainloop);
-
-    pabackend::ServerInfoCbData srv{&defaultName};
-    waitForOperation(pa_context_get_server_info(m_ctx, pabackend::serverInfoCallback, &srv),
-                     "get server info");
-
-    pabackend::SinkInfoListCbData sd{&sinks};
-    waitForOperation(pa_context_get_sink_info_list(m_ctx, pabackend::sinkInfoListCallback, &sd),
-                     "list sinks");
-
-    pa_threaded_mainloop_unlock(m_mainloop);
+    if (!m_backend->listSinks(sinks, defaultName)) return;
 
     for (SinkInfo& s : sinks) s.isDefault = (s.name == defaultName);
 
@@ -1110,24 +1062,17 @@ void PaWorker::doSetAppSink(const QString& appName, const QString& sinkName)
     // 1. Active sink inputs — move every matching stream (browser-tab case).
     if (contextReady())
     {
-        const QByteArray sinkBytes = sinkName.toUtf8();
-        pa_threaded_mainloop_lock(m_mainloop);
-        const auto inputs = getSinkInputs();
-        pa_threaded_mainloop_unlock(m_mainloop);
+        const auto inputs = m_backend->listSinkInputs();
         for (const auto& si : inputs)
         {
             if (!sinkInputMatches(si, appName, aliases)) continue;
 
             const std::optional<PipeWireNode> beforeMove = pipeWireStateFor(si);
             if (beforeMove) reportHiddenVolume(si.displayName(), *beforeMove);
-            pabackend::OperationOutcome outcome;
-            pa_threaded_mainloop_lock(m_mainloop);
-            pa_operation* op =
-                pa_context_move_sink_input_by_name(m_ctx, si.index, sinkBytes.constData(),
-                                                   pabackend::operationOutcomeCallback, &outcome);
-            const bool completed = waitForOperation(op, "move sink input to sink");
-            pa_threaded_mainloop_unlock(m_mainloop);
-            if (completed && outcome.success)
+            bool rejectedByServer = false;
+            const bool moved = m_backend->moveSinkInputByName(
+                si.index, sinkName, "move sink input to sink", rejectedByServer);
+            if (moved)
             {
                 if (restoreActiveStreamVolume(sinkInputAfterMove(si), beforeMove))
                     routedAny = true;
@@ -1139,7 +1084,8 @@ void PaWorker::doSetAppSink(const QString& appName, const QString& sinkName)
             else
             {
                 qWarning() << "[PaWorker] move sink input" << si.index << "→" << sinkName
-                           << (completed ? "rejected by PA (stale sink name?)" : "timed out");
+                           << (rejectedByServer ? "rejected by PA (stale sink name?)"
+                                                : "timed out");
             }
         }
     }
@@ -1162,84 +1108,24 @@ void PaWorker::doSetAppSink(const QString& appName, const QString& sinkName)
 
 bool PaWorker::connectContext()
 {
-    disconnectContext();
-
-    m_mainloop = pa_threaded_mainloop_new();
-    if (!m_mainloop) return false;
-
-    pa_mainloop_api* api = pa_threaded_mainloop_get_api(m_mainloop);
-    m_ctx = pa_context_new(api, "keyboard-volume-app");
-    if (!m_ctx)
-    {
-        pa_threaded_mainloop_free(m_mainloop);
-        m_mainloop = nullptr;
-        return false;
-    }
-
-    pa_context_set_state_callback(m_ctx, contextStateCallback, this);
-    pa_threaded_mainloop_lock(m_mainloop);
-    pa_threaded_mainloop_start(m_mainloop);
-
-    if (pa_context_connect(m_ctx, nullptr, PA_CONTEXT_NOAUTOSPAWN, nullptr) < 0)
-    {
-        pa_threaded_mainloop_unlock(m_mainloop);
-        disconnectContext();
-        return false;
-    }
-
-    QElapsedTimer timer;
-    timer.start();
-    while (!m_stopping && timer.elapsed() < pabackend::PA_CONNECT_TIMEOUT_MS)
-    {
-        pa_context_state_t st = pa_context_get_state(m_ctx);
-        if (st == PA_CONTEXT_READY) break;
-        if (!PA_CONTEXT_IS_GOOD(st))
-        {
-            pa_threaded_mainloop_unlock(m_mainloop);
-            disconnectContext();
-            return false;
-        }
-        pa_threaded_mainloop_unlock(m_mainloop);
-        QThread::msleep(20);
-        pa_threaded_mainloop_lock(m_mainloop);
-    }
-    pa_threaded_mainloop_unlock(m_mainloop);
-    if (!contextReady())
-    {
-        disconnectContext();
-        return false;
-    }
-    detectPulseServerBackend();
-    return true;
+    if (!m_backend) return false;
+    return m_backend->connect(m_stopping,
+                              [this]()
+                              {
+                                  if (!m_stopping)
+                                      QMetaObject::invokeMethod(this, "handleContextLost",
+                                                                Qt::QueuedConnection);
+                              });
 }
 
 void PaWorker::disconnectContext()
 {
-    m_isPipeWirePulse = false;
-    if (!m_mainloop) return;
-
-    if (m_ctx)
-    {
-        pa_threaded_mainloop_lock(m_mainloop);
-        pa_context_set_state_callback(m_ctx, nullptr, nullptr);
-        pa_context_disconnect(m_ctx);
-        pa_context_unref(m_ctx);
-        m_ctx = nullptr;
-        pa_threaded_mainloop_unlock(m_mainloop);
-    }
-
-    pa_threaded_mainloop_stop(m_mainloop);
-    pa_threaded_mainloop_free(m_mainloop);
-    m_mainloop = nullptr;
+    if (m_backend) m_backend->disconnect();
 }
 
 bool PaWorker::contextReady()
 {
-    if (!m_mainloop || !m_ctx) return false;
-    pa_threaded_mainloop_lock(m_mainloop);
-    const bool ready = pa_context_get_state(m_ctx) == PA_CONTEXT_READY;
-    pa_threaded_mainloop_unlock(m_mainloop);
-    return ready;
+    return m_backend && m_backend->isReady();
 }
 
 void PaWorker::scheduleReconnect()
@@ -1252,94 +1138,39 @@ void PaWorker::scheduleReconnect()
     m_reconnectTimer->start(m_reconnectBackoffMs);
 }
 
-void PaWorker::contextStateCallback(pa_context* ctx, void* ud)
-{
-    PaWorker* self = static_cast<PaWorker*>(ud);
-    const pa_context_state_t st = pa_context_get_state(ctx);
-
-    if ((st == PA_CONTEXT_FAILED || st == PA_CONTEXT_TERMINATED) && !self->m_stopping)
-    {
-        QMetaObject::invokeMethod(self, "handleContextLost", Qt::QueuedConnection);
-    }
-}
-
 void PaWorker::startWatcher()
 {
-    if (m_watcher) return;
-
-    m_watcher = new PaWatcherThread(); // no parent — lives in PA thread
-    m_watcher->moveToThread(QThread::currentThread());
-
-    // Use a one-shot timer instead of msleep so the PA thread event loop
-    // stays free to process other queued calls during the 100 ms wait.
-    connect(m_watcher, &PaWatcherThread::sinkInputAppeared, this,
-            [this]()
-            {
-                if (m_stopping) return;
-                QTimer::singleShot(100, this, &PaWorker::doApplyPending);
-            });
-    connect(m_watcher, &PaWatcherThread::sinkInputAppeared, this,
-            [this]()
-            {
-                if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
-            });
-    connect(m_watcher, &PaWatcherThread::sinkInputRemoved, this,
-            [this]()
-            {
-                if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
-            });
-    connect(m_watcher, &PaWatcherThread::sinkChanged, this,
-            [this]()
-            {
-                if (!m_stopping && m_sinkRefreshTimer) m_sinkRefreshTimer->start();
-            });
-    connect(m_watcher, &PaWatcherThread::connectionReady, this,
-            [this]()
-            {
-                if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
-                if (!m_stopping && m_sinkRefreshTimer) m_sinkRefreshTimer->start();
-            });
-
-    m_watcher->start();
-}
-
-bool PaWorker::waitForOperation(pa_operation* op, const char* what, int timeoutMs)
-{
-    if (!op)
-    {
-        qWarning() << "[PaWorker]" << what << "did not create a PA operation";
-        return false;
-    }
-
-    QElapsedTimer timer;
-    timer.start();
-    while (!m_stopping && pa_operation_get_state(op) == PA_OPERATION_RUNNING)
-    {
-        if (timer.elapsed() >= timeoutMs) break;
-        pa_threaded_mainloop_unlock(m_mainloop);
-        QThread::msleep(20);
-        pa_threaded_mainloop_lock(m_mainloop);
-    }
-
-    bool ok = pa_operation_get_state(op) == PA_OPERATION_DONE;
-    if (!ok && !m_stopping)
-    {
-        qWarning() << "[PaWorker]" << what << "timed out or was cancelled after" << timer.elapsed()
-                   << "ms";
-    }
-    if (!ok && op)
-    {
-        pa_operation_cancel(op);
-    }
-    if (op) pa_operation_unref(op);
-    return ok;
+    if (!m_backend) return;
+    m_backend->startWatcher(
+        this,
+        [this]()
+        {
+            if (m_stopping) return;
+            // Use a one-shot timer instead of msleep so the PA thread event loop
+            // stays free to process other queued calls during the 100 ms wait.
+            QTimer::singleShot(100, this, &PaWorker::doApplyPending);
+            if (m_refreshTimer) m_refreshTimer->start();
+        },
+        [this]()
+        {
+            if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
+        },
+        [this]()
+        {
+            if (!m_stopping && m_sinkRefreshTimer) m_sinkRefreshTimer->start();
+        },
+        [this]()
+        {
+            if (!m_stopping && m_refreshTimer) m_refreshTimer->start();
+            if (!m_stopping && m_sinkRefreshTimer) m_sinkRefreshTimer->start();
+        });
 }
 
 bool PaWorker::sinkInputMatches(const pabackend::SinkInputInfo& input, const QString& appName,
                                 const QList<AppAlias>& aliases,
                                 std::optional<PipeWireNode>* pipeWireState)
 {
-    if (m_isPipeWirePulse && input.pipeWireNodeId)
+    if (m_backend->isPipeWirePulse() && input.pipeWireNodeId)
     {
         const std::optional<PipeWireNode> node = pipeWireStateFor(input);
         if (pipeWireState) *pipeWireState = node;
@@ -1352,78 +1183,36 @@ bool PaWorker::sinkInputMatches(const pabackend::SinkInputInfo& input, const QSt
     return input.matches(appName, aliases);
 }
 
-QList<pabackend::SinkInputInfo> PaWorker::getSinkInputs()
-{
-    QList<pabackend::SinkInputInfo> result;
-    if (!m_ctx || pa_context_get_state(m_ctx) != PA_CONTEXT_READY) return result;
-
-    pabackend::SinkInputListCbData d{&result};
-    waitForOperation(
-        pa_context_get_sink_input_info_list(m_ctx, pabackend::sinkInputListCallback, &d),
-        "list sink inputs");
-    return result;
-}
-
 std::optional<PipeWireNode> PaWorker::pipeWireStateFor(const pabackend::SinkInputInfo& input)
 {
-    if (!m_isPipeWirePulse || !input.pipeWireNodeId) return std::nullopt;
-    return m_pipeWire.readNode(*input.pipeWireNodeId);
-}
-
-bool PaWorker::setPulseSinkInputVolume(const pabackend::SinkInputInfo& input, double targetVolume)
-{
-    if (!contextReady()) return false;
-    pa_cvolume volume;
-    const uint8_t channels = std::max<uint8_t>(1, input.channelVolume.channels);
-    pa_cvolume_set(&volume, channels, static_cast<pa_volume_t>(targetVolume * PA_VOLUME_NORM));
-    pa_threaded_mainloop_lock(m_mainloop);
-    const bool ok =
-        waitForOperation(pa_context_set_sink_input_volume(m_ctx, input.index, &volume,
-                                                          pabackend::operationDoneCallback, this),
-                         "set sink input visible volume");
-    pa_threaded_mainloop_unlock(m_mainloop);
-    return ok;
-}
-
-bool PaWorker::setPulseSinkInputChannelVolumes(uint32_t sinkInputIndex,
-                                               const pa_cvolume& channelVolume,
-                                               const char* operationName)
-{
-    if (!contextReady()) return false;
-    pa_cvolume volume = channelVolume;
-    pa_threaded_mainloop_lock(m_mainloop);
-    const bool ok =
-        waitForOperation(pa_context_set_sink_input_volume(m_ctx, sinkInputIndex, &volume,
-                                                          pabackend::operationDoneCallback, this),
-                         operationName);
-    pa_threaded_mainloop_unlock(m_mainloop);
-    return ok;
+    if (!m_backend->isPipeWirePulse() || !input.pipeWireNodeId) return std::nullopt;
+    return m_backend->pwReadNode(*input.pipeWireNodeId);
 }
 
 bool PaWorker::setActiveStreamVisibleVolume(const pabackend::SinkInputInfo& input,
                                             double targetVolume)
 {
-    if (m_isPipeWirePulse && input.pipeWireNodeId)
+    if (m_backend->isPipeWirePulse() && input.pipeWireNodeId)
     {
-        const uint32_t channels = std::max<uint8_t>(1, input.channelVolume.channels);
-        return m_pipeWire.setVisibleVolume(*input.pipeWireNodeId, targetVolume, channels);
+        const uint32_t channels = std::max<uint32_t>(1, input.channelVolume.channels);
+        return m_backend->pwSetVisibleVolume(*input.pipeWireNodeId, targetVolume, channels);
     }
-    return setPulseSinkInputVolume(input, targetVolume);
+    return m_backend->setSinkInputVolume(input, targetVolume);
 }
 
 bool PaWorker::restoreActiveStreamVolume(const pabackend::SinkInputInfo& input,
                                          const std::optional<PipeWireNode>& pipeWireState)
 {
-    if (m_isPipeWirePulse && pipeWireState)
+    if (m_backend->isPipeWirePulse() && pipeWireState)
     {
         if (!input.pipeWireNodeId) return false;
-        return m_pipeWire.restoreVolumeState(*input.pipeWireNodeId, pipeWireState->rawVolume,
-                                             pipeWireState->channelVolumes);
+        return m_backend->pwRestoreVolumeState(*input.pipeWireNodeId, pipeWireState->rawVolume,
+                                               pipeWireState->channelVolumes);
     }
 
     if (!contextReady()) return false;
-    return setPulseSinkInputChannelVolumes(input.index, input.channelVolume,
-                                           "restore exact sink input volume");
+    return m_backend->setSinkInputChannelVolumes(input.index, input.channelVolume,
+                                                 "restore exact sink input volume");
 }
 
 pabackend::SinkInputInfo PaWorker::sinkInputAfterMove(const pabackend::SinkInputInfo& beforeMove)
@@ -1431,9 +1220,7 @@ pabackend::SinkInputInfo PaWorker::sinkInputAfterMove(const pabackend::SinkInput
     pabackend::SinkInputInfo result = beforeMove;
     if (!contextReady()) return result;
 
-    pa_threaded_mainloop_lock(m_mainloop);
-    const QList<pabackend::SinkInputInfo> currentInputs = getSinkInputs();
-    pa_threaded_mainloop_unlock(m_mainloop);
+    const QList<pabackend::SinkInputInfo> currentInputs = m_backend->listSinkInputs();
     for (const pabackend::SinkInputInfo& current : currentInputs)
     {
         if (current.index != beforeMove.index) continue;
@@ -1471,7 +1258,7 @@ QStringList PaWorker::streamRestoreAppCandidates(const QString& app)
         Config* cfg = m_config.load(std::memory_order_acquire);
         return cfg ? cfg->effectiveSkipAppNames() : SKIP_APP_NAMES;
     }();
-    for (const PipeWireClient& client : m_pipeWire.listClients(systemBinaries, skipAppNames))
+    for (const PipeWireClient& client : m_backend->pwListClients(systemBinaries, skipAppNames))
     {
         if (appIdMatches(client.binary, lowerApp) || appIdMatches(client.name, lowerApp))
         {
@@ -1486,80 +1273,34 @@ void PaWorker::appendStreamRestoreAliasesFromDatabase(QStringList& candidates, c
 {
     if (!contextReady() || app.isEmpty()) return;
 
-    struct CollectData
+    const QStringList extra = m_backend->enumerateStreamRestoreAliases(app.toLower());
+    for (const QString& entryApp : extra)
     {
-        QString appLower;
-        QStringList* candidates;
-    };
-
-    auto collectCb = [](pa_context*, const pa_ext_stream_restore_info* info, int eol, void* ud)
-    {
-        auto* d = static_cast<CollectData*>(ud);
-        if (eol || !info) return;
-        const QString fullName = QString::fromUtf8(info->name);
-        static const QString prefix = QStringLiteral("sink-input-by-application-name:");
-        if (!fullName.startsWith(prefix)) return;
-        const QString entryApp = fullName.mid(prefix.size());
-        if (!appIdMatches(entryApp, d->appLower)) return;
-        if (entryApp.trimmed().isEmpty()) return;
-        for (const QString& existing : std::as_const(*d->candidates))
+        bool exists = false;
+        for (const QString& existing : std::as_const(candidates))
         {
-            if (existing.compare(entryApp, Qt::CaseInsensitive) == 0) return;
+            if (existing.compare(entryApp, Qt::CaseInsensitive) == 0)
+            {
+                exists = true;
+                break;
+            }
         }
-        d->candidates->append(entryApp);
-    };
-
-    CollectData collect{app.toLower(), &candidates};
-    pa_threaded_mainloop_lock(m_mainloop);
-    waitForOperation(pa_ext_stream_restore_read(m_ctx, collectCb, &collect),
-                     "stream restore enumerate aliases");
-    pa_threaded_mainloop_unlock(m_mainloop);
+        if (!exists) candidates.append(entryApp);
+    }
 }
 
 std::optional<double> PaWorker::streamRestoreChangeVolume(const QString& app, double delta,
                                                           double minVol, double maxVol)
 {
     if (!contextReady()) return std::nullopt;
-    for (const QString& candidate : streamRestoreAppCandidates(app))
-    {
-        std::optional<double> result;
-        pabackend::StreamRestoreCbData d{QStringLiteral("sink-input-by-application-name:") +
-                                             candidate,
-                                         delta,
-                                         0.0,
-                                         false,
-                                         false,
-                                         false,
-                                         &result,
-                                         nullptr,
-                                         minVol,
-                                         maxVol};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(
-            pa_ext_stream_restore_read(m_ctx, pabackend::streamRestoreReadCallback, &d),
-            "read stream restore volume");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        if (result) return result;
-    }
-    return std::nullopt;
+    return m_backend->streamRestoreChangeVolume(streamRestoreAppCandidates(app), delta, minVol,
+                                                maxVol);
 }
 
 std::optional<pabackend::StreamRestoreState> PaWorker::streamRestoreQueryState(const QString& app)
 {
     if (!contextReady()) return std::nullopt;
-    for (const QString& candidate : streamRestoreAppCandidates(app))
-    {
-        std::optional<pabackend::StreamRestoreState> result;
-        pabackend::StreamRestoreQueryCbData d{
-            QStringLiteral("sink-input-by-application-name:") + candidate, &result};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(
-            pa_ext_stream_restore_read(m_ctx, pabackend::streamRestoreQueryCallback, &d),
-            "read stream restore query volume");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        if (result) return result;
-    }
-    return std::nullopt;
+    return m_backend->streamRestoreQueryState(streamRestoreAppCandidates(app));
 }
 
 std::optional<std::pair<bool, double>> PaWorker::streamRestoreQueryVolume(const QString& app)
@@ -1571,219 +1312,44 @@ std::optional<std::pair<bool, double>> PaWorker::streamRestoreQueryVolume(const 
 
 bool PaWorker::streamRestoreSetChannelVolumes(const QString& app, const pa_cvolume& channelVolume)
 {
-    if (!contextReady() || !pa_cvolume_valid(&channelVolume)) return false;
-
-    struct ExactVolumeData
-    {
-        PaWorker* self;
-        QString target;
-        pa_cvolume volume;
-        bool wrote = false;
-    };
-    auto callback = [](pa_context* ctx, const pa_ext_stream_restore_info* info, int eol, void* ud)
-    {
-        auto* data = static_cast<ExactVolumeData*>(ud);
-        if (eol || !info || QString::fromUtf8(info->name) != data->target) return;
-        pa_ext_stream_restore_info out = *info;
-        out.volume = data->volume;
-        pa_operation* op = pa_ext_stream_restore_write(
-            ctx, PA_UPDATE_REPLACE, &out, 1, 1, pabackend::operationDoneCallback, data->self);
-        if (op)
-        {
-            data->wrote = true;
-            pa_operation_unref(op);
-        }
-    };
-
-    for (const QString& candidate : streamRestoreAppCandidates(app))
-    {
-        ExactVolumeData data{this, QStringLiteral("sink-input-by-application-name:") + candidate,
-                             channelVolume, false};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(pa_ext_stream_restore_read(m_ctx, callback, &data),
-                         "restore exact stream restore channel volumes");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        if (data.wrote) return true;
-    }
-    return false;
+    if (!contextReady()) return false;
+    return m_backend->streamRestoreSetChannelVolumes(streamRestoreAppCandidates(app),
+                                                     channelVolume);
 }
 
 std::optional<double> PaWorker::streamRestoreSetVolume(const QString& app, double targetVolume,
                                                        double minVol, double maxVol)
 {
     if (!contextReady()) return std::nullopt;
-    targetVolume =
-        std::clamp(targetVolume, std::clamp(minVol, 0.0, 1.0), std::clamp(maxVol, 0.0, 1.0));
-    for (const QString& candidate : streamRestoreAppCandidates(app))
-    {
-        std::optional<double> result;
-        pabackend::StreamRestoreCbData d{QStringLiteral("sink-input-by-application-name:") +
-                                             candidate,
-                                         0.0,
-                                         targetVolume,
-                                         true,
-                                         false,
-                                         false,
-                                         &result,
-                                         nullptr,
-                                         minVol,
-                                         maxVol};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(
-            pa_ext_stream_restore_read(m_ctx, pabackend::streamRestoreReadCallback, &d),
-            "read stream restore absolute volume");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        if (result) return result;
-    }
-    return std::nullopt;
+    return m_backend->streamRestoreSetVolume(streamRestoreAppCandidates(app), targetVolume, minVol,
+                                             maxVol);
 }
 
 std::optional<std::pair<bool, double>> PaWorker::streamRestoreToggleMute(const QString& app)
 {
     if (!contextReady()) return std::nullopt;
-    const bool targetMuted = false;
-    for (const QString& candidate : streamRestoreAppCandidates(app))
-    {
-        std::optional<std::pair<bool, double>> result;
-        pabackend::StreamRestoreCbData d{QStringLiteral("sink-input-by-application-name:") +
-                                             candidate,
-                                         0.0,
-                                         0.0,
-                                         false,
-                                         true,
-                                         targetMuted,
-                                         nullptr,
-                                         &result};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(
-            pa_ext_stream_restore_read(m_ctx, pabackend::streamRestoreReadCallback, &d),
-            "read stream restore mute");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        if (result) return result;
-    }
-    return std::nullopt;
+    return m_backend->streamRestoreToggleMute(streamRestoreAppCandidates(app));
 }
 
 std::optional<std::pair<bool, double>> PaWorker::streamRestoreSetMute(const QString& app,
                                                                       bool targetMuted)
 {
     if (!contextReady()) return std::nullopt;
-    for (const QString& candidate : streamRestoreAppCandidates(app))
-    {
-        std::optional<std::pair<bool, double>> result;
-        pabackend::StreamRestoreCbData d{QStringLiteral("sink-input-by-application-name:") +
-                                             candidate,
-                                         0.0,
-                                         0.0,
-                                         true,
-                                         true,
-                                         targetMuted,
-                                         nullptr,
-                                         &result};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(
-            pa_ext_stream_restore_read(m_ctx, pabackend::streamRestoreReadCallback, &d),
-            "read stream restore absolute mute");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        if (result) return result;
-    }
-    return std::nullopt;
-}
-
-void PaWorker::detectPulseServerBackend()
-{
-    m_isPipeWirePulse = false;
-    if (!contextReady()) return;
-    pabackend::ServerBackendCbData data;
-    pa_threaded_mainloop_lock(m_mainloop);
-    waitForOperation(pa_context_get_server_info(m_ctx, pabackend::serverBackendCallback, &data),
-                     "detect PulseAudio server backend");
-    pa_threaded_mainloop_unlock(m_mainloop);
-    m_isPipeWirePulse = data.serverName.contains(QStringLiteral("PipeWire"), Qt::CaseInsensitive);
+    return m_backend->streamRestoreSetMute(streamRestoreAppCandidates(app), targetMuted);
 }
 
 bool PaWorker::streamRestoreSetDevice(const QString& app, const QString& sinkName)
 {
     if (!contextReady() || sinkName.isEmpty()) return false;
-    const QByteArray sinkBytes = sinkName.toUtf8();
-
-    struct DeviceCbData
-    {
-        PaWorker* self;
-        QString target;
-        const char* device;
-        bool wrote = false;
-    };
-
-    auto cb = [](pa_context* ctx, const pa_ext_stream_restore_info* info, int eol, void* ud)
-    {
-        auto* d = static_cast<DeviceCbData*>(ud);
-        if (eol || !info || !d) return;
-        if (QString::fromUtf8(info->name) != d->target) return;
-        pa_ext_stream_restore_info out = *info;
-        out.device = d->device;
-        pa_operation* op = pa_ext_stream_restore_write(ctx, PA_UPDATE_REPLACE, &out, 1, 1,
-                                                       pabackend::operationDoneCallback, d->self);
-        if (op)
-        {
-            d->wrote = true;
-            pa_operation_unref(op);
-        }
-    };
-
-    bool anyWritten = false;
-    for (const QString& candidate : streamRestoreAppCandidates(app))
-    {
-        DeviceCbData d{this, QStringLiteral("sink-input-by-application-name:") + candidate,
-                       sinkBytes.constData(), false};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(pa_ext_stream_restore_read(m_ctx, cb, &d), "stream restore set device");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        if (d.wrote) anyWritten = true;
-    }
-    return anyWritten;
+    return m_backend->streamRestoreSetDevice(streamRestoreAppCandidates(app), sinkName);
 }
 
 bool PaWorker::streamRestoreClearDevice(const QString& app)
 {
     if (!contextReady()) return false;
-
     QStringList candidates = streamRestoreAppCandidates(app);
     appendStreamRestoreAliasesFromDatabase(candidates, app);
-
-    struct ClearCbData
-    {
-        PaWorker* self;
-        QString target;
-        bool wrote = false;
-    };
-
-    auto cb = [](pa_context* ctx, const pa_ext_stream_restore_info* info, int eol, void* ud)
-    {
-        auto* d = static_cast<ClearCbData*>(ud);
-        if (eol || !info || !d) return;
-        if (QString::fromUtf8(info->name) != d->target) return;
-        pa_ext_stream_restore_info out = *info;
-        out.device = nullptr;
-        pa_operation* op = pa_ext_stream_restore_write(ctx, PA_UPDATE_REPLACE, &out, 1, 1,
-                                                       pabackend::operationDoneCallback, d->self);
-        if (op)
-        {
-            d->wrote = true;
-            pa_operation_unref(op);
-        }
-    };
-
-    bool anyWritten = false;
-    for (const QString& candidate : candidates)
-    {
-        ClearCbData d{this, QStringLiteral("sink-input-by-application-name:") + candidate, false};
-        pa_threaded_mainloop_lock(m_mainloop);
-        waitForOperation(pa_ext_stream_restore_read(m_ctx, cb, &d), "stream restore clear device");
-        pa_threaded_mainloop_unlock(m_mainloop);
-        if (d.wrote) anyWritten = true;
-    }
-    return anyWritten;
+    return m_backend->streamRestoreClearDevice(candidates);
 }
 
 void PaWorker::reportHiddenVolume(const QString& app, const PipeWireNode& node)
