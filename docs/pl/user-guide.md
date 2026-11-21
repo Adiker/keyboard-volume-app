@@ -173,6 +173,12 @@ w kanałach i zeruje surowy mnożnik; migracja konfiguracji nie jest potrzebna.
 
 ## Diagnozowanie
 
+- Poziom logowania można ustawić flagą `--log-level <off|warn|info|debug|trace>`
+  (domyślnie `info`). Zapis do rotowanego pliku w
+  `$XDG_STATE_HOME/keyboard-volume-app/keyboard-volume-app.log` (lub pod własną
+  ścieżką) włącza `--log-file default` lub `--log-file /sciezka/app.log`. Przy
+  kompilacji z `libsystemd` usługa użytkownika systemd kieruje logi automatycznie
+  do journald (`--log-journal` wymusza journald, `--no-journal` wymusza stderr).
 - Brak urządzeń wejściowych: sprawdź grupę `input` i rozpocznij nową sesję logowania.
 - Znikająca aplikacja po restarcie demona audio: poczekaj na ponowne łączenie z backoffem; wybór pozostaje zachowany.
 - Problemy z postępem MPRIS: uruchom aplikację z `KVA_DEBUG_PROGRESS=1`, aby logować metadane i decyzje OSD.

@@ -44,7 +44,8 @@ keyboard-volume-app/
 │   ├── protocols/               # Wayland protocol XML definitions for window-tracker
 │   │   └── wlr-foreign-toplevel-management-unstable-v1.xml
 │   └── src/
-│       ├── main.cpp             # Entry point (Wayland/XCB probe, CLI, singleton, first-run)
+│       ├── main.cpp             # Entry point (Wayland/XCB probe, CLI/logging, singleton, first-run)
+│       ├── logging.h/cpp        # Thread-safe QtMessageHandler (stderr, journald, rotating XDG file)
 │       ├── app.h/cpp            # Root coordinator App class wiring all modules
 │       ├── config.h/cpp         # JSON config r/w (XDG config dir via QStandardPaths)
 │       ├── i18n.h/cpp           # PL/EN translations; tr() lookup function
