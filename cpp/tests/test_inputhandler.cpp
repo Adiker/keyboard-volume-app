@@ -745,3 +745,59 @@ TEST(InputPoll, DisconnectedEvdevIsRetiredWithoutStoppingOtherSources)
     close(pipefd[0]);
     close(pipefd[1]);
 }
+
+// ─── Independent passive modifier keyboard selection & aggregation (#23) ──────
+TEST(PassiveModifierKeyboards, SelectIncludesIndependentModifierKeyboardsPassively)
+{
+    const QList<HotkeyDeviceCandidate> candidates = {
+        {QStringLiteral("/dev/input/event1"), QStringLiteral("usb-0000:00:14.0-1/input0"), true,
+         true, false}, // primary media keypad (exclusive)
+        {QStringLiteral("/dev/input/event2"), QStringLiteral("usb-0000:00:14.0-1/input1"), true,
+         false, false}, // sibling without hotkeys (passive)
+        {QStringLiteral("/dev/input/event3"), QStringLiteral("usb-0000:00:14.0-2/input0"), true,
+         false, true}, // separate alphanumeric keyboard with Ctrl/Shift (passive!)
+        {QStringLiteral("/dev/input/event4"), QStringLiteral("usb-0000:00:14.0-3/input0"), true,
+         false, false}, // unrelated mouse without hotkeys or modifiers (excluded)
+    };
+
+    const auto selected = selectHotkeyDevices(QStringLiteral("/dev/input/event1"), candidates);
+    ASSERT_EQ(selected.size(), 3);
+    EXPECT_EQ(selected[0], std::make_pair(QStringLiteral("/dev/input/event1"), true));
+    EXPECT_EQ(selected[1], std::make_pair(QStringLiteral("/dev/input/event2"), false));
+    EXPECT_EQ(selected[2], std::make_pair(QStringLiteral("/dev/input/event3"), false));
+}
+
+TEST(PassiveModifierKeyboards, DeviceHasTrackedModifierChecksCtrlAndShiftOnly)
+{
+    std::unique_ptr<libevdev, decltype(&libevdev_free)> plain(libevdev_new(), &libevdev_free);
+    libevdev_enable_event_type(plain.get(), EV_KEY);
+    libevdev_enable_event_code(plain.get(), EV_KEY, KEY_VOLUMEUP, nullptr);
+    EXPECT_FALSE(deviceHasTrackedModifier(plain.get()));
+
+    std::unique_ptr<libevdev, decltype(&libevdev_free)> withShift(libevdev_new(), &libevdev_free);
+    libevdev_enable_event_type(withShift.get(), EV_KEY);
+    libevdev_enable_event_code(withShift.get(), EV_KEY, KEY_RIGHTSHIFT, nullptr);
+    EXPECT_TRUE(deviceHasTrackedModifier(withShift.get()));
+    EXPECT_FALSE(deviceHasTrackedModifier(nullptr));
+}
+
+TEST(PassiveModifierKeyboards, AggregateHeldModifiersPreservesOtherDeviceOnDisconnect)
+{
+    int kbA = 0;
+    int kbB = 0;
+    QMap<const void*, QSet<int>> held;
+    held[&kbA].insert(KEY_LEFTCTRL);
+    held[&kbB].insert(KEY_RIGHTSHIFT);
+
+    QSet<Modifier> mods = aggregateHeldModifiers(held);
+    EXPECT_EQ(mods.size(), 2);
+    EXPECT_TRUE(mods.contains(Modifier::Ctrl));
+    EXPECT_TRUE(mods.contains(Modifier::Shift));
+
+    // Disconnecting kbA drops Ctrl without losing Shift held on kbB.
+    held.remove(&kbA);
+    mods = aggregateHeldModifiers(held);
+    EXPECT_EQ(mods.size(), 1);
+    EXPECT_FALSE(mods.contains(Modifier::Ctrl));
+    EXPECT_TRUE(mods.contains(Modifier::Shift));
+}

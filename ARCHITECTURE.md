@@ -368,9 +368,9 @@ App/binary filter defaults (`SYSTEM_BINARIES`, `SKIP_APP_NAMES`) live in `appaud
 
 ### `cpp/src/inputhandler.h/cpp` — `InputHandler`, `KeyCaptureThread`
 
-**`InputHandler`** (extends `QThread`): reads evdev events from the selected device and all other devices advertising any configured hotkey binding (`EV_KEY` keys or scroll `EV_REL` codes). Only nodes advertising a configured binding are grabbed exclusively and mirrored via uinput so non-hotkey events pass through transparently. Other useful siblings remain passive readers for modifier tracking, without creating virtual devices. Hotkey events that resolve to a profile are swallowed (never re-injected); hotkey events with no matching profile are forwarded so typing/scrolling isn't blocked.
+**`InputHandler`** (extends `QThread`): reads evdev events from the selected device, its siblings, all other devices advertising any configured hotkey binding (`EV_KEY` keys or scroll `EV_REL` codes), and independent modifier-bearing keyboards (`KEY_LEFTCTRL`/`KEY_RIGHTCTRL`/`KEY_LEFTSHIFT`/`KEY_RIGHTSHIFT`). Only nodes advertising a configured binding are grabbed exclusively and mirrored via uinput so non-hotkey events pass through transparently. Other useful siblings and independent modifier keyboards remain passive read-only readers (no `EVIOCGRAB`, no uinput). Hotkey events that resolve to a profile are swallowed (never re-injected); hotkey events with no matching profile are forwarded so typing/scrolling isn't blocked.
 
-On `EPOLLERR`/`EPOLLHUP` or a fatal evdev read error, retire both poll sources for the affected device before closing it; keep the source storage stable until the current event batch is complete. Clear tracked modifiers because a release may have been lost. Other devices remain active. Reconnection is not detected automatically; restarting the handler rescans devices, and the configured event path may need reselection if it changed. `KeyCaptureThread` similarly removes disconnected devices. The `InputPoll` regression uses an isolated uinput device and skips when uinput is unavailable.
+On `EPOLLERR`/`EPOLLHUP` or a fatal evdev read error, retire both poll sources for the affected device before closing it; keep the source storage stable until the current event batch is complete. Remove only that device's entry from per-device held modifiers so modifiers held on other keyboards stay intact. Other devices remain active. `KeyCaptureThread` similarly removes disconnected devices. The `InputPoll` regression uses an isolated uinput device and skips when uinput is unavailable.
 
 For grabbed devices with keyboard LEDs, the physical evdev node is opened read/write when possible. The uinput fd is added to the same `epoll()` loop so output `EV_LED` events from the desktop (`LED_NUML`, `LED_CAPSL`, `LED_SCROLLL`) are mirrored back to the physical keyboard via `libevdev_kernel_set_led_value()`. This keeps logical lock state and hardware indicators in sync while the desktop talks to the virtual uinput mirror. On shutdown, `InputHandler` preserves LED state for all uinput mirrors, destroys all mirrors/grabs, waits briefly for the desktop input stack to settle, then restores the preserved state on the physical devices; do not collapse this into per-device destructor cleanup or later uinput removals can switch LEDs off again.
 
@@ -382,7 +382,7 @@ void volume_mute(const QString &profileId);
 void ducking_toggle(const QString &profileId);
 ```
 
-**Modifier tracking.** `m_heldModifiers` holds raw evdev modifier codes (`KEY_LEFTCTRL`, `KEY_RIGHTCTRL`, `KEY_LEFTSHIFT`, `KEY_RIGHTSHIFT`) updated on press/release events from captured devices and passive siblings. Captured modifier events are **forwarded to uinput**; passive sibling events reach the desktop directly. Free helpers (testable, no Qt event loop required):
+**Modifier tracking.** Per-device raw evdev modifier codes (`KEY_LEFTCTRL`, `KEY_RIGHTCTRL`, `KEY_LEFTSHIFT`, `KEY_RIGHTSHIFT`) are tracked across captured devices, passive siblings, and independent passive modifier keyboards, then aggregated via `aggregateHeldModifiers()`. Captured modifier events are **forwarded to uinput**; passive device events reach the desktop directly. Free helpers (testable, no Qt event loop required):
 - `bool isTrackedModifierCode(int code)`
 - `QSet<Modifier> normalizeHeldModifiers(const QSet<int> &raw)` — collapses L/R variants
 - `QString resolveProfile(HotkeyBinding binding, const QSet<Modifier> &held, const QList<Profile> &profiles)` — picks the profile whose `modifiers` set is a subset of `held` and whose binding matches; tie-broken by **specificity** (most required modifiers wins), then first-in-list. Returns empty string when no profile matches. `int` overloads treat the value as an `EV_KEY` binding.
@@ -402,7 +402,7 @@ Key repeat events (`ev.value == 2`) are handled alongside regular press events (
 
 **Device selection logic:**
 - `findSiblingDevices(path)` — finds all nodes sharing the same `phys` prefix
-- `findHotkeyDevices(path, bindings)` — one capability scan using sysfs metadata (libevdev fallback if unavailable or malformed); siblings remain passive unless they expose a configured binding, and every other device exposing a configured binding is exclusive (grabbed + uinput mirror)
+- `findHotkeyDevices(path, bindings)` — one capability scan using sysfs metadata (libevdev fallback if unavailable or malformed); devices with a configured binding are exclusive (grabbed + uinput mirror), while siblings and independent modifier-bearing keyboards are opened passively (read-only, no grab/uinput)
 
 Startup prepares all mirrors and checks every `epoll` registration before any
 exclusive grab. The input loop then drains events that the desktop already
@@ -1007,7 +1007,7 @@ pull-request code.
 - **`ExportAdaptors` flag required** when registering objects that have `QDBusAbstractAdaptor` children (like the MPRIS endpoint). Without it, adaptor interfaces are not exported
 - **Profiles are the source of truth** for hotkey → app mapping. Legacy `selected_app` and top-level `hotkeys` are deprecated mirrors of `profiles[0]`, kept in sync on every write for one release cycle of backwards compat (D-Bus/MPRIS callers reading the old fields keep working).
 - **Scenes are additive mixer presets** — they do not change the active app/profile, and applying one only posts absolute per-app volume/mute operations to the existing audio worker.
-- **Modifiers tracked only from grabbed devices** — a modifier key on a separate keyboard with no hotkey bindings won't be observed in v1. Documented limitation; v2 may add passive read-only opens for modifier-only devices.
+- **Modifiers tracked across independent keyboards** — modifier keys on separate keyboards without configured hotkeys are observed passively (read-only, no `EVIOCGRAB` or uinput) and tracked per device so disconnecting one keyboard does not clear modifiers held on another.
 
 ## Docsify site
 
