@@ -26,6 +26,13 @@ set(VOLUME_CONTROLLER_SOURCES
     src/pabackend_pulse.cpp
 )
 
+set(PWUTILS_SOURCES
+    src/pwutils.cpp
+    src/pwsession.cpp
+    src/pwclientfilter.cpp
+    src/pwnodecontrol.cpp
+)
+
 # Sources
 set(SOURCES
     src/main.cpp
@@ -47,7 +54,7 @@ set(SOURCES
     src/mprisclient.cpp
     src/evdevdevice.cpp
     src/appaudiofilters.cpp
-    src/pwutils.cpp
+    ${PWUTILS_SOURCES}
     src/applistwidget.cpp
     src/appselectordialog.cpp
     src/profileeditdialog.cpp

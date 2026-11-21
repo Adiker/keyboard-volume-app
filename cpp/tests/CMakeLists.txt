@@ -92,6 +92,13 @@ target_link_libraries(test_kvctloutput PRIVATE
 )
 add_test(NAME test_kvctloutput COMMAND test_kvctloutput)
 
+set(TEST_PWUTILS_SOURCES
+    ../src/pwutils.cpp
+    ../src/pwsession.cpp
+    ../src/pwclientfilter.cpp
+    ../src/pwnodecontrol.cpp
+)
+
 set(TEST_VOLUME_CONTROLLER_SOURCES
     ../src/volumecontroller.cpp
     ../src/paworker.cpp
@@ -106,7 +113,7 @@ add_executable(test_volumecontroller
     ${TEST_VOLUME_CONTROLLER_SOURCES}
     ../src/config.cpp
     ../src/appaudiofilters.cpp
-    ../src/pwutils.cpp
+    ${TEST_PWUTILS_SOURCES}
 )
 target_include_directories(test_volumecontroller PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -129,7 +136,7 @@ add_executable(test_paworker
     ../src/pawatcherthread.cpp
     ../src/config.cpp
     ../src/appaudiofilters.cpp
-    ../src/pwutils.cpp
+    ${TEST_PWUTILS_SOURCES}
 )
 target_include_directories(test_paworker PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -160,7 +167,7 @@ add_test(NAME test_appmatcher COMMAND test_appmatcher)
 add_executable(test_pwutils
     test_pwutils.cpp
     ../src/appaudiofilters.cpp
-    ../src/pwutils.cpp
+    ${TEST_PWUTILS_SOURCES}
 )
 target_include_directories(test_pwutils PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -182,7 +189,7 @@ if(ENABLE_PIPEWIRE_INTEGRATION_TESTS)
     add_executable(pw_volume_test_helper
         pw_volume_test_helper.cpp
         ../src/appaudiofilters.cpp
-        ../src/pwutils.cpp
+        ${TEST_PWUTILS_SOURCES}
     )
     target_include_directories(pw_volume_test_helper PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -274,7 +281,7 @@ add_executable(test_dbusinterface
     ../src/config.cpp
     ../src/appaudiofilters.cpp
     ${TEST_VOLUME_CONTROLLER_SOURCES}
-    ../src/pwutils.cpp
+    ${TEST_PWUTILS_SOURCES}
 )
 target_include_directories(test_dbusinterface PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src
@@ -293,7 +300,7 @@ add_test(NAME test_dbusinterface COMMAND test_dbusinterface)
 add_executable(test_tray_dbus
     test_tray_dbus.cpp
     ../src/trayapp.cpp ../src/dbusinterface.cpp ../src/config.cpp
-    ${TEST_VOLUME_CONTROLLER_SOURCES} ../src/pwutils.cpp ../src/appaudiofilters.cpp
+    ${TEST_VOLUME_CONTROLLER_SOURCES} ${TEST_PWUTILS_SOURCES} ../src/appaudiofilters.cpp
     ../src/inputhandler.cpp ../src/evdevdevice.cpp ../src/i18n.cpp
     ../src/aboutdialog.cpp ../src/settingsdialog.cpp ../src/appselectordialog.cpp
     ../src/applistwidget.cpp ../src/profileeditdialog.cpp ../src/sceneeditdialog.cpp
@@ -323,7 +330,7 @@ add_executable(test_app
     ../src/mprisclient.cpp
     ../src/config.cpp
     ${TEST_VOLUME_CONTROLLER_SOURCES}
-    ../src/pwutils.cpp
+    ${TEST_PWUTILS_SOURCES}
     ../src/appaudiofilters.cpp
     ../src/inputhandler.cpp
     ../src/evdevdevice.cpp
