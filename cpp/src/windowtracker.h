@@ -28,15 +28,21 @@ class WindowTracker : public QThread
     enum class Backend : std::uint8_t
     {
         None,
-        Xcb,
+        HyprlandIpc,
+        NiriIpc,
+        SwayIpc,
         KWinScript,
         WaylandForeignToplevel,
+        Xcb,
     };
 
     Backend chooseBackend() const;
     void runXcb();
     bool runKWinScript();
     bool runWayland();
+    bool runHyprland();
+    bool runNiri();
+    bool runSway();
 
     QString m_token;
     QString m_serviceName;

@@ -177,11 +177,14 @@ positioning continues to work.
 
 OSD edge/corner resizing is implemented inside the app and works on both paths.
 
-Focused-window profile switching uses a KWin script on KDE Wayland, then the
-`zwlr_foreign_toplevel_management_unstable_v1` protocol where available, and
-falls back to X11/XWayland via XCB. KWin startup is confirmed before the tracker
-is accepted; failures are logged. The XCB fallback sees X11/XWayland windows,
-not native Wayland windows.
+Focused-window profile switching automatically selects the best available
+compositor backend at runtime: native IPC for Hyprland
+(`HYPRLAND_INSTANCE_SIGNATURE`), Niri (`NIRI_SOCKET`), and Sway/i3
+(`SWAYSOCK`/`I3SOCK`); a KWin script on KDE Plasma Wayland; the
+`zwlr_foreign_toplevel_management_unstable_v1` protocol on other wlroots
+compositors; and finally X11/XWayland via XCB. KWin startup is confirmed before
+the tracker is accepted; failures are logged. The XCB fallback sees
+X11/XWayland windows, not native Wayland windows.
 
 ## Testing and maintenance
 
