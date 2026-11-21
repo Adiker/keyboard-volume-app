@@ -12,6 +12,7 @@ struct PollSource
     {
         EvdevInput,
         UinputOutput,
+        Inotify,
     };
 
     Type type;
@@ -21,7 +22,8 @@ struct PollSource
 
 // Keep the source storage alive until the current epoll batch has been handled:
 // that batch may contain both the evdev and uinput entries for this device.
-inline void retirePollSources(int epfd, std::vector<PollSource>& sources, EvdevDevice* dev)
+template <typename Container>
+inline void retirePollSources(int epfd, Container& sources, EvdevDevice* dev)
 {
     for (auto& source : sources)
     {

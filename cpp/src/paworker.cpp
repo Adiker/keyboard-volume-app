@@ -1103,6 +1103,29 @@ void PaWorker::doListApps(bool forceRefresh)
 
     m_listCache = result;
     m_listCacheTs = now;
+
+    QMap<QString, QPair<QString, QString>> nextKnown;
+    for (const AudioApp& app : std::as_const(result))
+    {
+        const QString key = (app.binary.isEmpty() ? app.name : app.binary).toLower();
+        if (key.isEmpty()) continue;
+        nextKnown.insert(key, {app.name, app.binary.isEmpty() ? app.name : app.binary});
+    }
+    if (m_hasInitialAppList)
+    {
+        for (auto it = nextKnown.cbegin(); it != nextKnown.cend(); ++it)
+        {
+            if (!m_knownApps.contains(it.key()))
+                emit appStarted(it.value().first, it.value().second);
+        }
+        for (auto it = m_knownApps.cbegin(); it != m_knownApps.cend(); ++it)
+        {
+            if (!nextKnown.contains(it.key())) emit appStopped(it.value().first, it.value().second);
+        }
+    }
+    m_knownApps = std::move(nextKnown);
+    m_hasInitialAppList = true;
+
     emit appsReady(result);
 }
 

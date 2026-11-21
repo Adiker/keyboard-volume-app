@@ -32,6 +32,8 @@ VolumeController::VolumeController(QObject* parent) : QObject(parent)
                 emit sinksReady(sinks);
             });
     connect(m_worker, &PaWorker::sinkChanged, this, &VolumeController::sinkChanged);
+    connect(m_worker, &PaWorker::appStarted, this, &VolumeController::appStarted);
+    connect(m_worker, &PaWorker::appStopped, this, &VolumeController::appStopped);
     connect(
         m_worker, &PaWorker::hiddenVolumeDetected, this,
         [this](const QString& app, double rawVolume, double visibleVolume, double effectiveVolume)

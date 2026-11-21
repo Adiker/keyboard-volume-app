@@ -112,6 +112,10 @@ class VolumeController : public QObject
     void hiddenVolumeDetected(const QString& app, double rawVolume, double visibleVolume,
                               double effectiveVolume);
 
+    // Audio application lifecycle signals emitted after initial discovery.
+    void appStarted(const QString& name, const QString& binary);
+    void appStopped(const QString& name, const QString& binary);
+
   private:
     struct HiddenVolumeWarning
     {

@@ -73,6 +73,18 @@ DbusInterface::DbusInterface(Config* config, VolumeController* volumeCtrl, QObje
                     emit appsUpdated();
                 }
             });
+    connect(m_volumeCtrl, &VolumeController::appStarted, this, &DbusInterface::appStarted);
+    connect(m_volumeCtrl, &VolumeController::appStopped, this, &DbusInterface::appStopped);
+}
+
+void DbusInterface::notifyDeviceConnected(const QString& path, const QString& name)
+{
+    emit deviceConnected(path, name);
+}
+
+void DbusInterface::notifyDeviceDisconnected(const QString& path, const QString& name)
+{
+    emit deviceDisconnected(path, name);
 }
 
 void DbusInterface::onActiveAppChanged(const QString& name)

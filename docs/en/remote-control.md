@@ -168,6 +168,20 @@ The `VolumeControl` properties are `Volume`, `Muted`, `ActiveApp`, `Apps`,
 `AutoProfileSwitch`. Use the standard `Get`, `Set` and `GetAll` calls above for
 the writable properties; `Profiles`, `Scenes` and `Sinks` are read-only lists.
 
+### Lifecycle signals
+
+`org.keyboardvolumeapp.VolumeControl` also emits event-driven lifecycle signals
+so panels and desktop widgets do not need to poll:
+
+- `deviceConnected(string path, string name)` — an evdev input device was opened
+  (at startup or via `/dev/input` hot-plug).
+- `deviceDisconnected(string path, string name)` — an open evdev input device
+  disconnected or failed.
+- `appStarted(string name, string binary)` — a new audio application appeared
+  after initial discovery.
+- `appStopped(string name, string binary)` — a previously known audio
+  application disappeared.
+
 ## Optional fake MPRIS endpoint
 
 When Settings → Playback progress → **Expose fake MPRIS player endpoint** is

@@ -93,6 +93,8 @@ class PaWorker : public QObject
     void sinkChanged(const QString& app, const QString& sinkName);
     void hiddenVolumeDetected(const QString& app, double rawVolume, double visibleVolume,
                               double effectiveVolume);
+    void appStarted(const QString& name, const QString& binary);
+    void appStopped(const QString& name, const QString& binary);
     void cleanupFinished();
 
   private:
@@ -191,6 +193,8 @@ class PaWorker : public QObject
     QList<DuckingFadeEntry> m_duckingFadeEntries;
     QList<AudioApp> m_listCache;
     qint64 m_listCacheTs = 0;
+    bool m_hasInitialAppList = false;
+    QMap<QString, QPair<QString, QString>> m_knownApps; // lowerKey -> {name, binary}
     QList<SinkInfo> m_sinkCache;
     qint64 m_sinkCacheTs = 0;
     QMap<uint32_t, QString> m_sinkNamesByIdx;
