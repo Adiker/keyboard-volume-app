@@ -20,13 +20,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Pliki:** `cpp/src/config.cpp`, `cpp/src/osdwindow.cpp`, `cpp/src/settingsdialog.cpp`.
 **Status:** Planowane.
 
-### 41. Skróty „następna / poprzednia aplikacja"
-
-**Problem:** Aby przełączyć cel głośności (active app), trzeba kliknąć w tray menu albo zawołać `kv-ctl set active-app NAME`. Dla power usera bez tray menu (tiling WM) nie ma natywnego skrótu.
-**Rekomendacja:** Dodać dwie metody D-Bus `NextActiveApp()` / `PreviousActiveApp()` oraz odpowiadające im profilowe hotkeye (`hotkeys.next_app` / `hotkeys.prev_app` jako `HotkeyBinding`). `kv-ctl next-app` / `kv-ctl prev-app` w komplecie.
-**Pliki:** `cpp/src/config.{h,cpp}`, `cpp/src/inputhandler.{h,cpp}`, `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/kvctl*.{h,cpp}`, `cpp/src/i18n.cpp`, testy.
-**Status:** Planowane. Uwaga: lista aplikacji jest dynamiczna (sink-input add/remove), więc cykl powinien być stabilny w obrębie jednego wciśnięcia (snapshot na początku, kolejne wciśnięcia w 500 ms używają tego samego snapshotu).
-
 ## Zrealizowane
 
 ### 1. Paczkowanie i dystrybucja (PKGBUILD + CPack)
@@ -204,6 +197,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 40. D-Bus sygnały device/app lifecycle
 
 **Status:** Zrealizowane. `InputHandler` obserwuje `/dev/input` przez `inotify` w pętli `epoll` (stabilne adresy `std::deque<PollSource>`) i emituje `deviceConnected(path, name)` / `deviceDisconnected(path, name)` przy otwarciu, hot-plugu i odłączeniu. `PaWorker::doListApps()` diffuje listę aplikacji po pierwszym skanowaniu i emituje `appStarted(name, binary)` / `appStopped(name, binary)` przez `VolumeController`. `DbusInterface` wystawia wszystkie 4 sygnały jako `Q_SCRIPTABLE` na `org.keyboardvolumeapp.VolumeControl`; pokryte testami `test_paworker`, `test_dbusinterface` i `test_app`.
+
+### 41. Skróty „następna / poprzednia aplikacja"
+
+**Status:** Zrealizowane. Dodano `AppCycler` (stabilny snapshot z oknem 500 ms), opcjonalne hotkeye profilowe `hotkeys.next_app` / `hotkeys.prev_app` (UI w `ProfileEditDialog`), metody D-Bus `NextActiveApp()` / `PreviousActiveApp()`, podgląd OSD przy przełączeniu oraz komendy CLI `kv-ctl next-app` / `kv-ctl prev-app` z pełnym zestawem testów jednostkowych.
 
 ### 42. Globalne skróty multimedialne (MPRIS dispatch)
 

@@ -102,6 +102,16 @@ void App::connectSignals()
             [this](const QString& id) { onDuckingToggle(id); });
     connect(m_input, &InputHandler::show_volume, this,
             [this](const QString& id) { onShowVolume(id); });
+    connect(m_input, &InputHandler::next_app, this,
+            [this](const QString&)
+            {
+                if (m_dbus) m_dbus->NextActiveApp();
+            });
+    connect(m_input, &InputHandler::prev_app, this,
+            [this](const QString&)
+            {
+                if (m_dbus) m_dbus->PreviousActiveApp();
+            });
 
     // Input → media (global, MPRIS dispatch via MprisClient)
     connect(m_input, &InputHandler::media_play_pause, m_mpris, &MprisClient::playPause);

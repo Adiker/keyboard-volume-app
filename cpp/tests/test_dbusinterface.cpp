@@ -403,3 +403,63 @@ TEST(DbusInterface, RelaysDeviceAndAppLifecycleSignals)
     ASSERT_EQ(devDiscSpy.count(), 1);
     EXPECT_EQ(devDiscSpy.first().at(0).toString(), QStringLiteral("/dev/input/event3"));
 }
+
+TEST(DbusInterface, NextAndPreviousActiveAppUsesStable500MsSnapshot)
+{
+    Harness h;
+    emit h.vc.appsReady({
+        AudioApp{std::nullopt,
+                 QStringLiteral("spotify"),
+                 QStringLiteral("spotify"),
+                 0.5,
+                 false,
+                 true,
+                 {}},
+        AudioApp{std::nullopt,
+                 QStringLiteral("firefox"),
+                 QStringLiteral("firefox"),
+                 0.5,
+                 false,
+                 true,
+                 {}},
+        AudioApp{std::nullopt, QStringLiteral("vlc"), QStringLiteral("vlc"), 0.5, false, false, {}},
+    });
+    EXPECT_EQ(h.dbus.activeApp(), QStringLiteral("spotify"));
+
+    // t=1000: freeze snapshot ["spotify", "firefox", "vlc"] -> next is "firefox".
+    EXPECT_EQ(h.dbus.cycleActiveAppAt(+1, 1000), QStringLiteral("firefox"));
+    EXPECT_EQ(h.dbus.activeApp(), QStringLiteral("firefox"));
+    EXPECT_EQ(h.config.defaultProfile().primaryApp(), QStringLiteral("firefox"));
+
+    // Live list mutates dynamically inside 500 ms window, but cycling uses the frozen snapshot.
+    emit h.vc.appsReady({
+        AudioApp{std::nullopt,
+                 QStringLiteral("discord"),
+                 QStringLiteral("discord"),
+                 0.5,
+                 false,
+                 true,
+                 {}},
+        AudioApp{std::nullopt,
+                 QStringLiteral("spotify"),
+                 QStringLiteral("spotify"),
+                 0.5,
+                 false,
+                 true,
+                 {}},
+        AudioApp{std::nullopt,
+                 QStringLiteral("firefox"),
+                 QStringLiteral("firefox"),
+                 0.5,
+                 false,
+                 true,
+                 {}},
+        AudioApp{std::nullopt, QStringLiteral("vlc"), QStringLiteral("vlc"), 0.5, false, false, {}},
+    });
+    EXPECT_EQ(h.dbus.cycleActiveAppAt(+1, 1300), QStringLiteral("vlc"));
+    EXPECT_EQ(h.dbus.cycleActiveAppAt(-1, 1450), QStringLiteral("firefox"));
+
+    // After >500 ms (t=2100): fresh snapshot includes "discord" at index 0.
+    EXPECT_EQ(h.dbus.cycleActiveAppAt(-1, 2100), QStringLiteral("spotify"));
+    EXPECT_EQ(h.dbus.cycleActiveAppAt(-1, 2200), QStringLiteral("discord"));
+}

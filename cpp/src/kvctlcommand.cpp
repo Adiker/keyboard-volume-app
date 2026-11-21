@@ -111,6 +111,18 @@ KvCtlParseResult parseKvCtlCommand(const QStringList& positionalArgs, const QStr
         return {true, cmd, QString()};
     }
 
+    if (action == QStringLiteral("next-app") || action == QStringLiteral("prev-app"))
+    {
+        if (profileSet) return fail(QStringLiteral("%1 does not accept --profile").arg(action));
+        if (positionalArgs.size() != 1)
+            return fail(
+                QStringLiteral("command '%1' does not accept positional arguments").arg(action));
+
+        cmd.action = action == QStringLiteral("next-app") ? KvCtlCommand::Action::NextActiveApp
+                                                          : KvCtlCommand::Action::PreviousActiveApp;
+        return {true, cmd, QString()};
+    }
+
     if (action == QStringLiteral("scene"))
     {
         if (profileSet) return fail(QStringLiteral("scene does not accept --profile"));
@@ -224,6 +236,8 @@ QString kvCtlUsageText()
         "  kv-ctl show [--profile ID]\n"
         "  kv-ctl scene ID\n"
         "  kv-ctl media play-pause|next|previous|stop\n"
+        "  kv-ctl next-app\n"
+        "  kv-ctl prev-app\n"
         "  kv-ctl refresh\n"
         "  kv-ctl get "
         "volume|muted|active-app|apps|step|profiles|scenes|sinks|progress-enabled|"

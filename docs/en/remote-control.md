@@ -27,6 +27,8 @@ kv-ctl refresh
 kv-ctl get apps
 kv-ctl get active-app
 kv-ctl set active-app Firefox
+kv-ctl next-app
+kv-ctl prev-app
 
 # Absolute values and settings
 kv-ctl get volume

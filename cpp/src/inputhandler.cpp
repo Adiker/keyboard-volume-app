@@ -568,6 +568,14 @@ ProfileHotkeyAction actionForBinding(const Profile& profile, const HotkeyBinding
     {
         return ProfileHotkeyAction::ShowVolume;
     }
+    if (profile.hotkeys.nextApp.isAssigned() && profile.hotkeys.nextApp == binding)
+    {
+        return ProfileHotkeyAction::NextApp;
+    }
+    if (profile.hotkeys.prevApp.isAssigned() && profile.hotkeys.prevApp == binding)
+    {
+        return ProfileHotkeyAction::PrevApp;
+    }
     return ProfileHotkeyAction::None;
 }
 
@@ -831,6 +839,8 @@ void InputHandler::run()
         if (p.hotkeys.mute.isAssigned()) hotkeys.insert(p.hotkeys.mute);
         if (p.ducking.enabled && p.ducking.hotkey.isAssigned()) hotkeys.insert(p.ducking.hotkey);
         if (p.hotkeys.show.isAssigned()) hotkeys.insert(p.hotkeys.show);
+        if (p.hotkeys.nextApp.isAssigned()) hotkeys.insert(p.hotkeys.nextApp);
+        if (p.hotkeys.prevApp.isAssigned()) hotkeys.insert(p.hotkeys.prevApp);
     }
     if (mediaCfg.playPause.isAssigned()) hotkeys.insert(mediaCfg.playPause);
     if (mediaCfg.next.isAssigned()) hotkeys.insert(mediaCfg.next);
@@ -880,6 +890,12 @@ void InputHandler::run()
             break;
         case ProfileHotkeyAction::ShowVolume:
             emit show_volume(match.profileId);
+            break;
+        case ProfileHotkeyAction::NextApp:
+            emit next_app(match.profileId);
+            break;
+        case ProfileHotkeyAction::PrevApp:
+            emit prev_app(match.profileId);
             break;
         case ProfileHotkeyAction::None:
             break;

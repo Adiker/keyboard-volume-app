@@ -1,4 +1,5 @@
 #pragma once
+#include "appcycler.h"
 #include "config.h" // Profile
 #include <QObject>
 #include <QString>
@@ -93,6 +94,10 @@ class DbusInterface : public QObject
     void onActiveAppChanged(const QString& name);
     void setFocusedApp(const QString& name);
 
+    // Cycle ActiveApp using a 500 ms frozen snapshot window. Exposed as helper
+    // so tests can drive deterministic timestamps.
+    QString cycleActiveAppAt(int direction, qint64 nowMs);
+
   public slots:
     Q_SCRIPTABLE void VolumeUp();
     Q_SCRIPTABLE void VolumeDown();
@@ -100,6 +105,8 @@ class DbusInterface : public QObject
     Q_SCRIPTABLE void SetMute(bool muted);
     Q_SCRIPTABLE void ToggleDucking();
     Q_SCRIPTABLE void RefreshApps();
+    Q_SCRIPTABLE void NextActiveApp();
+    Q_SCRIPTABLE void PreviousActiveApp();
 
     // Per-profile volume control. Routes to the profile's app regardless of
     // ActiveApp. Silently no-op if the profile is unknown or has no app.
@@ -170,4 +177,5 @@ class DbusInterface : public QObject
     QVariantList m_profilesProp;
     QVariantList m_scenesProp;
     QVariantList m_sinksProp;
+    AppCycler m_appCycler;
 };

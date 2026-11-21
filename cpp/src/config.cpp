@@ -213,6 +213,8 @@ QJsonObject Config::defaultJson()
              {QStringLiteral("volume_down"), 114},
              {QStringLiteral("mute"), 113},
              {QStringLiteral("show"), 0},
+             {QStringLiteral("next_app"), 0},
+             {QStringLiteral("prev_app"), 0},
          }},
         {QStringLiteral("ducking"),
          QJsonObject{
@@ -367,6 +369,8 @@ QJsonObject Config::profileToJson(const Profile& p)
              {QStringLiteral("volume_down"), bindingToJson(p.hotkeys.volumeDown)},
              {QStringLiteral("mute"), bindingToJson(p.hotkeys.mute)},
              {QStringLiteral("show"), bindingToJson(p.hotkeys.show)},
+             {QStringLiteral("next_app"), bindingToJson(p.hotkeys.nextApp)},
+             {QStringLiteral("prev_app"), bindingToJson(p.hotkeys.prevApp)},
          }},
         {QStringLiteral("ducking"),
          QJsonObject{
@@ -405,6 +409,8 @@ Profile Config::profileFromJson(const QJsonObject& o)
     p.hotkeys.volumeDown = bindingFromJson(hk[QStringLiteral("volume_down")], 114);
     p.hotkeys.mute = bindingFromJson(hk[QStringLiteral("mute")], 113);
     p.hotkeys.show = bindingFromJson(hk[QStringLiteral("show")], 0);
+    p.hotkeys.nextApp = bindingFromJson(hk[QStringLiteral("next_app")], 0);
+    p.hotkeys.prevApp = bindingFromJson(hk[QStringLiteral("prev_app")], 0);
 
     QJsonArray mods = o[QStringLiteral("modifiers")].toArray();
     for (const auto& v : mods)

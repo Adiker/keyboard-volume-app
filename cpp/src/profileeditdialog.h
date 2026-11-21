@@ -49,6 +49,8 @@ class ProfileEditDialog : public QDialog
     HotkeyCapture* m_hkDown = nullptr;
     HotkeyCapture* m_hkMute = nullptr;
     HotkeyCapture* m_hkShow = nullptr;
+    HotkeyCapture* m_hkNextApp = nullptr;
+    HotkeyCapture* m_hkPrevApp = nullptr;
     HotkeyCapture* m_hkDucking = nullptr;
 
     void addAppToList(const QString& appName);

@@ -224,6 +224,10 @@ QString methodName(const KvCtlCommand& cmd)
         return profile ? QStringLiteral("ShowVolumeProfile") : QStringLiteral("ShowVolume");
     case KvCtlCommand::Action::Refresh:
         return QStringLiteral("RefreshApps");
+    case KvCtlCommand::Action::NextActiveApp:
+        return QStringLiteral("NextActiveApp");
+    case KvCtlCommand::Action::PreviousActiveApp:
+        return QStringLiteral("PreviousActiveApp");
     case KvCtlCommand::Action::MediaPlayPause:
         return QStringLiteral("MediaPlayPause");
     case KvCtlCommand::Action::MediaNext:
