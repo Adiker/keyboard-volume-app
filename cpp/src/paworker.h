@@ -49,6 +49,12 @@ class PaWorker : public QObject
     {
         return m_duckingActive;
     }
+    bool isDuckingFading() const
+    {
+        return m_duckingFading;
+    }
+    // Deterministic step helper called by the 30 ms fade timer and unit tests.
+    void stepDuckingFadeAt(qint64 elapsedMs);
     bool hasPendingVolume(const QString& app) const;
     bool hasPendingChannelVolumes(const QString& app) const;
     bool hasPendingMute(const QString& app) const;
@@ -69,7 +75,8 @@ class PaWorker : public QObject
     void setAppMute(const QString& appName, bool targetMuted);
     void setAppVolume(const QString& appName, double targetVolume, double minVol = 0.0,
                       double maxVol = 1.0);
-    void doToggleDucking(const QString& keepApp, double duckVolume);
+    void doToggleDucking(const QString& keepApp, double duckVolume, int fadeOutMs = 0,
+                         int fadeInMs = 0);
     void doQueryVolume(const QString& appName, bool silent);
     void doListApps(bool forceRefresh);
     void doApplyPending();
@@ -98,6 +105,22 @@ class PaWorker : public QObject
         pa_cvolume pulseChannelVolume{};
         double volume = 1.0;
     };
+
+    struct DuckingFadeEntry
+    {
+        DuckingSnapshot snapshot;
+        QList<double> startChannels;
+        QList<double> targetChannels;
+        QList<double> currentChannels;
+        double startVolume = 1.0;
+        double targetVolume = 1.0;
+        double currentVolume = 1.0;
+    };
+
+    void restoreDuckingSnapshot(const QList<DuckingSnapshot>& restore);
+    void applyDuckingFadeLevels(double progress);
+    void startDuckingFade(QList<DuckingFadeEntry> entries, bool fadingToDucked, int durationMs);
+    void stopDuckingFade();
 
     bool connectContext();
     void disconnectContext();
@@ -145,6 +168,7 @@ class PaWorker : public QObject
     QTimer* m_refreshTimer = nullptr;
     QTimer* m_sinkRefreshTimer = nullptr;
     QTimer* m_reconnectTimer = nullptr;
+    QTimer* m_duckingFadeTimer = nullptr;
     int m_reconnectBackoffMs = 0;
     mutable QMutex m_pendingMutex;
     QMap<QString, double> m_pendingVolumes;
@@ -158,11 +182,18 @@ class PaWorker : public QObject
     QSet<QString> m_reportedHiddenNodes;
     bool m_duckingActive = false;
     QString m_duckingKeepApp;
+    double m_duckingTargetVolume = 0.25;
     QList<DuckingSnapshot> m_duckingSnapshot;
+    bool m_duckingFading = false;
+    bool m_duckingFadingToDucked = false;
+    int m_duckingFadeDurationMs = 0;
+    qint64 m_duckingFadeStartMs = 0;
+    QList<DuckingFadeEntry> m_duckingFadeEntries;
     QList<AudioApp> m_listCache;
     qint64 m_listCacheTs = 0;
     QList<SinkInfo> m_sinkCache;
     qint64 m_sinkCacheTs = 0;
     QMap<uint32_t, QString> m_sinkNamesByIdx;
     static constexpr qint64 LIST_CACHE_TTL_MS = 5000;
+    static constexpr int DUCKING_FADE_STEP_MS = 30;
 };

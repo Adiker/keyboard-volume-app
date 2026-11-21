@@ -704,6 +704,84 @@ TEST(PaWorkerUnit, ContextLossInvalidatesDuckingIdsAndReconnectRestoresVolume)
     worker.cleanup();
 }
 
+TEST(PaWorkerUnit, DuckingFadeOutRampAndMidRampCancelReversesToOriginal)
+{
+    auto fakePtr = std::make_unique<FakePaBackend>();
+    auto* fake = fakePtr.get();
+    fake->allowConnect = true;
+    fake->sinkInputs = {
+        makeSinkInput(10, QStringLiteral("Discord"), QStringLiteral("discord"), 0.90, false),
+        makeSinkInput(20, QStringLiteral("Spotify"), QStringLiteral("spotify"), 0.80, false)};
+
+    PaWorker worker(std::move(fakePtr));
+    worker.init();
+
+    // Start 300 ms fade-out from 0.80 -> 0.20.
+    worker.doToggleDucking(QStringLiteral("discord"), 0.20, /*fadeOutMs=*/300, /*fadeInMs=*/200);
+    EXPECT_TRUE(worker.isDuckingActive());
+    EXPECT_TRUE(worker.isDuckingFading());
+    // Stop real QTimer so test drives steps deterministically.
+    for (QTimer* t : worker.findChildren<QTimer*>()) t->stop();
+
+    // At 50% (150 ms): halfway between 0.80 and 0.20 -> 0.50.
+    worker.stepDuckingFadeAt(150);
+    EXPECT_TRUE(worker.isDuckingFading());
+    ASSERT_TRUE(fake->writtenSinkInputChannels.contains(20));
+    EXPECT_NEAR(fake->writtenSinkInputChannels.value(20).at(0), 0.50, 1e-3);
+
+    // Cancel mid-ramp: second toggle starts 200 ms fade-in from 0.50 back to 0.80.
+    worker.doToggleDucking(QStringLiteral("discord"), 0.20, /*fadeOutMs=*/300, /*fadeInMs=*/200);
+    EXPECT_FALSE(worker.isDuckingActive());
+    EXPECT_TRUE(worker.isDuckingFading());
+    for (QTimer* t : worker.findChildren<QTimer*>()) t->stop();
+
+    // At 50% of fade-in (100 ms): halfway between 0.50 and 0.80 -> 0.65.
+    worker.stepDuckingFadeAt(100);
+    EXPECT_TRUE(worker.isDuckingFading());
+    EXPECT_NEAR(fake->writtenSinkInputChannels.value(20).at(0), 0.65, 1e-3);
+
+    // At 100% of fade-in (200 ms): restored cleanly to 0.80 and fade finished.
+    worker.stepDuckingFadeAt(200);
+    EXPECT_FALSE(worker.isDuckingFading());
+    EXPECT_FALSE(worker.isDuckingActive());
+    EXPECT_NEAR(fake->writtenSinkInputChannels.value(20).at(0), 0.80, 1e-3);
+
+    worker.cleanup();
+}
+
+TEST(PaWorkerUnit, DuckingFadeOutCompletesAndFadeInContextLossParksRestore)
+{
+    auto fakePtr = std::make_unique<FakePaBackend>();
+    auto* fake = fakePtr.get();
+    fake->allowConnect = true;
+    fake->sinkInputs = {
+        makeSinkInput(10, QStringLiteral("Discord"), QStringLiteral("discord"), 0.90, false),
+        makeSinkInput(20, QStringLiteral("Spotify"), QStringLiteral("spotify"), 0.80, false)};
+
+    PaWorker worker(std::move(fakePtr));
+    worker.init();
+
+    worker.doToggleDucking(QStringLiteral("discord"), 0.20, /*fadeOutMs=*/120, /*fadeInMs=*/120);
+    for (QTimer* t : worker.findChildren<QTimer*>()) t->stop();
+    worker.stepDuckingFadeAt(120);
+    EXPECT_TRUE(worker.isDuckingActive());
+    EXPECT_FALSE(worker.isDuckingFading());
+    EXPECT_NEAR(fake->writtenSinkInputChannels.value(20).at(0), 0.20, 1e-3);
+
+    // Start fade-in restore, then drop PA context mid-fade.
+    worker.doToggleDucking(QStringLiteral("discord"), 0.20, /*fadeOutMs=*/120, /*fadeInMs=*/120);
+    for (QTimer* t : worker.findChildren<QTimer*>()) t->stop();
+    worker.stepDuckingFadeAt(60);
+    EXPECT_TRUE(worker.isDuckingFading());
+
+    fake->allowConnect = false;
+    worker.handleContextLost();
+    EXPECT_FALSE(worker.isDuckingFading());
+    EXPECT_TRUE(worker.hasPendingChannelVolumes(QStringLiteral("spotify")));
+
+    worker.cleanup();
+}
+
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);

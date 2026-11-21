@@ -203,6 +203,31 @@ ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
     m_hkDucking = new HotkeyCapture(initial.ducking.hotkey, m_inputHandler, this);
     form->addRow(::tr(QStringLiteral("settings.profiles.ducking_hotkey")), m_hkDucking);
 
+    m_duckingFadeOut = new QSpinBox(this);
+    m_duckingFadeOut->setRange(0, 5000);
+    m_duckingFadeOut->setSingleStep(50);
+    m_duckingFadeOut->setSuffix(QStringLiteral(" ms"));
+    m_duckingFadeOut->setValue(std::clamp(initial.ducking.fadeOutMs, 0, 5000));
+
+    m_duckingFadeIn = new QSpinBox(this);
+    m_duckingFadeIn->setRange(0, 5000);
+    m_duckingFadeIn->setSingleStep(50);
+    m_duckingFadeIn->setSuffix(QStringLiteral(" ms"));
+    m_duckingFadeIn->setValue(std::clamp(initial.ducking.fadeInMs, 0, 5000));
+
+    auto* duckFadeRow = new QHBoxLayout;
+    duckFadeRow->addWidget(
+        new QLabel(::tr(QStringLiteral("settings.profiles.ducking_fade_out")), this));
+    duckFadeRow->addWidget(m_duckingFadeOut);
+    duckFadeRow->addSpacing(12);
+    duckFadeRow->addWidget(
+        new QLabel(::tr(QStringLiteral("settings.profiles.ducking_fade_in")), this));
+    duckFadeRow->addWidget(m_duckingFadeIn);
+    duckFadeRow->addStretch();
+    auto* duckFadeWrap = new QWidget(this);
+    duckFadeWrap->setLayout(duckFadeRow);
+    form->addRow(::tr(QStringLiteral("settings.profiles.ducking_fade")), duckFadeWrap);
+
     // Volume limits (percent, 0-100). Keep min <= max as the user types.
     m_volMin = new QSpinBox(this);
     m_volMin->setRange(0, 100);
@@ -273,6 +298,8 @@ Profile ProfileEditDialog::profile() const
     p.ducking.enabled = m_duckingEnabled->isChecked();
     p.ducking.volume = m_duckingSpin->value();
     p.ducking.hotkey = m_hkDucking->binding();
+    p.ducking.fadeOutMs = m_duckingFadeOut->value();
+    p.ducking.fadeInMs = m_duckingFadeIn->value();
     p.autoSwitch = m_autoSwitch->isChecked();
     p.volMin = m_volMin->value();
     p.volMax = m_volMax->value();

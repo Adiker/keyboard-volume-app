@@ -2065,3 +2065,33 @@ TEST(ConfigFocusActiveApp, DefaultAndRoundTrip)
     Config reloaded(tmp.path());
     EXPECT_TRUE(reloaded.focusUpdatesActiveApp());
 }
+
+TEST(ConfigDuckingFade, DefaultsRoundTripAndClamp)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    const Profile def = config.defaultProfile();
+    EXPECT_EQ(def.ducking.fadeOutMs, 0);
+    EXPECT_EQ(def.ducking.fadeInMs, 0);
+
+    Profile p = def;
+    p.ducking.enabled = true;
+    p.ducking.volume = 20;
+    p.ducking.fadeOutMs = 300;
+    p.ducking.fadeInMs = 99999; // should clamp to 5000
+    config.setProfiles({p});
+
+    Config reloaded(tmp.path());
+    const Profile loaded = reloaded.defaultProfile();
+    EXPECT_EQ(loaded.ducking.fadeOutMs, 300);
+    EXPECT_EQ(loaded.ducking.fadeInMs, 5000);
+
+    p.ducking.fadeOutMs = -50;
+    p.ducking.fadeInMs = 150;
+    config.setProfiles({p});
+    Config reloaded2(tmp.path());
+    EXPECT_EQ(reloaded2.defaultProfile().ducking.fadeOutMs, 0);
+    EXPECT_EQ(reloaded2.defaultProfile().ducking.fadeInMs, 150);
+}

@@ -150,6 +150,8 @@ struct DuckingConfig
     bool enabled = false;
     int volume = 25;      // Percent, 0-100
     HotkeyBinding hotkey; // unassigned by default
+    int fadeOutMs = 0;    // Fade duration when ducking down (0-5000 ms; 0 = instant)
+    int fadeInMs = 0;     // Fade duration when restoring up (0-5000 ms; 0 = instant)
 };
 
 // ─── App identity layer (aliases + configurable filters) ─────────────────────
@@ -287,7 +289,8 @@ inline bool operator!=(const OsdLayoutHotkeyConfig& a, const OsdLayoutHotkeyConf
 
 inline bool operator==(const DuckingConfig& a, const DuckingConfig& b)
 {
-    return a.enabled == b.enabled && a.volume == b.volume && a.hotkey == b.hotkey;
+    return a.enabled == b.enabled && a.volume == b.volume && a.hotkey == b.hotkey &&
+           a.fadeOutMs == b.fadeOutMs && a.fadeInMs == b.fadeInMs;
 }
 inline bool operator!=(const DuckingConfig& a, const DuckingConfig& b)
 {

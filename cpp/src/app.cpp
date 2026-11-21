@@ -419,7 +419,8 @@ void App::onDuckingToggle(const QString& profileId)
     const Profile p = findProfile(profileId);
     if (!p.ducking.enabled || !p.ducking.hotkey.isAssigned()) return;
     activateProfile(effectiveProfile(profileId), app);
-    m_volumeCtrl->toggleDucking(app, p.ducking.volume / 100.0);
+    m_volumeCtrl->toggleDucking(app, p.ducking.volume / 100.0, p.ducking.fadeOutMs,
+                                p.ducking.fadeInMs);
 }
 
 void App::onShowVolume(const QString& profileId)

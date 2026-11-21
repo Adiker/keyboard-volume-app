@@ -87,6 +87,11 @@ void PaWorker::init()
     m_reconnectTimer->setSingleShot(true);
     connect(m_reconnectTimer, &QTimer::timeout, this, &PaWorker::attemptReconnect);
 
+    m_duckingFadeTimer = new QTimer(this);
+    m_duckingFadeTimer->setInterval(DUCKING_FADE_STEP_MS);
+    connect(m_duckingFadeTimer, &QTimer::timeout, this, [this]()
+            { stepDuckingFadeAt(QDateTime::currentMSecsSinceEpoch() - m_duckingFadeStartMs); });
+
     attemptReconnect();
 }
 
@@ -110,6 +115,10 @@ void PaWorker::cleanup()
     if (m_sinkRefreshTimer)
     {
         m_sinkRefreshTimer->stop();
+    }
+    if (m_duckingFadeTimer)
+    {
+        m_duckingFadeTimer->stop();
     }
 
     if (m_backend)
@@ -151,6 +160,26 @@ void PaWorker::attemptReconnect()
 void PaWorker::handleContextLost()
 {
     if (m_stopping) return;
+    if (m_duckingFading)
+    {
+        const bool restoring = !m_duckingFadingToDucked;
+        stopDuckingFade();
+        if (restoring)
+        {
+            const QList<DuckingSnapshot> pendingRestore = m_duckingSnapshot;
+            clearDuckingState();
+            for (const DuckingSnapshot& snapshot : pendingRestore)
+            {
+                if (!snapshot.visibleChannelVolumes.isEmpty())
+                    parkPendingChannelVolumes(snapshot.app, snapshot.visibleChannelVolumes);
+                else if (snapshot.pulseChannelVolume.channels > 0)
+                    parkPendingChannelVolumes(snapshot.app, pabackend::channelVolumesFromPulse(
+                                                                snapshot.pulseChannelVolume));
+                else
+                    parkPendingVolume(snapshot.app, snapshot.volume);
+            }
+        }
+    }
     for (DuckingSnapshot& snapshot : m_duckingSnapshot)
     {
         snapshot.pipeWireNodeId.reset();
@@ -456,87 +485,311 @@ void PaWorker::setAppVolume(const QString& appName, double targetVolume, double 
     emit volumeChanged(appName, targetVolume, m_appMutes.value(appName, false));
 }
 
-void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
+void PaWorker::restoreDuckingSnapshot(const QList<DuckingSnapshot>& restore)
 {
-    if (m_stopping || keepApp.isEmpty()) return;
-
-    duckVolume = std::clamp(duckVolume, 0.0, 1.0);
     const QList<AppAlias> aliases = currentAliases();
+    QList<pabackend::SinkInputInfo> currentInputs;
+    if (contextReady()) currentInputs = m_backend->listSinkInputs();
+    QSet<uint32_t> restoredInputIndexes;
+    QSet<uint32_t> restoredPipeWireNodes;
 
-    if (m_duckingActive)
+    for (const DuckingSnapshot& snapshot : restore)
     {
-        const QList<DuckingSnapshot> restore = m_duckingSnapshot;
-        clearDuckingState();
-
-        QList<pabackend::SinkInputInfo> currentInputs;
-        if (contextReady()) currentInputs = m_backend->listSinkInputs();
-        QSet<uint32_t> restoredInputIndexes;
-        QSet<uint32_t> restoredPipeWireNodes;
-
-        for (const DuckingSnapshot& snapshot : restore)
+        bool restored = false;
+        for (const pabackend::SinkInputInfo& input : std::as_const(currentInputs))
         {
-            bool restored = false;
-            for (const pabackend::SinkInputInfo& input : std::as_const(currentInputs))
+            if (restoredInputIndexes.contains(input.index) ||
+                !sinkInputMatches(input, snapshot.app, aliases) ||
+                (snapshot.pulseSinkInputIndex != PA_INVALID_INDEX &&
+                 input.index != snapshot.pulseSinkInputIndex))
+                continue;
+            if (input.pipeWireNodeId && !snapshot.visibleChannelVolumes.isEmpty())
             {
-                if (restoredInputIndexes.contains(input.index) ||
-                    !sinkInputMatches(input, snapshot.app, aliases) ||
-                    (snapshot.pulseSinkInputIndex != PA_INVALID_INDEX &&
-                     input.index != snapshot.pulseSinkInputIndex))
-                    continue;
-                if (input.pipeWireNodeId && !snapshot.visibleChannelVolumes.isEmpty())
-                {
-                    restored = m_backend->pwSetVisibleChannelVolumes(
-                        *input.pipeWireNodeId, snapshot.visibleChannelVolumes);
-                }
-                if (!restored && snapshot.pulseChannelVolume.channels > 0)
-                {
-                    restored = m_backend->setSinkInputChannelVolumes(
-                        input.index, snapshot.pulseChannelVolume,
-                        "restore exact ducked sink input volume");
-                }
-                if (restored)
-                {
-                    restoredInputIndexes.insert(input.index);
-                    if (input.pipeWireNodeId) restoredPipeWireNodes.insert(*input.pipeWireNodeId);
-                }
+                restored = m_backend->pwSetVisibleChannelVolumes(*input.pipeWireNodeId,
+                                                                 snapshot.visibleChannelVolumes);
+            }
+            if (!restored && snapshot.pulseChannelVolume.channels > 0)
+            {
+                restored =
+                    m_backend->setSinkInputChannelVolumes(input.index, snapshot.pulseChannelVolume,
+                                                          "restore exact ducked sink input volume");
+            }
+            if (restored)
+            {
+                restoredInputIndexes.insert(input.index);
+                if (input.pipeWireNodeId) restoredPipeWireNodes.insert(*input.pipeWireNodeId);
+            }
+            break;
+        }
+
+        if (!restored && !snapshot.visibleChannelVolumes.isEmpty())
+        {
+            const QList<PipeWireNode> nodes =
+                m_backend->pwFindNodesForApp(snapshot.app, matchCandidatesFor(snapshot.app));
+            for (const PipeWireNode& node : nodes)
+            {
+                const uint32_t expectedNodeId = snapshot.pipeWireNodeId.value_or(node.id);
+                if (restoredPipeWireNodes.contains(node.id) || node.id != expectedNodeId) continue;
+                restored =
+                    m_backend->pwSetVisibleChannelVolumes(node.id, snapshot.visibleChannelVolumes);
+                if (restored) restoredPipeWireNodes.insert(node.id);
                 break;
             }
+        }
 
-            if (!restored && !snapshot.visibleChannelVolumes.isEmpty())
+        if (!restored && snapshot.pulseChannelVolume.channels > 0 &&
+            streamRestoreSetChannelVolumes(snapshot.app, snapshot.pulseChannelVolume))
+        {
+            restored = true;
+            if (m_backend->isPipeWirePulse())
             {
-                const QList<PipeWireNode> nodes =
-                    m_backend->pwFindNodesForApp(snapshot.app, matchCandidatesFor(snapshot.app));
-                for (const PipeWireNode& node : nodes)
+                const QList<double> channels =
+                    !snapshot.visibleChannelVolumes.isEmpty()
+                        ? snapshot.visibleChannelVolumes
+                        : pabackend::channelVolumesFromPulse(snapshot.pulseChannelVolume);
+                parkPendingChannelVolumes(snapshot.app, channels);
+            }
+        }
+
+        if (!restored) setAppVolume(snapshot.app, snapshot.volume);
+    }
+}
+
+void PaWorker::stopDuckingFade()
+{
+    if (m_duckingFadeTimer) m_duckingFadeTimer->stop();
+    m_duckingFading = false;
+    m_duckingFadeEntries.clear();
+}
+
+void PaWorker::startDuckingFade(QList<DuckingFadeEntry> entries, bool fadingToDucked,
+                                int durationMs)
+{
+    m_duckingFadeEntries = std::move(entries);
+    m_duckingFading = true;
+    m_duckingFadingToDucked = fadingToDucked;
+    m_duckingFadeDurationMs = durationMs;
+    m_duckingFadeStartMs = QDateTime::currentMSecsSinceEpoch();
+    if (m_duckingFadeTimer) m_duckingFadeTimer->start();
+}
+
+void PaWorker::applyDuckingFadeLevels(double progress)
+{
+    const double t = std::clamp(progress, 0.0, 1.0);
+    const QList<AppAlias> aliases = currentAliases();
+    QList<pabackend::SinkInputInfo> currentInputs;
+    if (contextReady()) currentInputs = m_backend->listSinkInputs();
+
+    for (DuckingFadeEntry& entry : m_duckingFadeEntries)
+    {
+        const double vol =
+            std::clamp(entry.startVolume + (entry.targetVolume - entry.startVolume) * t, 0.0, 1.0);
+        entry.currentVolume = vol;
+
+        QList<double> channels;
+        if (!entry.startChannels.isEmpty() &&
+            entry.startChannels.size() == entry.targetChannels.size())
+        {
+            channels.reserve(entry.startChannels.size());
+            for (qsizetype i = 0; i < entry.startChannels.size(); ++i)
+            {
+                const double ch =
+                    entry.startChannels[i] + (entry.targetChannels[i] - entry.startChannels[i]) * t;
+                channels.append(std::clamp(ch, 0.0, 1.0));
+            }
+        }
+        entry.currentChannels = channels;
+
+        bool applied = false;
+        for (const pabackend::SinkInputInfo& input : std::as_const(currentInputs))
+        {
+            if (!sinkInputMatches(input, entry.snapshot.app, aliases) ||
+                (entry.snapshot.pulseSinkInputIndex != PA_INVALID_INDEX &&
+                 input.index != entry.snapshot.pulseSinkInputIndex))
+                continue;
+
+            if (input.pipeWireNodeId && !channels.isEmpty())
+            {
+                applied = m_backend->pwSetVisibleChannelVolumes(*input.pipeWireNodeId, channels);
+            }
+            if (!applied)
+            {
+                if (!channels.isEmpty() && input.channelVolume.channels > 0)
                 {
-                    const uint32_t expectedNodeId = snapshot.pipeWireNodeId.value_or(node.id);
-                    if (restoredPipeWireNodes.contains(node.id) || node.id != expectedNodeId)
-                        continue;
-                    restored = m_backend->pwSetVisibleChannelVolumes(
-                        node.id, snapshot.visibleChannelVolumes);
-                    if (restored) restoredPipeWireNodes.insert(node.id);
-                    break;
+                    const pa_cvolume cv = pabackend::pulseVolumeFromChannels(channels);
+                    applied = m_backend->setSinkInputChannelVolumes(input.index, cv,
+                                                                    "ducking fade channel volume");
+                }
+                else
+                {
+                    applied = setActiveStreamVisibleVolume(input, vol);
                 }
             }
+            break;
+        }
 
-            if (!restored && snapshot.pulseChannelVolume.channels > 0 &&
-                streamRestoreSetChannelVolumes(snapshot.app, snapshot.pulseChannelVolume))
+        if (const auto pwNodeId = entry.snapshot.pipeWireNodeId; !applied && pwNodeId.has_value())
+        {
+            const uint32_t nodeId = *pwNodeId;
+            if (!channels.isEmpty())
             {
-                restored = true;
-                if (m_backend->isPipeWirePulse())
-                {
-                    const QList<double> channels =
-                        !snapshot.visibleChannelVolumes.isEmpty()
-                            ? snapshot.visibleChannelVolumes
-                            : pabackend::channelVolumesFromPulse(snapshot.pulseChannelVolume);
-                    parkPendingChannelVolumes(snapshot.app, channels);
-                }
+                applied = m_backend->pwSetVisibleChannelVolumes(nodeId, channels);
             }
+            else
+            {
+                const uint32_t chCount = static_cast<uint32_t>(
+                    std::max<int>(1, entry.snapshot.pulseChannelVolume.channels > 0
+                                         ? entry.snapshot.pulseChannelVolume.channels
+                                         : 2));
+                applied = m_backend->pwSetVisibleVolume(nodeId, vol, chCount);
+            }
+        }
 
-            if (!restored) setAppVolume(snapshot.app, snapshot.volume);
+        if (!applied && t >= 1.0)
+        {
+            setAppVolume(entry.snapshot.app, vol);
+        }
+    }
+}
+
+void PaWorker::stepDuckingFadeAt(qint64 elapsedMs)
+{
+    if (m_stopping || !m_duckingFading)
+    {
+        if (m_duckingFadeTimer) m_duckingFadeTimer->stop();
+        return;
+    }
+
+    const double progress = m_duckingFadeDurationMs > 0
+                                ? std::clamp(static_cast<double>(elapsedMs) /
+                                                 static_cast<double>(m_duckingFadeDurationMs),
+                                             0.0, 1.0)
+                                : 1.0;
+
+    if (progress >= 1.0)
+    {
+        const bool restoring = !m_duckingFadingToDucked;
+        if (restoring)
+        {
+            stopDuckingFade();
+            const QList<DuckingSnapshot> restore = m_duckingSnapshot;
+            clearDuckingState();
+            restoreDuckingSnapshot(restore);
+        }
+        else
+        {
+            applyDuckingFadeLevels(1.0);
+            stopDuckingFade();
         }
         return;
     }
 
+    applyDuckingFadeLevels(progress);
+}
+
+void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume, int fadeOutMs,
+                               int fadeInMs)
+{
+    if (m_stopping || keepApp.isEmpty()) return;
+
+    duckVolume = std::clamp(duckVolume, 0.0, 1.0);
+    fadeOutMs = std::clamp(fadeOutMs, 0, 5000);
+    fadeInMs = std::clamp(fadeInMs, 0, 5000);
+    const QList<AppAlias> aliases = currentAliases();
+
+    auto snapshotChannels = [](const DuckingSnapshot& s) -> QList<double>
+    {
+        if (!s.visibleChannelVolumes.isEmpty()) return s.visibleChannelVolumes;
+        if (s.pulseChannelVolume.channels > 0)
+            return pabackend::channelVolumesFromPulse(s.pulseChannelVolume);
+        return {};
+    };
+
+    // Case 1: Currently ducked (steady or fading toward ducked) → restore.
+    if (m_duckingActive)
+    {
+        if (fadeInMs <= 0)
+        {
+            stopDuckingFade();
+            const QList<DuckingSnapshot> restore = m_duckingSnapshot;
+            clearDuckingState();
+            restoreDuckingSnapshot(restore);
+            return;
+        }
+
+        QList<DuckingFadeEntry> entries;
+        if (m_duckingFading && m_duckingFadingToDucked)
+        {
+            // Cancel fade-out mid-ramp and reverse back to the original snapshot.
+            entries = m_duckingFadeEntries;
+            for (DuckingFadeEntry& e : entries)
+            {
+                const QList<double> targetCh = snapshotChannels(e.snapshot);
+                e.startChannels = !e.currentChannels.isEmpty()
+                                      ? e.currentChannels
+                                      : QList<double>(targetCh.size(), e.currentVolume);
+                e.targetChannels = targetCh;
+                e.startVolume = e.currentVolume;
+                e.targetVolume = e.snapshot.volume;
+            }
+        }
+        else
+        {
+            entries.reserve(m_duckingSnapshot.size());
+            for (const DuckingSnapshot& s : std::as_const(m_duckingSnapshot))
+            {
+                DuckingFadeEntry e;
+                e.snapshot = s;
+                e.targetChannels = snapshotChannels(s);
+                e.startChannels = QList<double>(e.targetChannels.size(), m_duckingTargetVolume);
+                e.currentChannels = e.startChannels;
+                e.startVolume = m_duckingTargetVolume;
+                e.currentVolume = m_duckingTargetVolume;
+                e.targetVolume = s.volume;
+                entries.append(std::move(e));
+            }
+        }
+
+        stopDuckingFade();
+        m_duckingActive = false;
+        startDuckingFade(std::move(entries), /*fadingToDucked=*/false, fadeInMs);
+        return;
+    }
+
+    // Case 2: Currently fading back in → re-duck smoothly from current level,
+    // preserving the original pre-duck snapshot.
+    if (m_duckingFading && !m_duckingFadingToDucked)
+    {
+        QList<DuckingFadeEntry> entries = m_duckingFadeEntries;
+        stopDuckingFade();
+        m_duckingActive = true;
+        m_duckingKeepApp = keepApp;
+        m_duckingTargetVolume = duckVolume;
+
+        for (DuckingFadeEntry& e : entries)
+        {
+            const QList<double> origCh = snapshotChannels(e.snapshot);
+            e.startChannels = !e.currentChannels.isEmpty()
+                                  ? e.currentChannels
+                                  : QList<double>(origCh.size(), e.currentVolume);
+            e.targetChannels = QList<double>(e.startChannels.size(), duckVolume);
+            e.startVolume = e.currentVolume;
+            e.targetVolume = duckVolume;
+        }
+
+        if (fadeOutMs <= 0)
+        {
+            m_duckingFadeEntries = std::move(entries);
+            applyDuckingFadeLevels(1.0);
+            m_duckingFadeEntries.clear();
+            return;
+        }
+
+        startDuckingFade(std::move(entries), /*fadingToDucked=*/true, fadeOutMs);
+        return;
+    }
+
+    // Case 3: Fresh duck activation.
     doListApps(/*forceRefresh=*/true);
 
     QList<DuckingSnapshot> snapshot;
@@ -588,8 +841,11 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
 
             handledApps.insert(entry.app.toLower());
             const bool needsWrite = qAbs(entry.volume - duckVolume) > 0.0001 || hasHiddenMultiplier;
-            if (needsWrite && setActiveStreamVisibleVolume(input, duckVolume))
-                snapshot.append(std::move(entry));
+            if (needsWrite)
+            {
+                if (fadeOutMs > 0 || setActiveStreamVisibleVolume(input, duckVolume))
+                    snapshot.append(std::move(entry));
+            }
         }
     }
 
@@ -628,10 +884,13 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
                            static_cast<double>(entry.visibleChannelVolumes.size());
             const bool needsWrite =
                 qAbs(entry.volume - duckVolume) > 0.0001 || node.hasHiddenVolumeMultiplier();
-            if (needsWrite &&
-                m_backend->pwSetVisibleVolume(
-                    node.id, duckVolume, std::max(1, static_cast<int>(node.channelVolumes.size()))))
-                snapshot.append(std::move(entry));
+            if (needsWrite)
+            {
+                if (fadeOutMs > 0 || m_backend->pwSetVisibleVolume(
+                                         node.id, duckVolume,
+                                         std::max(1, static_cast<int>(node.channelVolumes.size()))))
+                    snapshot.append(std::move(entry));
+            }
         }
 
         if (!handledNode)
@@ -650,8 +909,8 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
             }
             if (qAbs(entry.volume - duckVolume) > 0.0001)
             {
-                snapshot.append(entry);
-                setAppVolume(entry.app, duckVolume);
+                if (fadeOutMs <= 0) setAppVolume(entry.app, duckVolume);
+                snapshot.append(std::move(entry));
             }
         }
     }
@@ -660,7 +919,27 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
 
     m_duckingActive = true;
     m_duckingKeepApp = keepApp;
+    m_duckingTargetVolume = duckVolume;
     m_duckingSnapshot = std::move(snapshot);
+
+    if (fadeOutMs > 0)
+    {
+        QList<DuckingFadeEntry> entries;
+        entries.reserve(m_duckingSnapshot.size());
+        for (const DuckingSnapshot& s : std::as_const(m_duckingSnapshot))
+        {
+            DuckingFadeEntry e;
+            e.snapshot = s;
+            e.startChannels = snapshotChannels(s);
+            e.targetChannels = QList<double>(e.startChannels.size(), duckVolume);
+            e.currentChannels = e.startChannels;
+            e.startVolume = s.volume;
+            e.currentVolume = s.volume;
+            e.targetVolume = duckVolume;
+            entries.append(std::move(e));
+        }
+        startDuckingFade(std::move(entries), /*fadingToDucked=*/true, fadeOutMs);
+    }
 }
 
 void PaWorker::doQueryVolume(const QString& appName, bool silent)
@@ -1409,6 +1688,7 @@ void PaWorker::removePendingMute(const QString& app)
 
 void PaWorker::clearDuckingState()
 {
+    stopDuckingFade();
     m_duckingActive = false;
     m_duckingKeepApp.clear();
     m_duckingSnapshot.clear();

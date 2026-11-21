@@ -219,6 +219,8 @@ QJsonObject Config::defaultJson()
              {QStringLiteral("enabled"), false},
              {QStringLiteral("volume"), 25},
              {QStringLiteral("hotkey"), 0},
+             {QStringLiteral("fade_out_ms"), 0},
+             {QStringLiteral("fade_in_ms"), 0},
          }},
         {QStringLiteral("vol_min"), 0},
         {QStringLiteral("vol_max"), 100},
@@ -371,6 +373,8 @@ QJsonObject Config::profileToJson(const Profile& p)
              {QStringLiteral("enabled"), p.ducking.enabled},
              {QStringLiteral("volume"), std::clamp(p.ducking.volume, 0, 100)},
              {QStringLiteral("hotkey"), bindingToJson(p.ducking.hotkey)},
+             {QStringLiteral("fade_out_ms"), std::clamp(p.ducking.fadeOutMs, 0, 5000)},
+             {QStringLiteral("fade_in_ms"), std::clamp(p.ducking.fadeInMs, 0, 5000)},
          }},
         {QStringLiteral("auto_switch"), p.autoSwitch},
         {QStringLiteral("vol_min"), std::clamp(p.volMin, 0, 100)},
@@ -412,6 +416,8 @@ Profile Config::profileFromJson(const QJsonObject& o)
     p.ducking.enabled = duck[QStringLiteral("enabled")].toBool(false);
     p.ducking.volume = std::clamp(duck[QStringLiteral("volume")].toInt(25), 0, 100);
     p.ducking.hotkey = bindingFromJson(duck[QStringLiteral("hotkey")], 0);
+    p.ducking.fadeOutMs = std::clamp(duck[QStringLiteral("fade_out_ms")].toInt(0), 0, 5000);
+    p.ducking.fadeInMs = std::clamp(duck[QStringLiteral("fade_in_ms")].toInt(0), 0, 5000);
     p.autoSwitch = o[QStringLiteral("auto_switch")].toBool(true);
     p.volMin = std::clamp(o[QStringLiteral("vol_min")].toInt(0), 0, 100);
     p.volMax = std::clamp(o[QStringLiteral("vol_max")].toInt(100), 0, 100);
@@ -554,6 +560,8 @@ void Config::migrateLegacyToProfilesUnlocked()
              {QStringLiteral("enabled"), false},
              {QStringLiteral("volume"), 25},
              {QStringLiteral("hotkey"), 0},
+             {QStringLiteral("fade_out_ms"), 0},
+             {QStringLiteral("fade_in_ms"), 0},
          }},
         {QStringLiteral("auto_switch"), true},
     };
@@ -1179,6 +1187,8 @@ void Config::setProfiles(const QList<Profile>& profiles)
         while (seen.contains(p.id)) p.id = base + QStringLiteral("-") + QString::number(suffix++);
         seen.insert(p.id);
         p.ducking.volume = std::clamp(p.ducking.volume, 0, 100);
+        p.ducking.fadeOutMs = std::clamp(p.ducking.fadeOutMs, 0, 5000);
+        p.ducking.fadeInMs = std::clamp(p.ducking.fadeInMs, 0, 5000);
         if (!p.ducking.hotkey.isAssigned()) p.ducking.hotkey = {};
         p.volMin = std::clamp(p.volMin, 0, 100);
         p.volMax = std::clamp(p.volMax, 0, 100);
