@@ -13,13 +13,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Pliki:** `cpp/src/windowtracker.h/cpp`, zmiany w `cpp/src/main.cpp`, `cpp/src/config.{h,cpp}`, `cpp/src/settingsdialog.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/CMakeLists.txt`.
 **Status:** Częściowo zrealizowane. `WindowTracker` obsługuje X11/XWayland oraz Wayland na kompozytorach udostępniających `zwlr_foreign_toplevel_manager_v1` (zob. #29). Automatyczne przełączanie jest konfigurowane globalnie i per profil. Na pozostałych kompozytorach zależy od dostępności XWayland; szersza obsługa pozostaje otwarta.
 
-### 20. Relatywne pozycjonowanie OSD (Anchor) oraz Custom CSS
-
-**Problem:** Sztywne współrzędne X/Y dla OSD psują się przy przepinaniu monitorów, stacjach dokujących lub zmianach rozdzielczości na laptopie. Hardkodowany wygląd OSD nie pasuje do wszystkich ricingów.
-**Rekomendacja:** Zastąpienie X/Y kotwicami (np. `anchor: "bottom-right", margin: 20`) oraz rozważenie zewnętrznego motywu OSD. Tło przezroczystego okna jest rysowane ręcznie, więc sam Qt Stylesheet nie wystarczy do jego stylizacji.
-**Pliki:** `cpp/src/config.cpp`, `cpp/src/osdwindow.cpp`, `cpp/src/settingsdialog.cpp`.
-**Status:** Planowane.
-
 ## Zrealizowane
 
 ### 1. Paczkowanie i dystrybucja (PKGBUILD + CPack)
@@ -117,6 +110,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 19. Wbudowane CLI (Sub-komendy dla skryptów / Tiling WM)
 
 **Status:** Zrealizowane. `kv-ctl` używa istniejącego endpointu `org.keyboardvolumeapp.VolumeControl`, obsługuje komendy `up/down/mute/refresh/get/set`, mapuje profile na metody per-profile i ma testowany parser argumentów bez potrzeby uruchamiania D-Bus.
+
+### 20. Relatywne pozycjonowanie OSD (Anchor) oraz Custom CSS
+
+**Status:** Zrealizowane. Dodano tryb kotwicowy `osd.anchor` (`custom` + 9 kotwic ekranu) i `margin_x`/`margin_y` (z fallbackiem skalaru `margin`), wspierany natywnie przez `LayerShellQt::Window` na Waylandzie oraz przez `computeAnchoredOsdPos()` + sygnały `screenAdded`/`screenRemoved` na X11/XWayland. Dodano opcjonalny zewnętrzny arkusz stylów `osd.custom_css_path` z tokenami `Q_PROPERTY` (`qproperty-panelBackground`, `qproperty-panelBorderColor`, `qproperty-panelBorderWidth`, `qproperty-panelRadius`) czytanymi przez `OSDWindow::paintEvent()`, kontrolki w `SettingsDialog` oraz testy w `test_config` i `test_osdwindow`.
 
 ### 21. Sceny audio / Mixer Presets
 

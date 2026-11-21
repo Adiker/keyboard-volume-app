@@ -2114,3 +2114,43 @@ TEST(ConfigAppCycleHotkeys, DefaultUnassignedAndRoundTrip)
     EXPECT_EQ(reloaded.defaultProfile().hotkeys.nextApp, HotkeyBinding::key(KEY_PAGEDOWN));
     EXPECT_EQ(reloaded.defaultProfile().hotkeys.prevApp, HotkeyBinding::relative(REL_HWHEEL, -1));
 }
+
+TEST(ConfigOsdAnchorAndCss, DefaultsRoundTripSanitizationAndMarginFallback)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    {
+        Config config(tmp.path());
+        const OsdConfig def = config.osd();
+        EXPECT_EQ(def.anchor, QStringLiteral("custom"));
+        EXPECT_EQ(def.marginX, 20);
+        EXPECT_EQ(def.marginY, 20);
+        EXPECT_TRUE(def.customCssPath.isEmpty());
+
+        OsdConfig updated = def;
+        updated.anchor = QStringLiteral("bottom-right");
+        updated.marginX = 32;
+        updated.marginY = 2000; // clamps to 1000
+        updated.customCssPath = QStringLiteral("/tmp/custom-osd.qss");
+        config.setOsd(updated);
+
+        Config reloaded(tmp.path());
+        const OsdConfig loaded = reloaded.osd();
+        EXPECT_EQ(loaded.anchor, QStringLiteral("bottom-right"));
+        EXPECT_EQ(loaded.marginX, 32);
+        EXPECT_EQ(loaded.marginY, 1000);
+        EXPECT_EQ(loaded.customCssPath, QStringLiteral("/tmp/custom-osd.qss"));
+    }
+
+    // Scalar `osd.margin` shorthand fallback + invalid anchor normalization.
+    QFile f(QDir(tmp.path()).filePath(QStringLiteral("config.json")));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(R"({"osd":{"anchor":"diagonal-mars","margin":44}})");
+    f.close();
+
+    Config fallbackCfg(tmp.path());
+    const OsdConfig loaded = fallbackCfg.osd();
+    EXPECT_EQ(loaded.anchor, QStringLiteral("custom"));
+    EXPECT_EQ(loaded.marginX, 44);
+    EXPECT_EQ(loaded.marginY, 44);
+}

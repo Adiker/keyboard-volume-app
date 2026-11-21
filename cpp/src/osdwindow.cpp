@@ -10,6 +10,7 @@
 
 #include <QApplication>
 #include <QEnterEvent>
+#include <QFile>
 #include <QFont>
 #include <QLabel>
 #include <QHideEvent>
@@ -21,11 +22,113 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPainter>
+#include <QPen>
 #include <QScreen>
+#include <QStyle>
 #include <QWindow>
 #include <QPaintEvent>
 
 #include <cmath>
+
+std::optional<QPoint> computeAnchoredOsdPos(const QRect& avail, const QSize& osdSize,
+                                            const QString& anchor, int marginX, int marginY)
+{
+    const QString norm = anchor.trimmed().toLower();
+    if (norm.isEmpty() || norm == QLatin1String("custom")) return std::nullopt;
+
+    const int w = std::max(0, osdSize.width());
+    const int h = std::max(0, osdSize.height());
+    const int mx = std::max(0, marginX);
+    const int my = std::max(0, marginY);
+
+    int x;
+    int y;
+
+    if (norm == QLatin1String("top-left"))
+    {
+        x = avail.left() + mx;
+        y = avail.top() + my;
+    }
+    else if (norm == QLatin1String("top-center"))
+    {
+        x = avail.left() + (avail.width() - w) / 2;
+        y = avail.top() + my;
+    }
+    else if (norm == QLatin1String("top-right"))
+    {
+        x = avail.right() - w + 1 - mx;
+        y = avail.top() + my;
+    }
+    else if (norm == QLatin1String("center-left"))
+    {
+        x = avail.left() + mx;
+        y = avail.top() + (avail.height() - h) / 2;
+    }
+    else if (norm == QLatin1String("center"))
+    {
+        x = avail.left() + (avail.width() - w) / 2;
+        y = avail.top() + (avail.height() - h) / 2;
+    }
+    else if (norm == QLatin1String("center-right"))
+    {
+        x = avail.right() - w + 1 - mx;
+        y = avail.top() + (avail.height() - h) / 2;
+    }
+    else if (norm == QLatin1String("bottom-left"))
+    {
+        x = avail.left() + mx;
+        y = avail.bottom() - h + 1 - my;
+    }
+    else if (norm == QLatin1String("bottom-center"))
+    {
+        x = avail.left() + (avail.width() - w) / 2;
+        y = avail.bottom() - h + 1 - my;
+    }
+    else if (norm == QLatin1String("bottom-right"))
+    {
+        x = avail.right() - w + 1 - mx;
+        y = avail.bottom() - h + 1 - my;
+    }
+    else
+    {
+        return std::nullopt;
+    }
+
+    const int maxX = std::max(avail.left(), avail.right() - w + 1);
+    const int maxY = std::max(avail.top(), avail.bottom() - h + 1);
+    return QPoint(std::clamp(x, avail.left(), maxX), std::clamp(y, avail.top(), maxY));
+}
+
+namespace
+{
+
+constexpr qint64 kMaxCustomCssBytes = 256LL * 1024LL;
+
+QString loadCustomOsdCss(const QString& path)
+{
+    const QString trimmed = path.trimmed();
+    if (trimmed.isEmpty()) return {};
+
+    QFile file(trimmed);
+    if (!file.exists())
+    {
+        qWarning() << "[OSDWindow] Custom CSS file not found:" << trimmed;
+        return {};
+    }
+    if (file.size() > kMaxCustomCssBytes)
+    {
+        qWarning() << "[OSDWindow] Custom CSS file exceeds 256 KB limit:" << trimmed;
+        return {};
+    }
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        qWarning() << "[OSDWindow] Cannot read custom CSS file:" << trimmed << file.errorString();
+        return {};
+    }
+    return QString::fromUtf8(file.readAll());
+}
+
+} // namespace
 
 static bool progressDebugEnabled()
 {
@@ -179,6 +282,20 @@ OSDWindow::OSDWindow(Config* config, QWidget* parent) : QWidget(parent), m_confi
     m_mediaControlsEnabled = osd.mediaControlsEnabled;
     setProgressEnabled(osd.progressEnabled);
     setPositionControlsEnabled(osd.positionControlsEnabled);
+
+    if (auto* app = qobject_cast<QGuiApplication*>(QCoreApplication::instance()))
+    {
+        auto repositionIfVisible = [this]()
+        {
+            if (isVisible() && !m_moving && !m_resizing && !m_previewMode)
+            {
+                auto [ax, ay] = absPos();
+                positionWindow(ax, ay, /*showWindow=*/false);
+            }
+        };
+        connect(app, &QGuiApplication::screenAdded, this, repositionIfVisible);
+        connect(app, &QGuiApplication::screenRemoved, this, repositionIfVisible);
+    }
 }
 
 void OSDWindow::buildUi()
@@ -330,6 +447,7 @@ void OSDWindow::buildUi()
 void OSDWindow::applyStyles()
 {
     OsdConfig osd = m_config->osd();
+    m_customCss = loadCustomOsdCss(osd.customCssPath);
     applyColorStyles(osd.colorBg, osd.colorText, osd.colorBar, osd.opacity);
 }
 
@@ -371,7 +489,14 @@ void OSDWindow::applyScaleFonts()
     const QString& text = m_cachedStyleText;
     const QString& bar = m_cachedStyleBar;
 
-    setStyleSheet(
+    // Reset custom QSS panel tokens before re-applying stylesheet so removing
+    // or editing a rule falls back cleanly to the built-in colors and radius.
+    m_panelBackground = QColor();
+    m_panelBorderColor = QColor();
+    m_panelBorderWidth = 0;
+    m_panelRadius = -1;
+
+    QString rootStyle =
         QStringLiteral(
             "QLabel { color: #%1; background: transparent; }"
             "QLabel#name_label  { font-size: %3pt; font-weight: bold; font-family: 'Noto Sans', "
@@ -388,7 +513,18 @@ void OSDWindow::applyScaleFonts()
             .arg(ptName)
             .arg(ptPct)
             .arg(ptTrack)
-            .arg(ptTime));
+            .arg(ptTime);
+    if (!m_customCss.isEmpty())
+    {
+        rootStyle.append(QLatin1Char('\n'));
+        rootStyle.append(m_customCss);
+    }
+    setStyleSheet(rootStyle);
+    if (QStyle* st = style())
+    {
+        st->unpolish(this);
+        st->polish(this);
+    }
 
     m_labelName->setStyleSheet(
         QStringLiteral("font-size: %2pt; font-weight: bold; color: #%1; background: transparent;")
@@ -496,10 +632,22 @@ void OSDWindow::paintEvent(QPaintEvent* event)
 {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(Qt::NoPen);
-    painter.setBrush(m_bgColor);
-    const QRect bg = m_panel ? m_panel->geometry() : rect();
-    painter.drawRoundedRect(bg, scaled(8), scaled(8));
+    const QColor fillColor = m_panelBackground.isValid() ? m_panelBackground : m_bgColor;
+    const qreal radius =
+        m_panelRadius >= 0 ? static_cast<qreal>(m_panelRadius) : static_cast<qreal>(scaled(8));
+    QRectF bg(m_panel ? m_panel->geometry() : rect());
+    if (m_panelBorderWidth > 0 && m_panelBorderColor.isValid())
+    {
+        const qreal inset = static_cast<qreal>(m_panelBorderWidth) / 2.0;
+        bg.adjust(inset, inset, -inset, -inset);
+        painter.setPen(QPen(m_panelBorderColor, static_cast<qreal>(m_panelBorderWidth)));
+    }
+    else
+    {
+        painter.setPen(Qt::NoPen);
+    }
+    painter.setBrush(fillColor);
+    painter.drawRoundedRect(bg, radius, radius);
     QWidget::paintEvent(event);
     if (m_dragOverlayActive && !m_dragOverlayFrameRequested && windowHandle())
     {
@@ -733,12 +881,18 @@ void OSDWindow::initLayerShell()
 
 std::pair<int, int> OSDWindow::absPos() const
 {
-    OsdConfig osd = m_config->osd();
-    QList<QScreen*> screens = QApplication::screens();
+    const OsdConfig osd = m_config->osd();
+    const QList<QScreen*> screens = QApplication::screens();
     if (screens.isEmpty()) return {osd.x, osd.y};
     int idx = osd.screen;
-    if (idx >= screens.size()) idx = 0;
-    QRect geo = screens[idx]->geometry();
+    if (idx < 0 || idx >= screens.size()) idx = 0;
+    if (const auto anchored =
+            computeAnchoredOsdPos(screens[idx]->availableGeometry(), QSize(osdWidth(), osdHeight()),
+                                  osd.anchor, osd.marginX, osd.marginY))
+    {
+        return {anchored->x(), anchored->y()};
+    }
+    const QRect geo = screens[idx]->geometry();
     return {geo.x() + osd.x, geo.y() + osd.y};
 }
 
@@ -789,9 +943,14 @@ QPoint OSDWindow::layerShellAbsolutePos() const
 #ifdef HAVE_LAYER_SHELL_QT
     if (m_layerShellActive && m_lsWindow && m_lsScreen)
     {
-        const QMargins margins = m_lsWindow->margins();
-        const QRect geo = m_lsScreen->geometry();
-        return geo.topLeft() + QPoint(margins.left(), margins.top());
+        const auto topLeft = LayerShellQt::Window::Anchors(LayerShellQt::Window::AnchorTop |
+                                                           LayerShellQt::Window::AnchorLeft);
+        if (m_lsWindow->anchors() == topLeft)
+        {
+            const QMargins margins = m_lsWindow->margins();
+            const QRect geo = m_lsScreen->geometry();
+            return geo.topLeft() + QPoint(margins.left(), margins.top());
+        }
     }
 #endif
     return m_currentAbsPos;
@@ -818,15 +977,54 @@ void OSDWindow::positionWindow(int absX, int absY, bool showWindow)
             m_lsScreen = screen;
         }
 
-        int relX = x;
-        int relY = y;
-        if (screen)
+        const OsdConfig osd = m_config->osd();
+        const QString anchor = osd.anchor.trimmed().toLower();
+        const bool useNativeAnchor = !m_previewMode && !m_resizing && !m_moving &&
+                                     !anchor.isEmpty() && anchor != QLatin1String("custom");
+        if (useNativeAnchor)
         {
-            const QRect geo = screen->geometry();
-            relX = x - geo.x();
-            relY = y - geo.y();
+            LayerShellQt::Window::Anchors anchors;
+            int left = 0;
+            int top = 0;
+            int right = 0;
+            int bottom = 0;
+            if (anchor.startsWith(QLatin1String("top")))
+            {
+                anchors |= LayerShellQt::Window::AnchorTop;
+                top = osd.marginY;
+            }
+            else if (anchor.startsWith(QLatin1String("bottom")))
+            {
+                anchors |= LayerShellQt::Window::AnchorBottom;
+                bottom = osd.marginY;
+            }
+            if (anchor.endsWith(QLatin1String("left")))
+            {
+                anchors |= LayerShellQt::Window::AnchorLeft;
+                left = osd.marginX;
+            }
+            else if (anchor.endsWith(QLatin1String("right")))
+            {
+                anchors |= LayerShellQt::Window::AnchorRight;
+                right = osd.marginX;
+            }
+            m_lsWindow->setAnchors(anchors);
+            m_lsWindow->setMargins(QMargins(left, top, right, bottom));
         }
-        m_lsWindow->setMargins(QMargins(relX, relY, 0, 0));
+        else
+        {
+            m_lsWindow->setAnchors(LayerShellQt::Window::Anchors(LayerShellQt::Window::AnchorTop |
+                                                                 LayerShellQt::Window::AnchorLeft));
+            int relX = x;
+            int relY = y;
+            if (screen)
+            {
+                const QRect geo = screen->geometry();
+                relX = x - geo.x();
+                relY = y - geo.y();
+            }
+            m_lsWindow->setMargins(QMargins(relX, relY, 0, 0));
+        }
 
         if (showWindow && !m_resizing)
         {
@@ -1261,6 +1459,7 @@ void OSDWindow::persistPosition(const QPoint& absPos)
     if (screenIdx < 0 || screenIdx >= screens.size()) screenIdx = 0;
 
     osd.screen = screenIdx;
+    osd.anchor = QStringLiteral("custom");
     if (screenIdx >= 0 && screenIdx < screens.size())
     {
         const QRect geo = screens[screenIdx]->geometry();

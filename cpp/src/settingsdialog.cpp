@@ -465,7 +465,48 @@ void SettingsDialog::buildUi()
     m_timeout->setValue(osd.timeoutMs);
     form->addRow(::tr(QStringLiteral("settings.osd_timeout")), m_timeout);
 
-    // OSD position (relative to selected screen)
+    // OSD anchor (relative screen positioning vs custom X/Y)
+    m_osdAnchor = new QComboBox(this);
+    m_osdAnchor->addItem(::tr(QStringLiteral("settings.osd_anchor.custom")),
+                         QStringLiteral("custom"));
+    m_osdAnchor->addItem(::tr(QStringLiteral("settings.osd_anchor.top_left")),
+                         QStringLiteral("top-left"));
+    m_osdAnchor->addItem(::tr(QStringLiteral("settings.osd_anchor.top_center")),
+                         QStringLiteral("top-center"));
+    m_osdAnchor->addItem(::tr(QStringLiteral("settings.osd_anchor.top_right")),
+                         QStringLiteral("top-right"));
+    m_osdAnchor->addItem(::tr(QStringLiteral("settings.osd_anchor.center_left")),
+                         QStringLiteral("center-left"));
+    m_osdAnchor->addItem(::tr(QStringLiteral("settings.osd_anchor.center")),
+                         QStringLiteral("center"));
+    m_osdAnchor->addItem(::tr(QStringLiteral("settings.osd_anchor.center_right")),
+                         QStringLiteral("center-right"));
+    m_osdAnchor->addItem(::tr(QStringLiteral("settings.osd_anchor.bottom_left")),
+                         QStringLiteral("bottom-left"));
+    m_osdAnchor->addItem(::tr(QStringLiteral("settings.osd_anchor.bottom_center")),
+                         QStringLiteral("bottom-center"));
+    m_osdAnchor->addItem(::tr(QStringLiteral("settings.osd_anchor.bottom_right")),
+                         QStringLiteral("bottom-right"));
+    if (const int anchorIdx = m_osdAnchor->findData(osd.anchor); anchorIdx >= 0)
+        m_osdAnchor->setCurrentIndex(anchorIdx);
+    form->addRow(::tr(QStringLiteral("settings.osd_anchor")), m_osdAnchor);
+
+    m_osdMarginX = new QSpinBox(this);
+    m_osdMarginX->setRange(0, 1000);
+    m_osdMarginX->setSuffix(QStringLiteral(" px"));
+    m_osdMarginX->setPrefix(QStringLiteral("X: "));
+    m_osdMarginX->setValue(osd.marginX);
+    m_osdMarginY = new QSpinBox(this);
+    m_osdMarginY->setRange(0, 1000);
+    m_osdMarginY->setSuffix(QStringLiteral(" px"));
+    m_osdMarginY->setPrefix(QStringLiteral("Y: "));
+    m_osdMarginY->setValue(osd.marginY);
+    auto* marginRow = new QHBoxLayout;
+    marginRow->addWidget(m_osdMarginX);
+    marginRow->addWidget(m_osdMarginY);
+    form->addRow(::tr(QStringLiteral("settings.osd_margin")), marginRow);
+
+    // OSD position (relative to selected screen, active in custom anchor mode)
     m_osdX = new QSpinBox(this);
     m_osdX->setRange(0, 7680);
     m_osdX->setValue(osd.x);
@@ -478,6 +519,18 @@ void SettingsDialog::buildUi()
     posRow->addWidget(m_osdX);
     posRow->addWidget(m_osdY);
     form->addRow(::tr(QStringLiteral("settings.osd_position")), posRow);
+
+    auto syncAnchorFields = [this]()
+    {
+        const bool isCustom = m_osdAnchor->currentData().toString() == QLatin1String("custom");
+        m_osdX->setEnabled(isCustom);
+        m_osdY->setEnabled(isCustom);
+        m_osdMarginX->setEnabled(!isCustom);
+        m_osdMarginY->setEnabled(!isCustom);
+    };
+    syncAnchorFields();
+    connect(m_osdAnchor, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [syncAnchorFields](int) { syncAnchorFields(); });
 
     // Volume step
     m_step = new QSpinBox(this);
@@ -512,6 +565,30 @@ void SettingsDialog::buildUi()
     m_osdScale->setSuffix(QStringLiteral("x"));
     m_osdScale->setValue(osd.osdScale);
     form->addRow(::tr(QStringLiteral("settings.osd_scale")), m_osdScale);
+
+    // Custom OSD stylesheet (.qss)
+    m_customCssPath = new QLineEdit(osd.customCssPath, this);
+    m_customCssPath->setPlaceholderText(
+        ::tr(QStringLiteral("settings.osd_custom_css_placeholder")));
+    auto* btnBrowseCss =
+        new QPushButton(::tr(QStringLiteral("settings.osd_custom_css_browse")), this);
+    auto* btnClearCss =
+        new QPushButton(::tr(QStringLiteral("settings.osd_custom_css_clear")), this);
+    connect(btnBrowseCss, &QPushButton::clicked, this,
+            [this]()
+            {
+                const QString chosen = QFileDialog::getOpenFileName(
+                    this, ::tr(QStringLiteral("settings.osd_custom_css_dialog")),
+                    m_customCssPath->text(),
+                    QStringLiteral("Qt Stylesheets (*.qss *.css);;All files (*)"));
+                if (!chosen.isEmpty()) m_customCssPath->setText(chosen);
+            });
+    connect(btnClearCss, &QPushButton::clicked, this, [this]() { m_customCssPath->clear(); });
+    auto* cssRow = new QHBoxLayout;
+    cssRow->addWidget(m_customCssPath, 1);
+    cssRow->addWidget(btnBrowseCss);
+    cssRow->addWidget(btnClearCss);
+    form->addRow(::tr(QStringLiteral("settings.osd_custom_css")), cssRow);
 
     // Auto-switch profile
     m_autoProfile = new QCheckBox(::tr(QStringLiteral("settings.auto_profile_switch")), this);
@@ -1093,6 +1170,10 @@ void SettingsDialog::saveAndAccept()
                                : (mediaOsdMode == QLatin1String("full") ? MediaKeysOsdMode::Full
                                                                         : MediaKeysOsdMode::Off);
     osd.osdScale = std::clamp(m_osdScale->value(), 0.5, 3.0);
+    osd.anchor = m_osdAnchor->currentData().toString();
+    osd.marginX = m_osdMarginX->value();
+    osd.marginY = m_osdMarginY->value();
+    osd.customCssPath = m_customCssPath->text().trimmed();
     osd.positionControlsEnabled = m_positionControlsEnabled->isChecked();
     osd.positionArrowsEnabled = m_positionArrowsEnabled->isChecked();
     osd.positionDragEnabled = m_positionDragEnabled->isChecked();

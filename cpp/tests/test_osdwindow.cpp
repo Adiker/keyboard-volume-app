@@ -875,6 +875,70 @@ TEST(OSDWindowDrag, SeekAndMediaButtonsRemainInteractive)
     EXPECT_FALSE(window.m_resizeUpdateTimer.isActive());
 }
 
+TEST(OSDWindowAnchor, ComputesAllNineAnchorsAndCustomReturnsNullopt)
+{
+    const QRect avail(100, 50, 1920, 1080); // left=100, right=2019, top=50, bottom=1129
+    const QSize sz(220, 70);
+
+    EXPECT_FALSE(computeAnchoredOsdPos(avail, sz, QStringLiteral("custom"), 20, 20).has_value());
+    EXPECT_FALSE(computeAnchoredOsdPos(avail, sz, QStringLiteral("invalid"), 20, 20).has_value());
+
+    EXPECT_EQ(computeAnchoredOsdPos(avail, sz, QStringLiteral("top-left"), 20, 30),
+              QPoint(120, 80));
+    EXPECT_EQ(computeAnchoredOsdPos(avail, sz, QStringLiteral("top-center"), 20, 30),
+              QPoint(100 + (1920 - 220) / 2, 80));
+    EXPECT_EQ(computeAnchoredOsdPos(avail, sz, QStringLiteral("top-right"), 20, 30),
+              QPoint(2019 - 220 + 1 - 20, 80));
+    EXPECT_EQ(computeAnchoredOsdPos(avail, sz, QStringLiteral("center-left"), 20, 30),
+              QPoint(120, 50 + (1080 - 70) / 2));
+    EXPECT_EQ(computeAnchoredOsdPos(avail, sz, QStringLiteral("center"), 20, 30),
+              QPoint(100 + (1920 - 220) / 2, 50 + (1080 - 70) / 2));
+    EXPECT_EQ(computeAnchoredOsdPos(avail, sz, QStringLiteral("center-right"), 20, 30),
+              QPoint(2019 - 220 + 1 - 20, 50 + (1080 - 70) / 2));
+    EXPECT_EQ(computeAnchoredOsdPos(avail, sz, QStringLiteral("bottom-left"), 20, 30),
+              QPoint(120, 1129 - 70 + 1 - 30));
+    EXPECT_EQ(computeAnchoredOsdPos(avail, sz, QStringLiteral("bottom-center"), 20, 30),
+              QPoint(100 + (1920 - 220) / 2, 1129 - 70 + 1 - 30));
+    EXPECT_EQ(computeAnchoredOsdPos(avail, sz, QStringLiteral("bottom-right"), 20, 30),
+              QPoint(2019 - 220 + 1 - 20, 1129 - 70 + 1 - 30));
+}
+
+TEST(OSDWindowCustomCss, AppliesPanelQPropertiesAndFallsBackOnMissingFile)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString cssPath = QDir(tmp.path()).filePath(QStringLiteral("theme.qss"));
+    {
+        QFile f(cssPath);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write("OSDWindow {\n"
+                "  qproperty-panelBackground: #223344;\n"
+                "  qproperty-panelBorderColor: #ff8800;\n"
+                "  qproperty-panelBorderWidth: 2;\n"
+                "  qproperty-panelRadius: 14;\n"
+                "}\n");
+    }
+
+    Config config(tmp.path());
+    OsdConfig osd = config.osd();
+    osd.customCssPath = cssPath;
+    config.setOsd(osd);
+
+    OSDWindow window(&config);
+    EXPECT_EQ(window.panelBackground(), QColor(QStringLiteral("#223344")));
+    EXPECT_EQ(window.panelBorderColor(), QColor(QStringLiteral("#ff8800")));
+    EXPECT_EQ(window.panelBorderWidth(), 2);
+    EXPECT_EQ(window.panelRadius(), 14);
+
+    // Pointing to a missing file resets tokens cleanly without crashing.
+    osd.customCssPath = QDir(tmp.path()).filePath(QStringLiteral("missing.qss"));
+    config.setOsd(osd);
+    window.reloadStyles();
+    EXPECT_FALSE(window.panelBackground().isValid());
+    EXPECT_EQ(window.panelBorderWidth(), 0);
+    EXPECT_EQ(window.panelRadius(), -1);
+}
+
 int main(int argc, char** argv)
 {
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))

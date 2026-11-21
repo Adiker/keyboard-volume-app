@@ -135,6 +135,19 @@ QString normalizeLabelMode(const QString& raw)
     return validLabelModes().contains(raw) ? raw : QStringLiteral("app");
 }
 
+QString normalizeOsdAnchor(const QString& raw)
+{
+    const QString lower = raw.trimmed().toLower();
+    static const QStringList kAnchors = {
+        QStringLiteral("custom"),        QStringLiteral("top-left"),
+        QStringLiteral("top-center"),    QStringLiteral("top-right"),
+        QStringLiteral("center-left"),   QStringLiteral("center"),
+        QStringLiteral("center-right"),  QStringLiteral("bottom-left"),
+        QStringLiteral("bottom-center"), QStringLiteral("bottom-right"),
+    };
+    return kAnchors.contains(lower) ? lower : QStringLiteral("custom");
+}
+
 QString mediaKeysOsdModeToString(MediaKeysOsdMode mode)
 {
     switch (mode)
@@ -239,6 +252,10 @@ QJsonObject Config::defaultJson()
              {QStringLiteral("screen"), 0},
              {QStringLiteral("x"), 50},
              {QStringLiteral("y"), 1150},
+             {QStringLiteral("anchor"), QStringLiteral("custom")},
+             {QStringLiteral("margin_x"), 20},
+             {QStringLiteral("margin_y"), 20},
+             {QStringLiteral("custom_css_path"), QString{}},
              {QStringLiteral("timeout_ms"), 1200},
              {QStringLiteral("opacity"), 85},
              {QStringLiteral("color_bg"), QStringLiteral("#1A1A1A")},
@@ -622,6 +639,20 @@ Config::Config(const QString& configDir) : m_configDir(configDir)
 bool Config::applyLoadedJsonUnlocked(const QJsonObject& loaded)
 {
     m_data = deepMerge(defaultJson(), loaded);
+    if (loaded.contains(QStringLiteral("osd")) && loaded[QStringLiteral("osd")].isObject())
+    {
+        const QJsonObject loadedOsd = loaded[QStringLiteral("osd")].toObject();
+        if (loadedOsd.contains(QStringLiteral("margin")))
+        {
+            const int m = std::clamp(loadedOsd[QStringLiteral("margin")].toInt(20), 0, 1000);
+            QJsonObject mergedOsd = m_data[QStringLiteral("osd")].toObject();
+            if (!loadedOsd.contains(QStringLiteral("margin_x")))
+                mergedOsd[QStringLiteral("margin_x")] = m;
+            if (!loadedOsd.contains(QStringLiteral("margin_y")))
+                mergedOsd[QStringLiteral("margin_y")] = m;
+            m_data[QStringLiteral("osd")] = mergedOsd;
+        }
+    }
     // If the loaded file had no "profiles" key, deepMerge gave us the
     // default profile from defaultJson(). But if it had legacy selected_app +
     // hotkeys with non-default values, those wouldn't be reflected. Also
@@ -1014,6 +1045,11 @@ OsdConfig Config::osd() const
     c.screen = o[QStringLiteral("screen")].toInt(0);
     c.x = o[QStringLiteral("x")].toInt(50);
     c.y = o[QStringLiteral("y")].toInt(1150);
+    c.anchor = normalizeOsdAnchor(o[QStringLiteral("anchor")].toString(QStringLiteral("custom")));
+    const int fallbackMargin = std::clamp(o[QStringLiteral("margin")].toInt(20), 0, 1000);
+    c.marginX = std::clamp(o[QStringLiteral("margin_x")].toInt(fallbackMargin), 0, 1000);
+    c.marginY = std::clamp(o[QStringLiteral("margin_y")].toInt(fallbackMargin), 0, 1000);
+    c.customCssPath = o[QStringLiteral("custom_css_path")].toString().trimmed();
     c.timeoutMs = o[QStringLiteral("timeout_ms")].toInt(1200);
     c.opacity = o[QStringLiteral("opacity")].toInt(85);
     c.colorBg = o[QStringLiteral("color_bg")].toString(QStringLiteral("#1A1A1A"));
@@ -1063,6 +1099,10 @@ void Config::setOsd(const OsdConfig& c)
         {QStringLiteral("screen"), c.screen},
         {QStringLiteral("x"), c.x},
         {QStringLiteral("y"), c.y},
+        {QStringLiteral("anchor"), normalizeOsdAnchor(c.anchor)},
+        {QStringLiteral("margin_x"), std::clamp(c.marginX, 0, 1000)},
+        {QStringLiteral("margin_y"), std::clamp(c.marginY, 0, 1000)},
+        {QStringLiteral("custom_css_path"), c.customCssPath.trimmed()},
         {QStringLiteral("timeout_ms"), c.timeoutMs},
         {QStringLiteral("opacity"), c.opacity},
         {QStringLiteral("color_bg"), c.colorBg},
