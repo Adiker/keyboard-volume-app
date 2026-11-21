@@ -7,6 +7,8 @@
 
 #include <cstdio>
 #include <mutex>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #ifdef HAVE_LIBSYSTEMD
 #define SD_JOURNAL_SUPPRESS_LOCATION
@@ -185,7 +187,20 @@ QString defaultLogFilePath()
 
 bool isRunningUnderJournald()
 {
-    return !qgetenv("JOURNAL_STREAM").isEmpty();
+    const QByteArray stream = qgetenv("JOURNAL_STREAM");
+    if (stream.isEmpty()) return false;
+    const qsizetype colon = stream.indexOf(':');
+    if (colon <= 0) return false;
+    bool devOk = false;
+    bool inoOk = false;
+    const quint64 expectedDev = stream.left(colon).toULongLong(&devOk);
+    const quint64 expectedIno = stream.mid(colon + 1).toULongLong(&inoOk);
+    if (!devOk || !inoOk) return false;
+
+    struct stat st = {};
+    if (::fstat(STDERR_FILENO, &st) != 0) return false;
+    return static_cast<quint64>(st.st_dev) == expectedDev &&
+           static_cast<quint64>(st.st_ino) == expectedIno;
 }
 
 bool hasJournaldSupport()
