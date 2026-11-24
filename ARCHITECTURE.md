@@ -83,7 +83,7 @@ keyboard-volume-app/
 ├── deploy/
 │   └── keyboard-volume-app.service  # systemd user service unit
 ├── .clang-format                # C++ code formatting style guidelines
-└── LICENSE                      # GPL-2.0-or-later
+└── LICENSE                      # GPL-3.0-or-later
 ```
 
 ---
@@ -288,7 +288,7 @@ Modal `QDialog` for changing the default audio application. Opened from the tray
 
 Application-modal, bilingual dialog opened from the tray menu via "About...". The About tab
 shows the embedded app icon, `QApplication::applicationVersion()`, author and project links, and
-the `GPL-2.0-or-later` identifier. The License tab displays the canonical root `LICENSE` file as a
+the `GPL-3.0-or-later` identifier. The License tab displays the canonical root `LICENSE` file as a
 read-only, selectable `:/license.txt` Qt resource, so installed builds retain the complete license
 text without depending on a filesystem or network path. The dialog uses
 `centerDialogOnScreenAt()` for the same multi-monitor placement behavior as other tray dialogs.

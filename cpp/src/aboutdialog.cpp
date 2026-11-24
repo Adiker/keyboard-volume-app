@@ -95,7 +95,7 @@ AboutDialog::AboutDialog(QWidget* parent) : QDialog(parent)
     project->setObjectName(QStringLiteral("aboutProjectLink"));
     details->addRow(::tr(QStringLiteral("about.project")), project);
 
-    auto* licenseId = new QLabel(QStringLiteral("GPL-2.0-or-later"), infoTab);
+    auto* licenseId = new QLabel(QStringLiteral("GPL-3.0-or-later"), infoTab);
     licenseId->setObjectName(QStringLiteral("aboutLicenseId"));
     licenseId->setTextInteractionFlags(Qt::TextSelectableByMouse);
     details->addRow(::tr(QStringLiteral("about.license")), licenseId);

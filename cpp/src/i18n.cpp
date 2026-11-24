@@ -30,7 +30,7 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("about.license"), QStringLiteral("License:")},
              {QStringLiteral("about.license_summary"),
               QStringLiteral("This program is distributed under the GNU General Public License, "
-                             "version 2 or any later version. The complete license text is "
+                             "version 3 or any later version. The complete license text is "
                              "included below.")},
              {QStringLiteral("about.license_load_error"),
               QStringLiteral("The embedded license text could not be loaded.")},
@@ -342,7 +342,7 @@ static const QMap<QString, QMap<QString, QString>>& strings()
              {QStringLiteral("about.license"), QStringLiteral("Licencja:")},
              {QStringLiteral("about.license_summary"),
               QStringLiteral("Ten program jest rozpowszechniany na warunkach GNU General Public "
-                             "License w wersji 2 lub dowolnej p\u00f3\u017aniejszej. Pe\u0142ny "
+                             "License w wersji 3 lub dowolnej p\u00f3\u017aniejszej. Pe\u0142ny "
                              "tekst licencji "
                              "znajduje si\u0119 poni\u017cej.")},
              {QStringLiteral("about.license_load_error"),
