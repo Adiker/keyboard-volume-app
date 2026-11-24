@@ -124,4 +124,4 @@ i oznaczona tagiem [`python-last`](https://github.com/Adiker/keyboard-volume-app
 
 ## Licencja
 
-[GPL-2.0-or-later](LICENSE)
+[GPL-3.0-or-later](LICENSE)

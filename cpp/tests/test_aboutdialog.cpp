@@ -65,13 +65,13 @@ TEST(AboutDialog, ShowsEnglishProjectInformation)
 
     auto* licenseId = requiredChild<QLabel>(dialog, "aboutLicenseId");
     ASSERT_NE(licenseId, nullptr);
-    EXPECT_EQ(licenseId->text(), QStringLiteral("GPL-2.0-or-later"));
+    EXPECT_EQ(licenseId->text(), QStringLiteral("GPL-3.0-or-later"));
 
     auto* licenseText = requiredChild<QPlainTextEdit>(dialog, "aboutLicenseText");
     ASSERT_NE(licenseText, nullptr);
     EXPECT_TRUE(licenseText->isReadOnly());
     EXPECT_TRUE(licenseText->toPlainText().contains(QStringLiteral("GNU GENERAL PUBLIC LICENSE")));
-    EXPECT_TRUE(licenseText->toPlainText().contains(QStringLiteral("Version 2, June 1991")));
+    EXPECT_TRUE(licenseText->toPlainText().contains(QStringLiteral("Version 3, 29 June 2007")));
 
     auto* closeButton = requiredChild<QPushButton>(dialog, "aboutCloseButton");
     ASSERT_NE(closeButton, nullptr);
