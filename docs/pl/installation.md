@@ -111,9 +111,12 @@ stanu diod klawiatury:
 sudo usermod -aG input "$USER"
 ```
 
-Po zmianie grupy wyloguj się i zaloguj ponownie. Kreator pierwszego uruchomienia
-filtruje urządzenia do klawiatur zgłaszających np. `KEY_VOLUMEUP` i
-`KEY_VOLUMEDOWN`.
+> [!IMPORTANT]
+> Po zmianie grupy wyloguj się i zaloguj ponownie przed uruchomieniem aplikacji,
+> inaczej nowe członkostwo w grupie `input` nie zostanie zastosowane.
+
+Kreator pierwszego uruchomienia filtruje urządzenia do klawiatur zgłaszających
+np. `KEY_VOLUMEUP` i `KEY_VOLUMEDOWN`.
 
 ## Uruchamianie i autostart
 
@@ -162,10 +165,14 @@ a compositor udostępnia `zwlr_layer_shell_v1`, OSD używa natywnego
 pozycjonowania layer-shell. Pozostałe okna nadal są zwykłymi oknami Qt.
 
 Na GNOME i compositorach bez tego protokołu, przy nieustawionym
-`QT_QPA_PLATFORM`, używany jest fallback XWayland (`xcb`). Nie ustawiaj
-globalnie `QT_WAYLAND_SHELL_INTEGRATION=layer-shell`, bo zmieniłoby to także
-dialogi i pozostałe okna. Zmiana rozmiaru OSD jest obsługiwana wewnątrz aplikacji
-i działa na obu ścieżkach.
+`QT_QPA_PLATFORM`, używany jest fallback XWayland (`xcb`).
+
+> [!WARNING]
+> Nie ustawiaj globalnie `QT_WAYLAND_SHELL_INTEGRATION=layer-shell`, bo
+> zmieniłoby to także dialogi i pozostałe okna.
+
+Zmiana rozmiaru OSD jest obsługiwana wewnątrz aplikacji i działa na obu
+ścieżkach.
 
 Przełączanie profili według aktywnego okna używa skryptu KWin na KDE Wayland,
 następnie protokołu `zwlr_foreign_toplevel_management_unstable_v1`, jeśli jest

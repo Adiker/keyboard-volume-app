@@ -113,9 +113,12 @@ LED state synchronized. Add the user to the `input` group:
 sudo usermod -aG input "$USER"
 ```
 
-Log out and in again before starting the app. The first-run wizard filters
-devices to keyboards that advertise volume keys such as `KEY_VOLUMEUP` and
-`KEY_VOLUMEDOWN`.
+> [!IMPORTANT]
+> Log out and in again before starting the app, otherwise the new `input` group
+> membership is not applied.
+
+The first-run wizard filters devices to keyboards that advertise volume keys
+such as `KEY_VOLUMEUP` and `KEY_VOLUMEDOWN`.
 
 ## Start and autostart
 
@@ -166,10 +169,13 @@ Qt windows.
 
 On GNOME or another compositor without the protocol, an unset
 `QT_QPA_PLATFORM` allows the app to use the XWayland (`xcb`) fallback so OSD
-positioning continues to work. Do not set
-`QT_WAYLAND_SHELL_INTEGRATION=layer-shell` globally: that would affect dialogs
-and other windows as well. OSD edge/corner resizing is implemented inside the
-app and works on both paths.
+positioning continues to work.
+
+> [!WARNING]
+> Do not set `QT_WAYLAND_SHELL_INTEGRATION=layer-shell` globally: that would
+> affect dialogs and other windows as well.
+
+OSD edge/corner resizing is implemented inside the app and works on both paths.
 
 Focused-window profile switching uses a KWin script on KDE Wayland, then the
 `zwlr_foreign_toplevel_management_unstable_v1` protocol where available, and

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Keyboard Volume App documentation in English and Polish">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Keyboard Volume App documentation">
+  <meta property="og:description" content="Per-application volume hotkeys for Linux (evdev, PipeWire, PulseAudio).">
+  <meta property="og:image" content="https://adiker.github.io/keyboard-volume-app/icon.png">
+  <title>Keyboard Volume App documentation</title>
+  <link rel="icon" type="image/png" href="icon.png">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify@4.13.1/lib/themes/vue.css">
+  <!-- The version query on local assets is stamped with the commit SHA by build-docsify.sh. -->
+  <link rel="stylesheet" href="theme.css?v=dev">
+  <link rel="stylesheet" href="motion.css?v=dev">
+  <script>
+    // Apply before the page is painted to avoid flashing the wrong theme.
+    try {
+      const saved = localStorage.getItem('kva-docs-theme');
+      document.documentElement.dataset.theme = ['light', 'dark', 'oled'].includes(saved)
+        ? saved : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    } catch (_) {
+      document.documentElement.dataset.theme = 'light';
+    }
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <button class="mobile-menu" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="docs-navigation">☰</button>
+    <a class="brand" href="#/" aria-label="Keyboard Volume App – home"><span class="brand-icon" aria-hidden="true">◖))</span><span>Keyboard Volume App <small>Docs</small></span></a>
+    <div class="header-actions">
+      <button class="palette-btn" id="palette-open" type="button" aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K" aria-label="Search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span>Search</span><kbd>Ctrl K</kbd>
+      </button>
+      <a class="lang-link" id="lang-switch" href="#/README.pl.md" hreflang="pl" lang="pl" title="Polski">PL</a>
+      <a class="github-link" href="https://github.com/Adiker/keyboard-volume-app">GitHub <span aria-hidden="true">↗</span></a>
+      <div class="theme-switcher">
+        <label for="theme-select">Theme</label>
+        <span class="select-wrap">
+          <svg class="theme-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z"/></svg>
+          <select id="theme-select" aria-label="Theme">
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+            <option value="oled">OLED</option>
+          </select>
+        </span>
+      </div>
+    </div>
+  </header>
+  <div class="nav-backdrop" aria-hidden="true"></div>
+  <div class="route-progress" aria-hidden="true"></div>
+  <div class="read-progress" aria-hidden="true"><span></span></div>
+  <div id="app">
+    <div class="skeleton" role="status">
+      <span class="visually-hidden">Loading documentation…</span>
+      <span class="sk sk-title" aria-hidden="true"></span>
+      <span class="sk" aria-hidden="true"></span><span class="sk" aria-hidden="true"></span><span class="sk sk-short" aria-hidden="true"></span>
+      <span class="sk sk-block" aria-hidden="true"></span>
+      <span class="sk" aria-hidden="true"></span><span class="sk sk-short" aria-hidden="true"></span>
+    </div>
+    <noscript><p>This site needs JavaScript. Read the docs on <a href="https://github.com/Adiker/keyboard-volume-app#readme">GitHub</a>.</p></noscript>
+  </div>
+  <aside class="page-toc" aria-label="On this page" hidden>
+    <div class="toc-heading">On this page</div>
+    <nav></nav>
+  </aside>
+  <!-- app.js defines $docsify and window.KVA; effects.js and palette.js register extra plugins on it. -->
+  <script src="app.js?v=dev"></script>
+  <script src="effects.js?v=dev"></script>
+  <script src="palette.js?v=dev"></script>
+  <script src="resize.js?v=dev"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4.13.1/lib/docsify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4.13.1/lib/plugins/search.min.js"></script>
+  <!-- Prism language packs for the code blocks used in the docs (cpp depends on c). -->
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-bash.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-json.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-c.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-cpp.min.js"></script>
+</body>
+</html>
