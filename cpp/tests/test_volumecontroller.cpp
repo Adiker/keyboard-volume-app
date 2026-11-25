@@ -1,14 +1,16 @@
 #include <gtest/gtest.h>
 #include <QCoreApplication>
 #include <QByteArray>
+#include <QFile>
+#include <QTemporaryDir>
 #include <chrono>
 #include <thread>
 
 #include "volumecontroller.h"
 
 // Smoke tests: verify the VolumeController can be constructed, used, and
-// destroyed without crashing.  These require a running PulseAudio daemon.
-// If PA is unavailable the tests may time out in close().
+// destroyed without crashing. The test process is isolated from desktop audio.
+// The opt-in PipeWire integration test exercises the connected paths.
 
 TEST(VolumeController, ConstructAndDestruct)
 {
@@ -103,10 +105,6 @@ TEST(VolumeController, TracksProfileRoutedAppsForSettingsCleanup)
 
 TEST(VolumeController, UnavailablePulseAudioDoesNotBlockOperations)
 {
-    const bool hadPulseServer = qEnvironmentVariableIsSet("PULSE_SERVER");
-    const QByteArray oldPulseServer = qgetenv("PULSE_SERVER");
-    qputenv("PULSE_SERVER", "unix:/tmp/keyboard-volume-app-missing-pa.sock");
-
     {
         VolumeController vc;
 
@@ -121,16 +119,27 @@ TEST(VolumeController, UnavailablePulseAudioDoesNotBlockOperations)
         vc.close();
     }
 
-    if (hadPulseServer)
-        qputenv("PULSE_SERVER", oldPulseServer);
-    else
-        qunsetenv("PULSE_SERVER");
-
     SUCCEED();
 }
 
 int main(int argc, char** argv)
 {
+    // A private D-Bus session does not isolate audio sockets. Set these before
+    // constructing any controller, including when this binary is run directly.
+    QTemporaryDir audioRuntime;
+    if (!audioRuntime.isValid()) return 1;
+    const QByteArray runtime = audioRuntime.path().toLocal8Bit();
+    QFile pulseConfig(audioRuntime.filePath(QStringLiteral("pulse-client.conf")));
+    if (!pulseConfig.open(QIODevice::WriteOnly) || pulseConfig.write("autospawn = no\n") < 0)
+        return 1;
+    pulseConfig.close();
+    qputenv("XDG_RUNTIME_DIR", runtime);
+    qputenv("PIPEWIRE_RUNTIME_DIR", runtime);
+    qunsetenv("PIPEWIRE_REMOTE");
+    qunsetenv("PIPEWIRE_CORE");
+    qputenv("PULSE_SERVER", "unix:" + runtime + "/missing-pulse.sock");
+    qputenv("PULSE_CLIENTCONFIG", pulseConfig.fileName().toLocal8Bit());
+
     // VolumeController uses Qt signals/slots — QCoreApplication required.
     QCoreApplication app(argc, argv);
 

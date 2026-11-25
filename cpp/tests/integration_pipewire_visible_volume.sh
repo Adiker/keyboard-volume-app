@@ -36,6 +36,7 @@ mkdir -m 700 "$TEST_ROOT/runtime" "$TEST_ROOT/config" "$TEST_ROOT/state" "$TEST_
 
 export XDG_RUNTIME_DIR="$TEST_ROOT/runtime"
 export PIPEWIRE_RUNTIME_DIR="$TEST_ROOT/runtime"
+unset PIPEWIRE_REMOTE PIPEWIRE_CORE
 export XDG_CONFIG_HOME="$TEST_ROOT/config"
 export XDG_STATE_HOME="$TEST_ROOT/state"
 export XDG_CACHE_HOME="$TEST_ROOT/cache"
@@ -340,6 +341,51 @@ wait_for_daemon()
 start_stream kv-active
 ACTIVE_NODE=$(wait_for_node kv-active)
 assert_node_state "initial stream readiness" kv-active 1.0 "1.0,1.0"
+
+# Detect even a transient connection that restores the volume before sampling.
+# These sockets stand in for inherited PulseAudio and PipeWire endpoints.
+python3 - "$BUILD_DIR/tests/test_volumecontroller" "$TEST_ROOT" <<'PYTEST'
+import os
+import selectors
+import socket
+import subprocess
+import sys
+
+binary, root = sys.argv[1:]
+selector = selectors.DefaultSelector()
+sockets = []
+for name in ("pulse-trap", "pipewire-trap"):
+    listener = socket.socket(socket.AF_UNIX)
+    listener.bind(os.path.join(root, name))
+    listener.listen()
+    selector.register(listener, selectors.EVENT_READ, name)
+    sockets.append(listener)
+env = os.environ.copy()
+env["PULSE_SERVER"] = "unix:" + os.path.join(root, "pulse-trap")
+env["PIPEWIRE_REMOTE"] = os.path.join(root, "pipewire-trap")
+process = subprocess.Popen([binary], env=env)
+connections = set()
+while process.poll() is None:
+    for key, _ in selector.select(timeout=0.05):
+        connection, _ = key.fileobj.accept()
+        connections.add(key.data)
+        connection.close()
+for key, _ in selector.select(timeout=0):
+    connection, _ = key.fileobj.accept()
+    connections.add(key.data)
+    connection.close()
+for listener in sockets:
+    listener.close()
+if process.returncode or connections:
+    raise SystemExit(f"smoke test exit={process.returncode}; audio connections={sorted(connections)}")
+PYTEST
+
+# Even when invoked directly with a reachable audio server in its environment,
+# the smoke test must not duck this unrelated stream. D-Bus isolation alone
+# does not prevent libpulse or libpipewire from reaching these sockets.
+PIPEWIRE_REMOTE="$XDG_RUNTIME_DIR/pipewire-0" \
+    "$BUILD_DIR/tests/test_volumecontroller" --gtest_filter=VolumeController.ChangeVolumeAndToggleMute
+assert_node_state "volume controller smoke test leaves external audio unchanged" kv-active 1.0 "1.0,1.0"
 "$PW_HELPER" reuse "$ACTIVE_NODE" | tee "$TEST_ROOT/connection-reuse.log"
 grep -q "reused=true" "$TEST_ROOT/connection-reuse.log"
 pw-cli set-param "$ACTIVE_NODE" Props '{ volume: 0.250000 }' >/dev/null
