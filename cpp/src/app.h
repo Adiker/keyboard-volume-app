@@ -76,6 +76,7 @@ class App : public QObject
         return m_autoActiveApp;
     }
 
+    // Single-use, including after cleanup(); create a new App to restart.
     void init(const AppInitOptions& options = {});
     void cleanup();
 
@@ -118,6 +119,7 @@ class App : public QObject
     DbusInterface* m_dbus = nullptr;
     QObject* m_mprisEndpoint = nullptr;
     bool m_mprisRegistered = false;
+    bool m_initStarted = false;
     bool m_startInputDevice = true;
     bool m_startWindowTracker = true;
     bool m_registerDbus = true;

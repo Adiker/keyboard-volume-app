@@ -40,6 +40,13 @@ App::~App()
 
 void App::init(const AppInitOptions& options)
 {
+    if (m_initStarted)
+    {
+        qWarning() << "App::init() can only be called once per App instance";
+        return;
+    }
+    m_initStarted = true;
+
     m_startInputDevice = options.startInputDevice;
     m_startWindowTracker = options.startWindowTracker;
     m_registerDbus = options.registerDbus;

@@ -96,6 +96,7 @@ keyboard-volume-app/
 `main.cpp` handles process bootstrap (Wayland/XCB `QT_QPA_PLATFORM` probe, Unix signal self-pipe, CLI `--version`/`--help` via `QCommandLineParser`, D-Bus singleton guard, `FirstRunWizard`, and restart-after-import). `App` lives in `cpp/src/app.h/cpp` as the root coordinator using **two-phase initialization**:
 - **Constructor** takes an optional `std::unique_ptr<Config>` (creating a default `Config` in production)
 - **`init(AppInitOptions)`** creates all remaining components, connects signals, starts evdev, registers D-Bus/MPRIS interfaces, and starts `WindowTracker` when enabled. `AppInitOptions` lets tests inject a mock `VolumeController` and opt out of hardware evdev/WindowTracker/default D-Bus names without changing production startup.
+- `init()` is single-use for each `App`, including after `cleanup()`; a repeated call logs a warning and leaves existing components unchanged. Create a new `App` for a new lifecycle.
 
 On first run (`Config::isFirstRun()`), a `FirstRunWizard` is shown before `App::init()` to guide the user through language, input device, and default application selection. If the wizard is cancelled the app exits immediately.
 
