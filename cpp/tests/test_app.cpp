@@ -170,6 +170,30 @@ struct AppHarness
 
 } // namespace
 
+TEST(AppWiring, InitializationIsSingleUseEvenAfterCleanup)
+{
+    AppHarness h(QStringLiteral("single_init"));
+    auto* input = h.app->inputHandler();
+    auto* tray = h.app->trayApp();
+    auto* osd = h.app->osdWindow();
+
+    h.app->init();
+    EXPECT_EQ(h.app->inputHandler(), input);
+    EXPECT_EQ(h.app->trayApp(), tray);
+    EXPECT_EQ(h.app->osdWindow(), osd);
+    EXPECT_EQ(h.app->findChildren<InputHandler*>().size(), 1);
+
+    emit input->volume_up(QStringLiteral("default"));
+    EXPECT_EQ(h.vc.changeCalls.size(), 1);
+
+    h.app->cleanup();
+    h.app->init();
+    EXPECT_EQ(h.app->inputHandler(), input);
+    EXPECT_EQ(h.app->trayApp(), tray);
+    EXPECT_EQ(h.app->osdWindow(), osd);
+    EXPECT_EQ(h.app->findChildren<InputHandler*>().size(), 1);
+}
+
 TEST(AppWiring, InputHandlerSignalsRouteToVolumeControllerWithProfileLimits)
 {
     AppHarness h(QStringLiteral("routing"));
@@ -225,6 +249,9 @@ TEST(AppWiring, FollowFocusRedirectsLimitsRoutesSinkOnceAndMirrorsToTrayAndDbus)
     EXPECT_EQ(h.vc.sinkCalls.first(),
               (QPair<QString, QString>{QStringLiteral("discord"),
                                        QStringLiteral("alsa_output.headset")}));
+    EXPECT_EQ(h.vc.profileRoutedApps(QStringLiteral("comms")),
+              QStringList{QStringLiteral("discord")});
+    EXPECT_TRUE(h.vc.profileRoutedApps(QStringLiteral("default")).isEmpty());
 
     // Hotkey on "default" must use focused target's limits [0.20, 0.80] and NOT spam sink routing.
     emit h.app->inputHandler()->volume_up(QStringLiteral("default"));
@@ -241,6 +268,8 @@ TEST(AppWiring, FollowFocusRedirectsLimitsRoutesSinkOnceAndMirrorsToTrayAndDbus)
     EXPECT_EQ(
         h.vc.sinkCalls.last(),
         (QPair<QString, QString>{QStringLiteral("slack"), QStringLiteral("alsa_output.headset")}));
+    EXPECT_EQ(h.vc.profileRoutedApps(QStringLiteral("comms")),
+              (QStringList{QStringLiteral("discord"), QStringLiteral("slack")}));
 
     // Sink hot-plug clears the activation guard so the next press re-applies the configured sink.
     emit h.vc.sinksReady({});
