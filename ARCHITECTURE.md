@@ -925,8 +925,10 @@ publishes a GitHub Release whose body is the matching section of `CHANGELOG.md`
 `clang-tidy` runs in CI as a blocking check ("Clang-Tidy changed C++ files") on
 changed `.cpp`/`.cc`/`.cxx` files under `cpp/src` and `cpp/tests`, with
 `WarningsAsErrors: "*"` configured in `.clang-tidy` at the repo root. When
-`.clang-tidy` itself changes, that job analyzes every such translation unit so
-the new configuration is applied to the tree.
+`.clang-tidy` itself changes, that job analyzes the configured translation units
+so the new configuration is applied to the tree. CI enables the optional input
+startup and PipeWire helper targets for analysis. The native Wayland OSD test is
+reported as skipped when LayerShellQt is unavailable on the runner.
 
 To run clang-tidy locally on changed files (requires a Debug build with
 `compile_commands.json`):

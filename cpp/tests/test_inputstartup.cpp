@@ -72,8 +72,10 @@ void send(int id, unsigned short type, unsigned short code, int value)
     std::lock_guard lock(mx);
     if (type == EV_KEY)
     {
-        if (value == 1) held[id][code / kWordBits] |= 1UL << (code % kWordBits);
-        if (value == 0) held[id][code / kWordBits] &= ~(1UL << (code % kWordBits));
+        if (value == 1)
+            held[id][code / kWordBits] |= 1UL << static_cast<unsigned>(code % kWordBits);
+        if (value == 0)
+            held[id][code / kWordBits] &= ~(1UL << static_cast<unsigned>(code % kWordBits));
     }
     input_event ev{};
     ev.type = type;
@@ -151,6 +153,8 @@ struct Running
 } // namespace
 extern "C"
 {
+    // GNU ld --wrap requires these exact reserved symbol names.
+    // NOLINTBEGIN(bugprone-reserved-identifier)
     int __real_open(const char*, int, ...);
     int __real_close(int);
     void __real_libevdev_free(libevdev*);
@@ -171,7 +175,7 @@ extern "C"
                 errno = ENOENT;
                 return -1;
             }
-            if (!ledReader && failReadWrite && (flags & O_ACCMODE) == O_RDWR)
+            if (!ledReader && failReadWrite && (static_cast<unsigned>(flags) & O_ACCMODE) == O_RDWR)
             {
                 errno = EACCES;
                 return -1;
@@ -230,7 +234,8 @@ extern "C"
         if (withLeds && it->second.id != 1)
             libevdev_enable_event_code(dev, EV_LED, LED_CAPSL, nullptr);
         for (int code : {KEY_LEFTCTRL, KEY_RIGHTCTRL, KEY_LEFTSHIFT, KEY_RIGHTSHIFT})
-            if ((held[it->second.id][code / kWordBits] & (1UL << (code % kWordBits))) != 0)
+            if ((held[it->second.id][code / kWordBits] &
+                 (1UL << static_cast<unsigned>(code % kWordBits))) != 0)
                 libevdev_set_event_value(dev, EV_KEY, code, 1);
         return 0;
     }
@@ -261,6 +266,8 @@ extern "C"
     {
         std::lock_guard lock(mx);
         auto fd = devfds.at(dev);
+        // Test event pipes are created with O_NONBLOCK.
+        // NOLINTNEXTLINE(clang-analyzer-unix.BlockInCriticalSection)
         auto rc = ::read(fd, ev, sizeof(*ev));
         if (rc < 0) return -errno;
         if (rc != sizeof(*ev)) return -EAGAIN;
@@ -384,6 +391,7 @@ extern "C"
         }
         return __real_epoll_ctl(epfd, op, fd, ev);
     }
+    // NOLINTEND(bugprone-reserved-identifier)
 }
 
 TEST(Startup, SingleCapabilityScanKeepsUnboundSiblingsPassive)
@@ -475,7 +483,7 @@ TEST(Startup, HeldKeyDelaysHandoffAndPassiveSiblingModifiersStillResolve)
 TEST(Startup, ModifierAlreadyHeldAtStartupIsObserved)
 {
     reset();
-    held[1][KEY_LEFTSHIFT / kWordBits] |= 1UL << (KEY_LEFTSHIFT % kWordBits);
+    held[1][KEY_LEFTSHIFT / kWordBits] |= 1UL << static_cast<unsigned>(KEY_LEFTSHIFT % kWordBits);
     Running app;
     Profile p;
     p.id = "shift";
@@ -562,10 +570,13 @@ TEST(Startup, LedQueryDescriptorFollowsMoveOwnership)
     const int fd = source.uinputLedStateFd();
     ASSERT_GE(fd, 0);
     EvdevDevice moved(std::move(source));
+    // The move contract guarantees that the source has relinquished its descriptor.
+    // NOLINTNEXTLINE(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
     EXPECT_EQ(source.uinputLedStateFd(), -1);
     EXPECT_EQ(moved.uinputLedStateFd(), fd);
     EvdevDevice assigned;
     assigned = std::move(moved);
+    // NOLINTNEXTLINE(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
     EXPECT_EQ(moved.uinputLedStateFd(), -1);
     EXPECT_EQ(assigned.uinputLedStateFd(), fd);
     EXPECT_EQ(ledOpens, 1);

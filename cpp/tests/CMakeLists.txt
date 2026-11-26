@@ -428,6 +428,5 @@ add_test(NAME test_windowtracker COMMAND dbus-run-session -- $<TARGET_FILE:test_
 
 # Built on request for a live, opt-in KWin integration check; not run by CTest.
 add_executable(kwin_tracker_live EXCLUDE_FROM_ALL kwin_tracker_live.cpp ../src/windowtracker.cpp)
-set_target_properties(kwin_tracker_live PROPERTIES EXPORT_COMPILE_COMMANDS OFF)
 target_include_directories(kwin_tracker_live PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
 target_link_libraries(kwin_tracker_live PRIVATE Qt6::Core Qt6::DBus PkgConfig::XCB)
