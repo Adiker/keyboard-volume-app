@@ -48,16 +48,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Pliki:** `cpp/src/pwutils.{h,cpp}` — refactor wewnątrzplikowy lub split na 2–3 jednostki.
 **Status:** Planowane.
 
-### 38. Uzupełnienie pokrycia testowego
-
-**Problem:** Część scenariuszy nadal wymaga dodatkowego pokrycia, zwłaszcza reconnect i pending state.
-**Rekomendacja:** Zachować istniejące testy konfiguracji i dodać:
-
-- testy reconnect/pending state w `VolumeController` bez realnego serwera PA (mock backend),
-- testy wiringu `App` po wydzieleniu z `main.cpp` (zależy od #33).
-**Pliki:** `cpp/tests/test_config.cpp`, `cpp/tests/test_volumecontroller.cpp`, ewentualnie nowy `cpp/tests/test_app.cpp` po #33.
-**Status:** Częściowo zrealizowane. Testy uszkodzonego JSON, nieczytelnego pliku i niedostępnego katalogu istnieją; testy reconnect/pending oraz wiringu `App` pozostają do wykonania.
-
 ### 39. File / journald logging z `--log-level`
 
 **Problem:** `qWarning()` / `qDebug()` trafiają na stderr, który systemd może zbierać w journalu. Brak konfigurowalnych poziomów i bardziej szczegółowego routingu utrudnia diagnostykę.
@@ -228,6 +218,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 37. D-Bus `setActiveApp()` → tray refresh
 
 **Status:** Zrealizowane. Ręczna zmiana przez D-Bus emituje `manualAppSelected`, czyści tymczasowy wybór Follow Focus i odbudowuje menu z konfiguracji. Test integracyjny obejmuje prywatną sesję D-Bus i menu Qt offscreen; nie stanowi ręcznej weryfikacji zasobnika środowiska graficznego.
+
+### 38. Uzupełnienie pokrycia testowego
+
+**Status:** Zrealizowane. Obok istniejących testów konfiguracji dodano szew `IPaBackend` (`cpp/src/pabackend.h`, `cpp/src/pabackend_pulse.cpp`) z deterministycznymi testami `test_paworker` (reconnect/backoff, parkowanie i replay pending, limity per profil, ducking przez reconnect) oraz headlessowe testy wiringu `App` w `cpp/tests/test_app.cpp` pod `dbus-run-session`.
 
 ### 42. Globalne skróty multimedialne (MPRIS dispatch)
 

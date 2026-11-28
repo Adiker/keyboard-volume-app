@@ -1,6 +1,7 @@
 #pragma once
 #include "audioapp.h"
 #include "config.h"
+#include "pabackend.h"
 #include "pabackend_helpers.h"
 #include "pwutils.h"
 #include "volumecontroller.h"
@@ -14,24 +15,22 @@
 #include <QStringList>
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <utility>
 
-#include <pulse/context.h>
-#include <pulse/thread-mainloop.h>
 #include <pulse/volume.h>
 
-class PaWatcherThread;
 class QTimer;
 
-// Owns the PA connection used for volume operations.
+// Owns the PA/PipeWire backend used for volume operations.
 // Lives in m_paThread — all PA blocking calls happen here,
 // never on the main Qt thread.
 class PaWorker : public QObject
 {
     Q_OBJECT
   public:
-    PaWorker() = default;
+    explicit PaWorker(std::unique_ptr<IPaBackend> backend = nullptr);
     ~PaWorker() override;
 
     // Direct call from any thread — Config* is only stored, never owned.
@@ -40,6 +39,21 @@ class PaWorker : public QObject
 
     QList<AppAlias> currentAliases() const;
     QStringList matchCandidatesFor(const QString& appName) const;
+
+    // Read-only state inspection helpers (primarily for deterministic tests).
+    int reconnectBackoffMs() const
+    {
+        return m_reconnectBackoffMs;
+    }
+    bool isDuckingActive() const
+    {
+        return m_duckingActive;
+    }
+    bool hasPendingVolume(const QString& app) const;
+    bool hasPendingChannelVolumes(const QString& app) const;
+    bool hasPendingMute(const QString& app) const;
+    bool hasPendingSink(const QString& app) const;
+    bool hasPendingSinkClear(const QString& app) const;
 
   public slots:
     // Called once from the PA thread after moveToThread + start.
@@ -89,18 +103,12 @@ class PaWorker : public QObject
     void disconnectContext();
     bool contextReady();
     void scheduleReconnect();
-    static void contextStateCallback(pa_context* ctx, void* ud);
     void startWatcher();
-    bool waitForOperation(pa_operation* op, const char* what, int timeoutMs = 1500);
 
     bool sinkInputMatches(const pabackend::SinkInputInfo& input, const QString& appName,
                           const QList<AppAlias>& aliases,
                           std::optional<PipeWireNode>* pipeWireState = nullptr);
-    QList<pabackend::SinkInputInfo> getSinkInputs(); // caller must hold mainloop lock
     std::optional<PipeWireNode> pipeWireStateFor(const pabackend::SinkInputInfo& input);
-    bool setPulseSinkInputVolume(const pabackend::SinkInputInfo& input, double targetVolume);
-    bool setPulseSinkInputChannelVolumes(uint32_t sinkInputIndex, const pa_cvolume& channelVolume,
-                                         const char* operationName);
     bool setActiveStreamVisibleVolume(const pabackend::SinkInputInfo& input, double targetVolume);
     bool restoreActiveStreamVolume(const pabackend::SinkInputInfo& input,
                                    const std::optional<PipeWireNode>& pipeWireState);
@@ -118,7 +126,6 @@ class PaWorker : public QObject
     std::optional<std::pair<bool, double>> streamRestoreToggleMute(const QString& app);
     std::optional<std::pair<bool, double>> streamRestoreSetMute(const QString& app,
                                                                 bool targetMuted);
-    void detectPulseServerBackend();
     bool streamRestoreSetDevice(const QString& app, const QString& sinkName);
     bool streamRestoreClearDevice(const QString& app);
 
@@ -130,20 +137,16 @@ class PaWorker : public QObject
     void removePendingMute(const QString& app);
     void clearDuckingState();
 
-    pa_threaded_mainloop* m_mainloop = nullptr;
-    pa_context* m_ctx = nullptr;
-    PaWatcherThread* m_watcher = nullptr;
+    std::unique_ptr<IPaBackend> m_backend;
     std::atomic<Config*> m_config{nullptr};
     std::atomic<bool> m_stopping{false};
     bool m_cleanedUp = false;
-    bool m_isPipeWirePulse = false;
-    PipeWireVolumeBackend m_pipeWire;
 
     QTimer* m_refreshTimer = nullptr;
     QTimer* m_sinkRefreshTimer = nullptr;
     QTimer* m_reconnectTimer = nullptr;
     int m_reconnectBackoffMs = 0;
-    QMutex m_pendingMutex;
+    mutable QMutex m_pendingMutex;
     QMap<QString, double> m_pendingVolumes;
     QMap<QString, QList<double>> m_pendingChannelVolumes;
     QMap<QString, bool> m_pendingMutes;

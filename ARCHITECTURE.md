@@ -52,6 +52,8 @@ keyboard-volume-app/
 │       ├── paworker.h/cpp          # PA/PipeWire worker thread (volume, mute, ducking, routing, pending)
 │       ├── pawatcherthread.h/cpp   # PA subscription thread (sink-input/sink/server events + reconnect)
 │       ├── pabackend_helpers.h/cpp # Internal PA callback structs, stream-restore and volume helpers
+│       ├── pabackend.h             # Internal IPaBackend I/O seam for PaWorker testability
+│       ├── pabackend_pulse.cpp     # Production libpulse + libpipewire IPaBackend implementation
 │       ├── pwutils.h/cpp           # Shared PipeWire helpers (libpipewire)
 │       ├── applistwidget.h/cpp     # Reusable PW app list widget + Refresh button
 │       ├── appselectordialog.h/cpp # QDialog for changing the default audio app from tray
@@ -881,6 +883,8 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_pwerrors` — PipeWire object-local versus fatal connection error handling
 - `test_appmatcher` — 11 tests (focused-window → AudioApp lookup, including empty-field regression)
 - `test_volumecontroller` — smoke tests run with private, unreachable PulseAudio and PipeWire sockets, including when the binary is invoked directly. A private D-Bus session alone does not isolate audio.
+- `test_paworker` — 7 deterministic `PaWorker` unit tests with a fake `IPaBackend` (exponential reconnect backoff and reset, offline parking and ordered pending replay, rejected move / stream-restore persistence retries, mute-only pending pass, per-profile `[volMin, volMax]` clamping across all 4 fallback paths, pipewire-pulse stream-restore parking, and ducking snapshot/restore across context loss + reconnect)
+- `test_app` — 6 headless `App` coordinator wiring tests on a private D-Bus session (InputHandler → VolumeController per-profile routing, Follow Focus limits/sink-guard/tray+D-Bus mirror, hotkey reload, media-key OSD modes, live MPRIS expose/unexpose + cleanup, D-Bus `ProgressEnabled`)
 - `test_inputhandler` — API and capability tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
 - `test_mprisclient` — 15 tests (MPRIS player detection, metadata and track-id changes, seek forwarding, reload behavior, instance suffix matching, priority, polling guards, `mpris:artUrl` / `xesam:album` parsing, `albumArtChanged` empty-on-disconnect)
 - `test_osdwindow` — OSD progress-row, label-preset, album-art, and mouse-drag regressions (including all eight resize grips across three height modes, scale persistence, edge anchoring, clamp, hide timer, repaint reuse, font stability, event coalescing, release/cancel handling, and seek/media-button interaction)
