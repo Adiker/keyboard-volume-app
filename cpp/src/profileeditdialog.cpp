@@ -171,10 +171,14 @@ ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
     m_hkDown = new HotkeyCapture(initial.hotkeys.volumeDown, m_inputHandler, this);
     m_hkMute = new HotkeyCapture(initial.hotkeys.mute, m_inputHandler, this);
     m_hkShow = new HotkeyCapture(initial.hotkeys.show, m_inputHandler, this);
+    m_hkNextApp = new HotkeyCapture(initial.hotkeys.nextApp, m_inputHandler, this);
+    m_hkPrevApp = new HotkeyCapture(initial.hotkeys.prevApp, m_inputHandler, this);
     form->addRow(::tr(QStringLiteral("settings.hotkey.volume_up")), m_hkUp);
     form->addRow(::tr(QStringLiteral("settings.hotkey.volume_down")), m_hkDown);
     form->addRow(::tr(QStringLiteral("settings.hotkey.mute")), m_hkMute);
     form->addRow(::tr(QStringLiteral("settings.hotkey.show")), m_hkShow);
+    form->addRow(::tr(QStringLiteral("settings.hotkey.next_app")), m_hkNextApp);
+    form->addRow(::tr(QStringLiteral("settings.hotkey.prev_app")), m_hkPrevApp);
 
     // Audio ducking
     m_duckingEnabled =
@@ -291,6 +295,8 @@ Profile ProfileEditDialog::profile() const
     p.hotkeys.volumeDown = m_hkDown->binding();
     p.hotkeys.mute = m_hkMute->binding();
     p.hotkeys.show = m_hkShow->binding();
+    p.hotkeys.nextApp = m_hkNextApp->binding();
+    p.hotkeys.prevApp = m_hkPrevApp->binding();
 
     if (m_modCtrl->isChecked()) p.modifiers.insert(Modifier::Ctrl);
     if (m_modShift->isChecked()) p.modifiers.insert(Modifier::Shift);

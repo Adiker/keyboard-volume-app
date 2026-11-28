@@ -4,6 +4,7 @@
 #include "volumecontroller.h"
 #include "audioapp.h"
 
+#include <QDateTime>
 #include <QDebug>
 #include <QVariantMap>
 #include <algorithm>
@@ -272,6 +273,25 @@ void DbusInterface::RefreshApps()
     m_volumeCtrl->listApps(true);
 }
 
+QString DbusInterface::cycleActiveAppAt(int direction, qint64 nowMs)
+{
+    QString next = m_appCycler.step(m_apps, m_activeApp, direction, nowMs);
+    if (next.isEmpty()) return {};
+    setActiveApp(next);
+    if (m_volumeCtrl) m_volumeCtrl->queryVolume(next);
+    return next;
+}
+
+void DbusInterface::NextActiveApp()
+{
+    (void)cycleActiveAppAt(+1, QDateTime::currentMSecsSinceEpoch());
+}
+
+void DbusInterface::PreviousActiveApp()
+{
+    (void)cycleActiveAppAt(-1, QDateTime::currentMSecsSinceEpoch());
+}
+
 void DbusInterface::setMprisClient(MprisClient* client)
 {
     m_mpris = client;
@@ -320,6 +340,8 @@ QVariantList DbusInterface::buildProfilesProp() const
         hk[QStringLiteral("volume_down")] = hotkeyBindingVariant(p.hotkeys.volumeDown);
         hk[QStringLiteral("mute")] = hotkeyBindingVariant(p.hotkeys.mute);
         hk[QStringLiteral("show")] = hotkeyBindingVariant(p.hotkeys.show);
+        hk[QStringLiteral("next_app")] = hotkeyBindingVariant(p.hotkeys.nextApp);
+        hk[QStringLiteral("prev_app")] = hotkeyBindingVariant(p.hotkeys.prevApp);
 
         QVariantMap ducking;
         ducking[QStringLiteral("enabled")] = p.ducking.enabled;

@@ -18,6 +18,8 @@ struct KvCtlCommand
         Get,
         Set,
         Show,
+        NextActiveApp,
+        PreviousActiveApp,
         MediaPlayPause,
         MediaNext,
         MediaPrevious,

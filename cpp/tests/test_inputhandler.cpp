@@ -801,3 +801,19 @@ TEST(PassiveModifierKeyboards, AggregateHeldModifiersPreservesOtherDeviceOnDisco
     EXPECT_FALSE(mods.contains(Modifier::Ctrl));
     EXPECT_TRUE(mods.contains(Modifier::Shift));
 }
+
+TEST(ResolveProfileHotkey, NextAndPrevAppHotkeysMatch)
+{
+    Profile p;
+    p.id = QStringLiteral("default");
+    p.hotkeys.nextApp = HotkeyBinding::key(KEY_PAGEDOWN);
+    p.hotkeys.prevApp = HotkeyBinding::key(KEY_PAGEUP);
+
+    const auto nextMatch = resolveProfileHotkey(KEY_PAGEDOWN, {}, {p});
+    EXPECT_EQ(nextMatch.profileId, QStringLiteral("default"));
+    EXPECT_EQ(nextMatch.action, ProfileHotkeyAction::NextApp);
+
+    const auto prevMatch = resolveProfileHotkey(KEY_PAGEUP, {}, {p});
+    EXPECT_EQ(prevMatch.profileId, QStringLiteral("default"));
+    EXPECT_EQ(prevMatch.action, ProfileHotkeyAction::PrevApp);
+}

@@ -130,6 +130,8 @@ struct HotkeyConfig
     HotkeyBinding volumeDown = 114; // KEY_VOLUMEDOWN
     HotkeyBinding mute = 113;       // KEY_MUTE
     HotkeyBinding show;             // unassigned by default
+    HotkeyBinding nextApp;          // unassigned by default
+    HotkeyBinding prevApp;          // unassigned by default
 };
 
 // ─── Media hotkeys (global, MPRIS dispatch) ──────────────────────────────────
@@ -260,7 +262,7 @@ struct Profile
 inline bool operator==(const HotkeyConfig& a, const HotkeyConfig& b)
 {
     return a.volumeUp == b.volumeUp && a.volumeDown == b.volumeDown && a.mute == b.mute &&
-           a.show == b.show;
+           a.show == b.show && a.nextApp == b.nextApp && a.prevApp == b.prevApp;
 }
 inline bool operator!=(const HotkeyConfig& a, const HotkeyConfig& b)
 {

@@ -2095,3 +2095,22 @@ TEST(ConfigDuckingFade, DefaultsRoundTripAndClamp)
     EXPECT_EQ(reloaded2.defaultProfile().ducking.fadeOutMs, 0);
     EXPECT_EQ(reloaded2.defaultProfile().ducking.fadeInMs, 150);
 }
+
+TEST(ConfigAppCycleHotkeys, DefaultUnassignedAndRoundTrip)
+{
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    Config config(tmp.path());
+
+    EXPECT_FALSE(config.defaultProfile().hotkeys.nextApp.isAssigned());
+    EXPECT_FALSE(config.defaultProfile().hotkeys.prevApp.isAssigned());
+
+    Profile p = config.defaultProfile();
+    p.hotkeys.nextApp = HotkeyBinding::key(KEY_PAGEDOWN);
+    p.hotkeys.prevApp = HotkeyBinding::relative(REL_HWHEEL, -1);
+    config.setProfiles({p});
+
+    Config reloaded(tmp.path());
+    EXPECT_EQ(reloaded.defaultProfile().hotkeys.nextApp, HotkeyBinding::key(KEY_PAGEDOWN));
+    EXPECT_EQ(reloaded.defaultProfile().hotkeys.prevApp, HotkeyBinding::relative(REL_HWHEEL, -1));
+}

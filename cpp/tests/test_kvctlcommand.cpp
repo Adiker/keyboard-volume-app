@@ -374,3 +374,18 @@ TEST(KvCtlCommand, RejectsSetSinkWithMissingArgs)
                           QStringLiteral("default"), true)
             .ok);
 }
+
+TEST(KvCtlCommand, ParsesNextAndPrevApp)
+{
+    auto next = parseKvCtlCommand({QStringLiteral("next-app")}, {}, false);
+    ASSERT_TRUE(next.ok) << next.error.toStdString();
+    EXPECT_EQ(next.command.action, KvCtlCommand::Action::NextActiveApp);
+
+    auto prev = parseKvCtlCommand({QStringLiteral("prev-app")}, {}, false);
+    ASSERT_TRUE(prev.ok) << prev.error.toStdString();
+    EXPECT_EQ(prev.command.action, KvCtlCommand::Action::PreviousActiveApp);
+
+    EXPECT_FALSE(parseKvCtlCommand({QStringLiteral("next-app")}, QStringLiteral("p1"), true).ok);
+    EXPECT_FALSE(
+        parseKvCtlCommand({QStringLiteral("prev-app"), QStringLiteral("extra")}, {}, false).ok);
+}
