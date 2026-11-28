@@ -141,6 +141,12 @@ target_link_libraries(test_pwutils PRIVATE
 )
 add_test(NAME test_pwutils COMMAND test_pwutils)
 
+# Callback-level regression for object-local versus connection errors.
+add_executable(test_pwerrors test_pwerrors.cpp ../src/appaudiofilters.cpp)
+target_include_directories(test_pwerrors PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+target_link_libraries(test_pwerrors PRIVATE GTest::gtest_main Qt6::Core PkgConfig::LIBPIPEWIRE)
+add_test(NAME test_pwerrors COMMAND test_pwerrors)
+
 # Full PipeWire integration is opt-in because it starts private PipeWire,
 # pipewire-pulse, WirePlumber and D-Bus daemons and requires their CLI tools.
 option(ENABLE_PIPEWIRE_INTEGRATION_TESTS

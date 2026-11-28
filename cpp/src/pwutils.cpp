@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cerrno>
 #include <memory>
 #include <mutex>
 #include <numeric>
@@ -83,6 +84,9 @@ struct PipeWireSession
     int pendingSeq = 0;
     bool syncDone = false;
     std::atomic_bool coreError{false};
+    // These fields are accessed only while holding the PipeWire loop lock.
+    uint32_t activeProxyId = SPA_ID_INVALID;
+    bool activeProxyError = false;
 
     PipeWireSession()
     {
@@ -228,11 +232,15 @@ struct PipeWireSession
         }
     }
 
-    static void onCoreError(void* data, uint32_t, int, int, const char* message)
+    static void onCoreError(void* data, uint32_t id, int, int result, const char* message)
     {
         auto* self = static_cast<PipeWireSession*>(data);
-        self->coreError.store(true, std::memory_order_release);
-        qWarning() << "[pwutils] PipeWire error:" << (message ? message : "unknown");
+        if (id == PW_ID_CORE || result == -EPIPE || result == -ECONNRESET)
+            self->coreError.store(true, std::memory_order_release);
+        else if (id == self->activeProxyId)
+            self->activeProxyError = true;
+        qWarning() << "[pwutils] PipeWire error on object" << id << "(" << result
+                   << ") :" << (message ? message : "unknown");
         pw_thread_loop_signal(self->loop, false);
     }
 
@@ -463,10 +471,14 @@ bool readNodeProps(PipeWireSession& session, uint32_t nodeId, PipeWireNode* stat
     };
 
     pw_node_add_listener(node, &nodeListener, &nodeEvents, &reader);
+    const uint32_t proxyId = pw_proxy_get_id(reinterpret_cast<pw_proxy*>(node));
+    session.activeProxyId = proxyId;
+    session.activeProxyError = false;
     pw_node_enum_params(node, 0, SPA_PARAM_Props, 0, 1, nullptr);
     const bool synced = session.sync(PW_SYNC_TIMEOUT_MS);
     if (!synced && sessionFailed) *sessionFailed = true;
-    const bool ok = synced && reader.hasProps;
+    const bool ok = synced && !session.activeProxyError && reader.hasProps;
+    session.activeProxyId = SPA_ID_INVALID;
 
     if (ok)
     {
@@ -529,13 +541,18 @@ bool setNodeProps(PipeWireSession& session, uint32_t nodeId, std::optional<doubl
     if (muted) spa_pod_builder_add(&builder, SPA_PROP_mute, SPA_POD_Bool(*muted), 0);
     const spa_pod* param = static_cast<const spa_pod*>(spa_pod_builder_pop(&builder, &frame));
 
+    const uint32_t proxyId = pw_proxy_get_id(reinterpret_cast<pw_proxy*>(node));
+    session.activeProxyId = proxyId;
+    session.activeProxyError = false;
     bool ok = false;
     if (param && pw_node_set_param(node, SPA_PARAM_Props, 0, param) >= 0)
     {
-        ok = session.sync(PW_SYNC_TIMEOUT_MS);
-        if (!ok && sessionFailed) *sessionFailed = true;
+        const bool synced = session.sync(PW_SYNC_TIMEOUT_MS);
+        if (!synced && sessionFailed) *sessionFailed = true;
+        ok = synced && !session.activeProxyError;
     }
 
+    session.activeProxyId = SPA_ID_INVALID;
     pw_proxy_destroy(reinterpret_cast<pw_proxy*>(node));
     pw_thread_loop_unlock(session.loop);
     return ok;
