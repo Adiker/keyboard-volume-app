@@ -52,7 +52,8 @@ class VolumeController : public QObject
                            double maxVol = 1.0);
     virtual void toggleMute(const QString& appName);
     virtual void setMuted(const QString& appName, bool muted);
-    virtual void toggleDucking(const QString& keepApp, double duckVolume);
+    virtual void toggleDucking(const QString& keepApp, double duckVolume, int fadeOutMs = 0,
+                               int fadeInMs = 0);
 
     // Async output routing — move the app's active sink-input(s) to the named
     // sink and persist the choice via stream-restore. Empty sinkName is a

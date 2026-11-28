@@ -102,7 +102,7 @@ schema. Missing fields are filled from the same defaults at load time.
         "mute": 113,
         "show": 0
       },
-      "ducking": { "enabled": false, "volume": 25, "hotkey": 0 },
+      "ducking": { "enabled": false, "volume": 25, "hotkey": 0, "fade_out_ms": 0, "fade_in_ms": 0 },
       "auto_switch": true,
       "vol_min": 0,
       "vol_max": 100,
@@ -120,7 +120,7 @@ schema. Missing fields are filled from the same defaults at load time.
         "mute": 113,
         "show": 0
       },
-      "ducking": { "enabled": true, "volume": 25, "hotkey": 88 },
+      "ducking": { "enabled": true, "volume": 25, "hotkey": 88, "fade_out_ms": 250, "fade_in_ms": 250 },
       "auto_switch": true,
       "vol_min": 0,
       "vol_max": 100,

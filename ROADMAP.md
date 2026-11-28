@@ -20,13 +20,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Pliki:** `cpp/src/config.cpp`, `cpp/src/osdwindow.cpp`, `cpp/src/settingsdialog.cpp`.
 **Status:** Planowane.
 
-### 26. Stopniowe wyciszanie ducking (fade in/out)
-
-**Problem:** `ToggleDucking` zmienia głośność ściszanych aplikacji natychmiastowo — skok z np. 80% do 20% jest słyszalny jako nagłe tąpnięcie. Profesjonalne implementacje duckingu stosują płynne przejścia z konfigurowalnym czasem.
-**Rekomendacja:** Dodać pola `ducking.fade_in_ms` i `ducking.fade_out_ms` do `DuckingConfig` (domyślnie 0 ms = zachowanie obecne, brak regresji). W `PaWorker::doToggleDucking()` zamiast natychmiastowych `setAppVolume()` uruchomić QTimer-driven ramp: co ~30 ms obliczać kolejną wartość głośności wzdłuż liniowej krzywej dla każdej ściszanej aplikacji. Anulowanie (drugie wciśnięcie) przerywa ramp i uruchamia fade powrotu do pierwotnych wartości z snapshotu.
-**Pliki:** `cpp/src/config.h`, `cpp/src/config.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/tests/test_config.cpp`
-**Status:** Planowane.
-
 ### 40. D-Bus sygnały device/app lifecycle
 
 **Problem:** Klienci D-Bus muszą polować `Apps` lub łapać `appsChanged`, żeby zorientować się że aplikacja audio się pojawiła/zniknęła. Dla zewnętrznych wskaźników (panel, widget) brakuje wyraźnych sygnałów `deviceConnected`/`deviceDisconnected` (evdev) i `appStarted`/`appStopped` (PipeWire) z metadanymi.
@@ -158,6 +151,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 25. Limity głośności per profil (minimalny / maksymalny poziom)
 
 **Status:** Zrealizowane. Pola `vol_min`/`vol_max` (domyślnie 0/100) trzymane w profilu i klampowane w czterech ścieżkach `PaWorker`: active sink-input, stream-restore DB, węzeł PipeWire i parked-pending. Hotkeys profilu (`App::changeVolume`), `DbusInterface::setVolume` oraz `VolumeUp`/`VolumeDown` (bare + per-profile) respektują limity; sceny i `toggleDucking` celowo zachowują pełny zakres `[0,1]`. UI: dwa `QSpinBox` w `ProfileEditDialog` z wzajemnym domknięciem; sanitacja w `Config::setProfiles` (clamp do 0–100, swap przy odwróceniu).
+
+### 26. Stopniowe wyciszanie ducking (fade in/out)
+
+**Status:** Zrealizowane. Dodano `ducking.fade_out_ms` i `ducking.fade_in_ms` (0–5000 ms, domyślnie 0 ms) w `DuckingConfig`, UI (`ProfileEditDialog`) i D-Bus `Profiles`. `PaWorker::doToggleDucking()` napędza liniową rampę per kanał timerem 30 ms z płynnym odwracaniem przy przerwaniu w połowie i parkowaniem przywracania po utracie kontekstu PA; dodano testy `test_config` i `test_paworker`.
 
 ### 27. Pakietowanie .deb i .rpm przez CPack
 

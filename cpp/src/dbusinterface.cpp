@@ -251,7 +251,8 @@ void DbusInterface::ToggleDucking()
     const Profile p = activeProfile();
     if (m_activeApp.isEmpty() || !p.ducking.enabled) return;
     applyActiveProfileSink(p);
-    m_volumeCtrl->toggleDucking(m_activeApp, p.ducking.volume / 100.0);
+    m_volumeCtrl->toggleDucking(m_activeApp, p.ducking.volume / 100.0, p.ducking.fadeOutMs,
+                                p.ducking.fadeInMs);
 }
 
 void DbusInterface::RefreshApps()
@@ -312,6 +313,8 @@ QVariantList DbusInterface::buildProfilesProp() const
         ducking[QStringLiteral("enabled")] = p.ducking.enabled;
         ducking[QStringLiteral("volume")] = p.ducking.volume;
         ducking[QStringLiteral("hotkey")] = hotkeyBindingVariant(p.ducking.hotkey);
+        ducking[QStringLiteral("fade_out_ms")] = p.ducking.fadeOutMs;
+        ducking[QStringLiteral("fade_in_ms")] = p.ducking.fadeInMs;
 
         QVariantMap m;
         m[QStringLiteral("id")] = p.id;
@@ -443,7 +446,8 @@ void DbusInterface::ToggleDuckingProfile(const QString& profileId)
     Profile p = findProfile(profileId);
     if (p.primaryApp().isEmpty() || !p.ducking.enabled) return;
     applyProfileSink(p);
-    m_volumeCtrl->toggleDucking(p.primaryApp(), p.ducking.volume / 100.0);
+    m_volumeCtrl->toggleDucking(p.primaryApp(), p.ducking.volume / 100.0, p.ducking.fadeOutMs,
+                                p.ducking.fadeInMs);
 }
 
 void DbusInterface::SetVolumeProfile(const QString& profileId, double vol)

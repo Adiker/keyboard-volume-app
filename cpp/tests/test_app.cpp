@@ -56,7 +56,8 @@ class MockVolumeController : public VolumeController
         setMutedCalls.append({appName, muted});
     }
 
-    void toggleDucking(const QString& keepApp, double duckVolume) override
+    void toggleDucking(const QString& keepApp, double duckVolume, int /*fadeOutMs*/ = 0,
+                       int /*fadeInMs*/ = 0) override
     {
         duckingCalls.append({keepApp, duckVolume});
     }

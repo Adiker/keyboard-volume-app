@@ -204,12 +204,14 @@ void VolumeController::setMuted(const QString& appName, bool muted)
                               Q_ARG(bool, muted));
 }
 
-void VolumeController::toggleDucking(const QString& keepApp, double duckVolume)
+void VolumeController::toggleDucking(const QString& keepApp, double duckVolume, int fadeOutMs,
+                                     int fadeInMs)
 {
     if (m_closing || !m_worker) return;
 
     QMetaObject::invokeMethod(m_worker, "doToggleDucking", Qt::QueuedConnection,
-                              Q_ARG(QString, keepApp), Q_ARG(double, duckVolume));
+                              Q_ARG(QString, keepApp), Q_ARG(double, duckVolume),
+                              Q_ARG(int, fadeOutMs), Q_ARG(int, fadeInMs));
 }
 
 void VolumeController::applyScene(const AudioScene& scene)

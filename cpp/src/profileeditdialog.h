@@ -40,6 +40,8 @@ class ProfileEditDialog : public QDialog
     QCheckBox* m_duckingEnabled = nullptr;
     QSlider* m_duckingSlider = nullptr;
     QSpinBox* m_duckingSpin = nullptr;
+    QSpinBox* m_duckingFadeOut = nullptr;
+    QSpinBox* m_duckingFadeIn = nullptr;
     QCheckBox* m_autoSwitch = nullptr;
     QSpinBox* m_volMin = nullptr;
     QSpinBox* m_volMax = nullptr;
