@@ -296,6 +296,7 @@ void MprisClient::fetchAllProperties(const QString& service)
     msg << QLatin1String(MPRIS_PLAYER_IFACE);
 
     QDBusPendingCall call = m_bus.asyncCall(msg);
+    // Owned by Qt QObject parent (`this`) and scheduled for deletion on finish.
     auto* watcher = new QDBusPendingCallWatcher(call, this);
     // Capture service name by value — the lambda outlives this stack frame.
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
@@ -310,7 +311,7 @@ void MprisClient::fetchAllProperties(const QString& service)
                 arg >> props;
                 if (!props.isEmpty()) applyProperties(service, props);
             });
-}
+} // NOLINT(clang-analyzer-cplusplus.NewDeleteLeaks) — watcher owned by Qt parent (`this`)
 
 void MprisClient::applyProperties(const QString& service, const QVariantMap& props)
 {
@@ -466,12 +467,12 @@ void MprisClient::applyProperties(const QString& service, const QVariantMap& pro
             }
         }
 
-        kp.title = title;
-        kp.artist = artist;
+        kp.title = std::move(title);
+        kp.artist = std::move(artist);
         kp.lengthUs = lengthUs;
-        kp.trackId = trackId;
-        kp.album = album;
-        kp.artUrl = artUrl;
+        kp.trackId = std::move(trackId);
+        kp.album = std::move(album);
+        kp.artUrl = std::move(artUrl);
     }
 
     // Also handle Position when it arrives alongside other properties (e.g. during

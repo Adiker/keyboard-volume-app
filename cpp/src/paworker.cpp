@@ -210,7 +210,8 @@ void PaWorker::doChangeVolume(const QString& appName, double delta, double minVo
     // for this relative user action.
     const QList<PipeWireNode> nodes =
         m_backend->pwFindNodesForApp(appName, matchCandidatesFor(appName));
-    std::optional<double> pipeWireVolume;
+    bool hasPipeWireVolume = false;
+    double pipeWireVolume = 0.0;
     bool pipeWireMuted = false;
     for (const PipeWireNode& node : nodes)
     {
@@ -219,15 +220,19 @@ void PaWorker::doChangeVolume(const QString& appName, double delta, double minVo
         const uint32_t channels =
             static_cast<uint32_t>(std::max(1, static_cast<int>(node.channelVolumes.size())));
         if (!m_backend->pwSetVisibleVolume(node.id, newVol, channels)) continue;
-        if (!pipeWireVolume) pipeWireVolume = newVol;
+        if (!hasPipeWireVolume)
+        {
+            hasPipeWireVolume = true;
+            pipeWireVolume = newVol;
+        }
         pipeWireMuted = node.muted;
     }
-    if (pipeWireVolume)
+    if (hasPipeWireVolume)
     {
-        m_appVolumes[appName] = *pipeWireVolume;
+        m_appVolumes[appName] = pipeWireVolume;
         m_appMutes[appName] = pipeWireMuted;
         removePendingVolume(appName);
-        emit volumeChanged(appName, *pipeWireVolume, pipeWireMuted);
+        emit volumeChanged(appName, pipeWireVolume, pipeWireMuted);
         return;
     }
 
@@ -557,21 +562,24 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
             entry.volume = input.volume;
 
             if (!node) node = pipeWireStateFor(input);
-            if (node)
+            bool hasHiddenMultiplier = false;
+            if (node.has_value())
             {
-                entry.pipeWireNodeId = node->id;
-                handledPipeWireNodes.insert(node->id);
-                reportHiddenVolume(input.displayName(), *node);
-                if (node->channelVolumes.isEmpty())
+                const PipeWireNode& pwNode = *node;
+                hasHiddenMultiplier = pwNode.hasHiddenVolumeMultiplier();
+                entry.pipeWireNodeId = pwNode.id;
+                handledPipeWireNodes.insert(pwNode.id);
+                reportHiddenVolume(input.displayName(), pwNode);
+                if (pwNode.channelVolumes.isEmpty())
                 {
                     const int count = std::max<int>(1, input.channelVolume.channels);
-                    entry.visibleChannelVolumes = QList<double>(count, node->effectiveVolume());
+                    entry.visibleChannelVolumes = QList<double>(count, pwNode.effectiveVolume());
                 }
                 else
                 {
-                    entry.visibleChannelVolumes = node->channelVolumes;
+                    entry.visibleChannelVolumes = pwNode.channelVolumes;
                     for (double& value : entry.visibleChannelVolumes)
-                        value = std::cbrt(std::max(0.0, value * node->rawVolume));
+                        value = std::cbrt(std::max(0.0, value * pwNode.rawVolume));
                 }
                 entry.volume = std::accumulate(entry.visibleChannelVolumes.cbegin(),
                                                entry.visibleChannelVolumes.cend(), 0.0) /
@@ -579,8 +587,7 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
             }
 
             handledApps.insert(entry.app.toLower());
-            const bool needsWrite = qAbs(entry.volume - duckVolume) > 0.0001 ||
-                                    (node && node->hasHiddenVolumeMultiplier());
+            const bool needsWrite = qAbs(entry.volume - duckVolume) > 0.0001 || hasHiddenMultiplier;
             if (needsWrite && setActiveStreamVisibleVolume(input, duckVolume))
                 snapshot.append(std::move(entry));
         }
@@ -653,7 +660,7 @@ void PaWorker::doToggleDucking(const QString& keepApp, double duckVolume)
 
     m_duckingActive = true;
     m_duckingKeepApp = keepApp;
-    m_duckingSnapshot = snapshot;
+    m_duckingSnapshot = std::move(snapshot);
 }
 
 void PaWorker::doQueryVolume(const QString& appName, bool silent)

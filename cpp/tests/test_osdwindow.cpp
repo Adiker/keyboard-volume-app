@@ -782,12 +782,13 @@ TEST(OSDWindowResize, AllEdgesPreserveAnchorsInEveryHeightMode)
 {
     for (int mode = 0; mode < 3; ++mode)
     {
-        for (int edge :
-             std::array<int, 8>{OSDWindow::EdgeLeft, OSDWindow::EdgeRight, OSDWindow::EdgeTop,
-                                OSDWindow::EdgeBottom, OSDWindow::EdgeLeft | OSDWindow::EdgeTop,
-                                OSDWindow::EdgeRight | OSDWindow::EdgeTop,
-                                OSDWindow::EdgeLeft | OSDWindow::EdgeBottom,
-                                OSDWindow::EdgeRight | OSDWindow::EdgeBottom})
+        for (unsigned int edge : std::array<unsigned int, 8>{
+                 OSDWindow::EdgeLeft, OSDWindow::EdgeRight, OSDWindow::EdgeTop,
+                 OSDWindow::EdgeBottom,
+                 static_cast<unsigned int>(OSDWindow::EdgeLeft) | OSDWindow::EdgeTop,
+                 static_cast<unsigned int>(OSDWindow::EdgeRight) | OSDWindow::EdgeTop,
+                 static_cast<unsigned int>(OSDWindow::EdgeLeft) | OSDWindow::EdgeBottom,
+                 static_cast<unsigned int>(OSDWindow::EdgeRight) | OSDWindow::EdgeBottom})
         {
             SCOPED_TRACE(::testing::Message() << "mode=" << mode << " edge=" << edge);
             QTemporaryDir tmp;
@@ -801,21 +802,21 @@ TEST(OSDWindowResize, AllEdgesPreserveAnchorsInEveryHeightMode)
             window.setProgressVisible(mode > 0);
             window.showVolume(QStringLiteral("app"), 0.5);
             const QRect initial(window.m_currentAbsPos, window.size());
-            const QPoint local((edge & OSDWindow::EdgeLeft) ? 2 : window.width() - 2,
-                               (edge & OSDWindow::EdgeTop) ? 2 : window.height() - 2);
+            const QPoint local((edge & OSDWindow::EdgeLeft) != 0U ? 2 : window.width() - 2,
+                               (edge & OSDWindow::EdgeTop) != 0U ? 2 : window.height() - 2);
             const QPoint start = initial.topLeft() + local;
-            const QPoint delta((edge & OSDWindow::EdgeLeft) ? -15 : 15,
-                               (edge & OSDWindow::EdgeTop) ? -10 : 10);
+            const QPoint delta((edge & OSDWindow::EdgeLeft) != 0U ? -15 : 15,
+                               (edge & OSDWindow::EdgeTop) != 0U ? -10 : 10);
             window.startResize(edge, start);
             window.updateResize(start + delta);
             window.finishResize(true);
             EXPECT_GT(window.width(), initial.width());
-            if (edge & OSDWindow::EdgeLeft)
+            if ((edge & OSDWindow::EdgeLeft) != 0U)
                 EXPECT_EQ(window.m_currentAbsPos.x() + window.width(),
                           initial.x() + initial.width());
             else
                 EXPECT_EQ(window.m_currentAbsPos.x(), initial.x());
-            if (edge & OSDWindow::EdgeTop)
+            if ((edge & OSDWindow::EdgeTop) != 0U)
                 EXPECT_EQ(window.m_currentAbsPos.y() + window.height(),
                           initial.y() + initial.height());
             else

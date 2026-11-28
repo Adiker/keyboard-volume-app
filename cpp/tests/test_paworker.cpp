@@ -520,10 +520,10 @@ TEST(PaWorkerUnit, OfflineOperationsParkAndReplayInOrderOnReconnect)
               QStringLiteral("alsa_output.headset"));
     EXPECT_TRUE(fake->clearedStreamRestoreApps.contains(QStringLiteral("discord")));
 
-    const int moveIdx =
+    const qsizetype moveIdx =
         fake->operationLog.indexOf(QStringLiteral("moveSink:42:alsa_output.headset"));
-    const int volIdx = fake->operationLog.indexOf(QStringLiteral("setVol:42:0.40"));
-    const int muteIdx = fake->operationLog.indexOf(QStringLiteral("setMute:42:1"));
+    const qsizetype volIdx = fake->operationLog.indexOf(QStringLiteral("setVol:42:0.40"));
+    const qsizetype muteIdx = fake->operationLog.indexOf(QStringLiteral("setMute:42:1"));
     ASSERT_GE(moveIdx, 0);
     ASSERT_GE(volIdx, 0);
     ASSERT_GE(muteIdx, 0);

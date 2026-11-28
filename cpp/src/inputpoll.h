@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <sys/epoll.h>
 #include <vector>
 
@@ -7,7 +8,7 @@ class EvdevDevice;
 
 struct PollSource
 {
-    enum class Type
+    enum class Type : std::uint8_t
     {
         EvdevInput,
         UinputOutput,

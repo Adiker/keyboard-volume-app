@@ -1,5 +1,7 @@
 #include "appaudiofilters.h"
 
+// Immutable process-lifetime defaults referenced as default arguments in pwutils.h.
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization)
 const QSet<QString> SYSTEM_BINARIES{
     QStringLiteral("wireplumber"),
     QStringLiteral("pipewire"),
@@ -21,6 +23,7 @@ const QSet<QString> SYSTEM_BINARIES{
     QString{},
 };
 
+// NOLINTNEXTLINE(bugprone-throwing-static-initialization)
 const QSet<QString> SKIP_APP_NAMES{
     QStringLiteral("ringrtc"),
     QStringLiteral("WEBRTC VoiceEngine"),

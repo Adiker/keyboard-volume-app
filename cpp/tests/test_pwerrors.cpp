@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 // Exercise the actual PipeWire callback without connecting to the desktop server.
-#include "../src/pwutils.cpp"
+#include "../src/pwutils.cpp" // NOLINT(bugprone-suspicious-include): test the internal callback
 
 TEST(PipeWireErrors, ObjectErrorDoesNotPoisonSession)
 {

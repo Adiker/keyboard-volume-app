@@ -5,6 +5,7 @@
 #include <QPixmap>
 #include <QRect>
 #include <QTimer>
+#include <cstdint>
 
 #ifdef HAVE_LAYER_SHELL_QT
 #include <LayerShellQt/Window>
@@ -145,16 +146,16 @@ class OSDWindow : public QWidget
     void mouseReleaseEvent(QMouseEvent* event) override;
 
   private:
-    enum ResizeEdge
+    enum ResizeEdge : std::uint8_t
     {
-        EdgeNone = 0,
-        EdgeLeft = 1 << 0,
-        EdgeRight = 1 << 1,
-        EdgeTop = 1 << 2,
-        EdgeBottom = 1 << 3,
+        EdgeNone = 0U,
+        EdgeLeft = 1U << 0U,
+        EdgeRight = 1U << 1U,
+        EdgeTop = 1U << 2U,
+        EdgeBottom = 1U << 3U,
     };
 
-    enum ScreenEdge
+    enum ScreenEdge : std::uint8_t
     {
         ScreenTop,
         ScreenBottom,
@@ -186,13 +187,13 @@ class OSDWindow : public QWidget
 
     // ── Mouse resize ─────────────────────────────────────────────────────────
     bool m_resizing = false;
-    int m_resizeEdges = EdgeNone;
+    unsigned int m_resizeEdges = EdgeNone;
     QPoint m_resizeStartGlobal;
     QRect m_resizeStartGeometry;
     QPoint m_resizeCurrentAbsPos;
     double m_resizeStartScale = 1.0;
     int m_resizeBaseHeight = 70;
-    int m_resizeCachedLayoutKey = -1;
+    std::uint64_t m_resizeCachedLayoutKey = 0U;
     QPoint m_resizeLastAppliedPos{-1, -1};
 
     // ── Position controls (corner overlay arrows) ─────────────────────────────
@@ -301,11 +302,11 @@ class OSDWindow : public QWidget
     bool handleResizeEvent(QObject* obj, QEvent* event);
     bool handleResizeMouseEvent(QObject* obj, QMouseEvent* event);
     QPoint resizeLocalPos(QObject* obj, QMouseEvent* event) const;
-    int resizeEdgesAt(const QPoint& pos) const;
+    unsigned int resizeEdgesAt(const QPoint& pos) const;
     int resizeHitMargin() const;
-    Qt::CursorShape resizeCursorForEdges(int edges) const;
-    void updateResizeCursor(QObject* obj, int edges);
-    void startResize(int edges, const QPoint& globalPos);
+    Qt::CursorShape resizeCursorForEdges(unsigned int edges) const;
+    void updateResizeCursor(QObject* obj, unsigned int edges);
+    void startResize(unsigned int edges, const QPoint& globalPos);
     void scheduleResizeUpdate(const QPoint& globalPos);
     void applyPendingResizeUpdate();
     void updateResize(const QPoint& globalPos);

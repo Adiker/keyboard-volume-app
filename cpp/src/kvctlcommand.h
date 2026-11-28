@@ -2,10 +2,11 @@
 
 #include <QString>
 #include <QStringList>
+#include <cstdint>
 
 struct KvCtlCommand
 {
-    enum class Action
+    enum class Action : std::uint8_t
     {
         VolumeUp,
         VolumeDown,
@@ -23,7 +24,7 @@ struct KvCtlCommand
         MediaStop
     };
 
-    enum class Field
+    enum class Field : std::uint8_t
     {
         None,
         Volume,

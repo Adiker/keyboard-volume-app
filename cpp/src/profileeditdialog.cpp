@@ -249,7 +249,7 @@ ProfileEditDialog::ProfileEditDialog(const Profile& initial, Config* config,
     layout->addWidget(buttons);
 }
 
-Profile ProfileEditDialog::result() const
+Profile ProfileEditDialog::profile() const
 {
     Profile p;
     p.id = m_initial.id; // preserve id; SettingsDialog assigns one for new

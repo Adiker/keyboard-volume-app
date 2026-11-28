@@ -23,7 +23,7 @@ class ProfileEditDialog : public QDialog
 
     // Profile assembled from the dialog widgets after acceptance.
     // Preserves the original id (or assigns a new one when initial.id was empty).
-    Profile result() const;
+    Profile profile() const;
 
   private:
     Profile m_initial;
