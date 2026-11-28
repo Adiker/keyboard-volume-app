@@ -47,6 +47,9 @@ struct PipeWireSession
     int pendingSeq = 0;
     bool syncDone = false;
     std::atomic_bool coreError{false};
+    // Accessed only while holding the PipeWire loop lock.
+    uint32_t activeProxyId = SPA_ID_INVALID;
+    bool activeProxyError = false;
 
     PipeWireSession();
     ~PipeWireSession();
