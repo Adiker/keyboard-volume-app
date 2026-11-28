@@ -177,6 +177,12 @@ needed.
 
 ## Troubleshooting
 
+- Adjust runtime log verbosity with `--log-level <off|warn|info|debug|trace>`
+  (default: `info`). To also write logs to a rotating file under
+  `$XDG_STATE_HOME/keyboard-volume-app/keyboard-volume-app.log` (or a custom
+  path), pass `--log-file default` or `--log-file /path/to/app.log`. When built
+  with `libsystemd`, systemd user service runs automatically route to journald
+  (`--log-journal` forces journald, `--no-journal` forces stderr).
 - If no input device is listed, verify the `input` group membership and start a
   new login session.
 - If the selected app disappears after an audio-daemon restart, wait for the

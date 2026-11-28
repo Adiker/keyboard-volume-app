@@ -34,13 +34,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Pliki:** `cpp/src/config.h`, `cpp/src/config.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/tests/test_config.cpp`
 **Status:** Planowane.
 
-### 39. File / journald logging z `--log-level`
-
-**Problem:** `qWarning()` / `qDebug()` trafiają na stderr, który systemd może zbierać w journalu. Brak konfigurowalnych poziomów i bardziej szczegółowego routingu utrudnia diagnostykę.
-**Rekomendacja:** Dodać `--log-level` do `QCommandLineParser` (off/warn/info/debug/trace), routing do journald (przez `sd_journal_print` lub `QtLogging` dispatcher), opcjonalnie plik logów w `XDG_STATE_HOME`.
-**Pliki:** `cpp/src/main.cpp`, ewentualnie nowy `cpp/src/logging.h/cpp`, `cpp/CMakeLists.txt`.
-**Status:** Planowane.
-
 ### 40. D-Bus sygnały device/app lifecycle
 
 **Problem:** Klienci D-Bus muszą polować `Apps` lub łapać `appsChanged`, żeby zorientować się że aplikacja audio się pojawiła/zniknęła. Dla zewnętrznych wskaźników (panel, widget) brakuje wyraźnych sygnałów `deviceConnected`/`deviceDisconnected` (evdev) i `appStarted`/`appStopped` (PipeWire) z metadanymi.
@@ -216,6 +209,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 38. Uzupełnienie pokrycia testowego
 
 **Status:** Zrealizowane. Obok istniejących testów konfiguracji dodano szew `IPaBackend` (`cpp/src/pabackend.h`, `cpp/src/pabackend_pulse.cpp`) z deterministycznymi testami `test_paworker` (reconnect/backoff, parkowanie i replay pending, limity per profil, ducking przez reconnect) oraz headlessowe testy wiringu `App` w `cpp/tests/test_app.cpp` pod `dbus-run-session`.
+
+### 39. File / journald logging z `--log-level`
+
+**Status:** Zrealizowane. Dodano wątkowo bezpieczny moduł `cpp/src/logging.{h,cpp}` z flagami CLI `--log-level` (`off|warn|info|debug|trace`), `--log-file` (w tym `default` w `XDG_STATE_HOME/keyboard-volume-app/keyboard-volume-app.log` z rotacją 5 MB) oraz `--log-journal` / `--no-journal` z opcjonalnym wsparciem `libsystemd` (`sd_journal_send`) i testami `test_logging`.
 
 ### 42. Globalne skróty multimedialne (MPRIS dispatch)
 

@@ -2,6 +2,7 @@
 #include "config.h"
 #include "firstrunwizard.h"
 #include "i18n.h"
+#include "logging.h"
 #include "screenutils.h"
 #include "waylandstate.h"
 
@@ -192,9 +193,31 @@ int main(int argc, char* argv[])
     parser.setApplicationDescription("Keyboard volume controller with OSD");
     parser.addHelpOption();
     parser.addVersionOption();
+    const QCommandLineOption logLevelOpt(
+        QStringLiteral("log-level"),
+        QStringLiteral("Log verbosity: off, warn, info, debug, trace (default: info)."),
+        QStringLiteral("level"), QStringLiteral("info"));
+    const QCommandLineOption logFileOpt(
+        QStringLiteral("log-file"),
+        QStringLiteral("Append logs to file (use 'default' for XDG_STATE_HOME path)."),
+        QStringLiteral("path"));
+    const QCommandLineOption logJournalOpt(
+        QStringLiteral("log-journal"),
+        QStringLiteral("Send logs to systemd journald (auto-enabled under systemd)."));
+    const QCommandLineOption noJournalOpt(
+        QStringLiteral("no-journal"),
+        QStringLiteral("Disable journald routing and keep logging on stderr."));
+    parser.addOption(logLevelOpt);
+    parser.addOption(logFileOpt);
+    parser.addOption(logJournalOpt);
+    parser.addOption(noJournalOpt);
     // Use parse() instead of process() — process() calls ::exit(0) which
     // skips destructors and triggers QThreadStorage warnings.
-    parser.parse(qtApp.arguments());
+    if (!parser.parse(qtApp.arguments()))
+    {
+        fprintf(stderr, "%s\n", qPrintable(parser.errorText()));
+        return 2;
+    }
 
     if (parser.isSet(QStringLiteral("help")))
     {
@@ -206,6 +229,48 @@ int main(int argc, char* argv[])
         printf("%s %s\n", qPrintable(qtApp.applicationName()),
                qPrintable(qtApp.applicationVersion()));
         return 0;
+    }
+
+    const auto parsedLevel = parseLogLevel(parser.value(logLevelOpt));
+    if (!parsedLevel)
+    {
+        fprintf(stderr, "Invalid --log-level value: '%s' (expected off|warn|info|debug|trace)\n",
+                qPrintable(parser.value(logLevelOpt)));
+        return 2;
+    }
+
+    LogConfig logCfg;
+    logCfg.level = *parsedLevel;
+    const bool explicitJournal = parser.isSet(logJournalOpt);
+    const bool disableJournal = parser.isSet(noJournalOpt);
+    if (!disableJournal && hasJournaldSupport() && (explicitJournal || isRunningUnderJournald()))
+    {
+        logCfg.useJournal = true;
+        // Avoid duplicating messages to both journald and stderr when launched
+        // as a systemd service with stdout/stderr already connected to journal.
+        logCfg.useStderr = !isRunningUnderJournald();
+    }
+    if (parser.isSet(logFileOpt))
+    {
+        const QString rawPath = parser.value(logFileOpt).trimmed();
+        if (rawPath.isEmpty() ||
+            rawPath.compare(QLatin1String("default"), Qt::CaseInsensitive) == 0 ||
+            rawPath.compare(QLatin1String("auto"), Qt::CaseInsensitive) == 0)
+        {
+            logCfg.filePath = defaultLogFilePath();
+        }
+        else
+        {
+            logCfg.filePath = rawPath;
+        }
+    }
+
+    installLogging(logCfg);
+    const ScopedLoggingShutdown loggingShutdown;
+    if (explicitJournal && !hasJournaldSupport())
+    {
+        qWarning()
+            << "[logging] --log-journal requested, but built without libsystemd; using stderr";
     }
 
     // ── Singleton check ──────────────────────────────────────────────────────

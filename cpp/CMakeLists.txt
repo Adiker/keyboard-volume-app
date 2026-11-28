@@ -37,6 +37,7 @@ set(PWUTILS_SOURCES
 set(SOURCES
     src/main.cpp
     src/app.cpp
+    src/logging.cpp
     src/config.cpp
     src/i18n.cpp
     ${VOLUME_CONTROLLER_SOURCES}
@@ -85,6 +86,16 @@ target_link_libraries(keyboard-volume-app PRIVATE
     PkgConfig::TAGLIB
     PkgConfig::XCB
 )
+
+# Optional: libsystemd for native journald logging (--log-journal / auto under systemd)
+pkg_check_modules(LIBSYSTEMD IMPORTED_TARGET libsystemd)
+if(LIBSYSTEMD_FOUND)
+    target_compile_definitions(keyboard-volume-app PRIVATE HAVE_LIBSYSTEMD)
+    target_link_libraries(keyboard-volume-app PRIVATE PkgConfig::LIBSYSTEMD)
+    message(STATUS "libsystemd ${LIBSYSTEMD_VERSION}: journald logging enabled")
+else()
+    message(STATUS "libsystemd: NOT found — journald logging disabled (stderr/file fallback)")
+endif()
 
 # Optional: wayland-client for protocol probes and native Wayland backends
 pkg_check_modules(WAYLAND_CLIENT IMPORTED_TARGET wayland-client)
