@@ -54,7 +54,10 @@ keyboard-volume-app/
 │       ├── pabackend_helpers.h/cpp # Internal PA callback structs, stream-restore and volume helpers
 │       ├── pabackend.h             # Internal IPaBackend I/O seam for PaWorker testability
 │       ├── pabackend_pulse.cpp     # Production libpulse + libpipewire IPaBackend implementation
-│       ├── pwutils.h/cpp           # Shared PipeWire helpers (libpipewire)
+│       ├── pwutils.h/cpp           # PipeWire facade (PipeWireVolumeBackend + one-shot helpers)
+│       ├── pwsession.h/cpp         # Internal PipeWire session, thread loop & registry snapshot
+│       ├── pwclientfilter.h/cpp    # Pure PipeWire client/owner filtering & matching
+│       ├── pwnodecontrol.h/cpp     # PipeWire SPA_PARAM_Props read/write & volume math
 │       ├── applistwidget.h/cpp     # Reusable PW app list widget + Refresh button
 │       ├── appselectordialog.h/cpp # QDialog for changing the default audio app from tray
 │       ├── aboutdialog.h/cpp    # Bilingual About dialog with offline GPL text
@@ -258,9 +261,14 @@ Legacy `progress_label_mode` values are migrated on load and persisted: `"track"
 
 **Migration & legacy mirror.** `Config::load()` synthesizes a single `default` profile from legacy `selected_app` + top-level `hotkeys` when `profiles` is missing/empty, then `saveUnlocked()` writes the new schema. Top-level `selected_app` and `hotkeys` are kept in sync as a deprecated mirror of `profiles[0]` (one release of compat) — `setSelectedApp()`/`setHotkeys()` mirror into the default profile and vice versa, so existing D-Bus/MPRIS clients keep working.
 
-### `cpp/src/pwutils.h/cpp` — PipeWire utility
+### `cpp/src/pwutils.h/cpp` (+ `pwsession`, `pwclientfilter`, `pwnodecontrol`) — PipeWire utility
 
-Shared utility for listing idle PipeWire audio clients and controlling PipeWire stream nodes via libpipewire. Used by both `VolumeController` (via `PaWorker`) and the first-run wizard (`AppPage`).
+Shared utility for listing idle PipeWire audio clients and controlling PipeWire stream nodes via libpipewire. Used by both `VolumeController` (via `PaWorker`) and the first-run wizard (`AppPage`). Internally split into three layers behind the `pwutils.h` facade:
+
+- **`pwsession.{h,cpp}`** (`pwdetail::PipeWireSession`, `snapshotObjectInfo()`) — libpipewire initialization, thread loop, core/registry lifecycle, sync with timeout, and registry global snapshot.
+- **`pwclientfilter.{h,cpp}`** (`clientsFromPipeWireGlobals()`, `pipeWireNodeMatchesApp()`, `pwdetail::populateNodeOwner()`) — pure filtering, client-id owner mapping, and name normalization without libpipewire I/O.
+- **`pwnodecontrol.{h,cpp}`** (`PipeWireNode` volume math, `pwdetail::readNodeProps()`, `pwdetail::setNodeProps()`) — `SPA_PARAM_Props` reader/writer.
+- **`pwutils.cpp`** — thin `PipeWireVolumeBackend` facade and compatibility one-shot free functions.
 
 - **`PipeWireClient` struct** — `{ QString name; QString binary; QString id; }`
 - **`PipeWireNode` struct** — node identity plus `rawVolume`, `channelVolumes`, mute state, and helpers for the mixer-visible and effective levels. `object.serial` distinguishes a newly created node when PipeWire reuses a global id.

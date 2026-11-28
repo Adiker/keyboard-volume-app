@@ -34,13 +34,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Pliki:** `cpp/src/config.h`, `cpp/src/config.cpp`, `cpp/src/volumecontroller.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/tests/test_config.cpp`
 **Status:** Planowane.
 
-### 35. Podział `pwutils.cpp`
-
-**Problem:** Plik miesza snapshot registry, listowanie klientów, filtrowanie, odczyt node'ów i zapis `SPA_PARAM_Props`. Aliasowanie (#7b) zostało już dodane.
-**Rekomendacja:** Przed kolejnymi rozszerzeniami rozdzielić warstwy: registry snapshot, transformacja/filtr (filtrowanie klientów, mapping owner-by-`client.id`, normalizacja nazw), node control (read/write `SPA_PARAM_Props`).
-**Pliki:** `cpp/src/pwutils.{h,cpp}` — refactor wewnątrzplikowy lub split na 2–3 jednostki.
-**Status:** Planowane.
-
 ### 39. File / journald logging z `--log-level`
 
 **Problem:** `qWarning()` / `qDebug()` trafiają na stderr, który systemd może zbierać w journalu. Brak konfigurowalnych poziomów i bardziej szczegółowego routingu utrudnia diagnostykę.
@@ -207,6 +200,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 34. Podział `volumecontroller.cpp`
 
 **Status:** Zrealizowane. `volumecontroller.cpp` zredukowany do cienkiej fasady Qt; wydzielono `cpp/src/paworker.{h,cpp}`, `cpp/src/pawatcherthread.{h,cpp}` oraz `cpp/src/pabackend_helpers.{h,cpp}` z pełnym zachowaniem kontraktu wątkowego (`PaWorker` w dedykowanym wątku, `std::atomic<bool>`, brak `volumecontroller.moc`).
+
+### 35. Podział `pwutils.cpp`
+
+**Status:** Zrealizowane. Rozdzielono warstwy za stabilną fasadą `pwutils.h`: `pwsession.{h,cpp}` (sesja libpipewire i snapshot registry), `pwclientfilter.{h,cpp}` (czysta filtracja klientów i mapowanie właściciela po `client.id`), `pwnodecontrol.{h,cpp}` (odczyt/zapis `SPA_PARAM_Props` i przeliczenia głośności) oraz cienkie `pwutils.cpp` (`PipeWireVolumeBackend` i helpery one-shot).
 
 ### 36. Konfigurowalne filtry aplikacji audio
 
