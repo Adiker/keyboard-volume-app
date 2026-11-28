@@ -61,6 +61,7 @@ set(SOURCES
     src/profileeditdialog.cpp
     src/sceneeditdialog.cpp
     src/windowtracker.cpp
+    src/windowtracker_ipc.cpp
     resources.qrc
 )
 

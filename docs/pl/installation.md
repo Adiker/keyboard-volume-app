@@ -174,9 +174,12 @@ Na GNOME i compositorach bez tego protokołu, przy nieustawionym
 Zmiana rozmiaru OSD jest obsługiwana wewnątrz aplikacji i działa na obu
 ścieżkach.
 
-Przełączanie profili według aktywnego okna używa skryptu KWin na KDE Wayland,
-następnie protokołu `zwlr_foreign_toplevel_management_unstable_v1`, jeśli jest
-dostępny, a w pozostałych przypadkach X11/XWayland i XCB. Uruchomienie skryptu
+Przełączanie profili według aktywnego okna automatycznie wybiera najlepszy
+dostępny backend kompozytora: natywne IPC dla Hyprland
+(`HYPRLAND_INSTANCE_SIGNATURE`), Niri (`NIRI_SOCKET`) oraz Sway/i3
+(`SWAYSOCK`/`I3SOCK`), skrypt KWin na KDE Plasma Wayland, protokół
+`zwlr_foreign_toplevel_management_unstable_v1` na pozostałych kompozytorach
+wlroots, a w ostatniej kolejności X11/XWayland przez XCB. Uruchomienie skryptu
 KWin musi zostać potwierdzone; błędy są zapisywane w logu. Fallback XCB widzi
 okna X11/XWayland, ale nie natywne okna Wayland.
 

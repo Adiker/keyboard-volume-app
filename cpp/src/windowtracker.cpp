@@ -1,4 +1,5 @@
 #include "windowtracker.h"
+#include "windowtracker_ipc.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -189,7 +190,8 @@ constexpr uint32_t WlrForeignToplevelVersion = 3;
 
 struct RegistryProbe
 {
-    bool found = false;
+    bool foundWlr = false;
+    bool foundExtList = false;
 };
 
 void probeRegistryGlobal(void* data, wl_registry*, uint32_t, const char* interface, uint32_t)
@@ -197,7 +199,11 @@ void probeRegistryGlobal(void* data, wl_registry*, uint32_t, const char* interfa
     auto* probe = static_cast<RegistryProbe*>(data);
     if (std::strcmp(interface, zwlr_foreign_toplevel_manager_v1_interface.name) == 0)
     {
-        probe->found = true;
+        probe->foundWlr = true;
+    }
+    else if (std::strcmp(interface, "ext_foreign_toplevel_list_v1") == 0)
+    {
+        probe->foundExtList = true;
     }
 }
 
@@ -226,7 +232,13 @@ bool probeWaylandForeignToplevel()
 
     wl_registry_destroy(registry);
     wl_display_disconnect(display);
-    return rc >= 0 && probe.found;
+    if (rc >= 0 && !probe.foundWlr && probe.foundExtList)
+    {
+        qInfo() << "[WindowTracker] Compositor exposes ext_foreign_toplevel_list_v1 without "
+                   "zwlr_foreign_toplevel_manager_v1 (ext v1 has no focus/activation event); "
+                   "trying fallback backends";
+    }
+    return rc >= 0 && probe.foundWlr;
 }
 
 struct WaylandToplevel;
@@ -472,8 +484,48 @@ void WindowTracker::start()
     QThread::start();
 }
 
+namespace
+{
+
+QString hyprlandEventSocketFromEnv()
+{
+    const QString sig = QString::fromLocal8Bit(qgetenv("HYPRLAND_INSTANCE_SIGNATURE")).trimmed();
+    const QString runtimeDir = QString::fromLocal8Bit(qgetenv("XDG_RUNTIME_DIR")).trimmed();
+    return windowtracker_ipc::hyprlandSocketPath(sig, runtimeDir, /*eventSocket=*/true);
+}
+
+QString hyprlandCmdSocketFromEnv()
+{
+    const QString sig = QString::fromLocal8Bit(qgetenv("HYPRLAND_INSTANCE_SIGNATURE")).trimmed();
+    const QString runtimeDir = QString::fromLocal8Bit(qgetenv("XDG_RUNTIME_DIR")).trimmed();
+    return windowtracker_ipc::hyprlandSocketPath(sig, runtimeDir, /*eventSocket=*/false);
+}
+
+QString niriSocketFromEnv()
+{
+    return QString::fromLocal8Bit(qgetenv("NIRI_SOCKET")).trimmed();
+}
+
+QString swaySocketFromEnv(bool includeI3Fallback)
+{
+    QString sway = QString::fromLocal8Bit(qgetenv("SWAYSOCK")).trimmed();
+    if (!sway.isEmpty()) return sway;
+    if (includeI3Fallback) return QString::fromLocal8Bit(qgetenv("I3SOCK")).trimmed();
+    return {};
+}
+
+} // namespace
+
 WindowTracker::Backend WindowTracker::chooseBackend() const
 {
+    if (windowtracker_ipc::probeUnixSocket(hyprlandEventSocketFromEnv()))
+        return Backend::HyprlandIpc;
+
+    if (windowtracker_ipc::probeUnixSocket(niriSocketFromEnv())) return Backend::NiriIpc;
+
+    if (windowtracker_ipc::probeUnixSocket(swaySocketFromEnv(/*includeI3Fallback=*/false)))
+        return Backend::SwayIpc;
+
     if (!qgetenv("WAYLAND_DISPLAY").isEmpty() && probeKWinScripting())
     {
         return Backend::KWinScript;
@@ -486,6 +538,9 @@ WindowTracker::Backend WindowTracker::chooseBackend() const
     }
 #endif
 
+    if (windowtracker_ipc::probeUnixSocket(swaySocketFromEnv(/*includeI3Fallback=*/true)))
+        return Backend::SwayIpc;
+
     if (!qgetenv("DISPLAY").isEmpty())
     {
         return Backend::Xcb;
@@ -496,26 +551,38 @@ WindowTracker::Backend WindowTracker::chooseBackend() const
 
 void WindowTracker::run()
 {
+    auto tryFallbacks = [this]()
+    {
+        if (!m_running) return;
+#ifdef HAVE_WAYLAND_FOREIGN_TOPLEVEL
+        if (!qgetenv("WAYLAND_DISPLAY").isEmpty() && probeWaylandForeignToplevel())
+        {
+            if (runWayland()) return;
+        }
+#endif
+        if (!qgetenv("DISPLAY").isEmpty())
+            runXcb();
+        else
+            emit error(QStringLiteral("No supported window tracking backend found"));
+    };
+
     const Backend backend = chooseBackend();
     switch (backend)
     {
+    case Backend::HyprlandIpc:
+        if (!runHyprland()) tryFallbacks();
+        break;
+    case Backend::NiriIpc:
+        if (!runNiri()) tryFallbacks();
+        break;
+    case Backend::SwayIpc:
+        if (!runSway()) tryFallbacks();
+        break;
     case Backend::KWinScript:
-        if (!runKWinScript())
-        {
-#ifdef HAVE_WAYLAND_FOREIGN_TOPLEVEL
-            if (!qgetenv("WAYLAND_DISPLAY").isEmpty() && probeWaylandForeignToplevel())
-            {
-                if (runWayland()) break;
-            }
-#endif
-            if (!qgetenv("DISPLAY").isEmpty())
-                runXcb();
-            else
-                emit error(QStringLiteral("No supported window tracking backend found"));
-        }
+        if (!runKWinScript()) tryFallbacks();
         break;
     case Backend::WaylandForeignToplevel:
-        runWayland();
+        if (!runWayland() && !qgetenv("DISPLAY").isEmpty()) runXcb();
         break;
     case Backend::Xcb:
         runXcb();
@@ -525,6 +592,28 @@ void WindowTracker::run()
         break;
     }
     m_running = false;
+}
+
+bool WindowTracker::runHyprland()
+{
+    return windowtracker_ipc::runHyprlandIpc(
+        hyprlandCmdSocketFromEnv(), hyprlandEventSocketFromEnv(), m_running,
+        [this](const QString& app) { emit focusedBinaryChanged(app); },
+        [this](const QString& msg) { emit error(msg); });
+}
+
+bool WindowTracker::runNiri()
+{
+    return windowtracker_ipc::runNiriIpc(
+        niriSocketFromEnv(), m_running, [this](const QString& app)
+        { emit focusedBinaryChanged(app); }, [this](const QString& msg) { emit error(msg); });
+}
+
+bool WindowTracker::runSway()
+{
+    return windowtracker_ipc::runSwayIpc(
+        swaySocketFromEnv(/*includeI3Fallback=*/true), m_running, [this](const QString& app)
+        { emit focusedBinaryChanged(app); }, [this](const QString& msg) { emit error(msg); });
 }
 
 bool WindowTracker::runKWinScript()

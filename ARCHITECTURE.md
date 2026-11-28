@@ -77,7 +77,8 @@ keyboard-volume-app/
 │       ├── kvctl.cpp            # kv-ctl command-line D-Bus client
 │       ├── kvctlcommand.h/cpp   # kv-ctl parser shared with tests
 │       ├── evdevdevice.h/cpp    # RAII evdev device wrapper (fd, libevdev*, uinput)
-│       ├── windowtracker.h/cpp  # Window focus monitor (X11 + Wayland backends) for auto-profile switching
+│       ├── windowtracker.h/cpp     # Window focus monitor (Hyprland/Niri/Sway/i3 IPC, KWin, Wayland, XCB)
+│       ├── windowtracker_ipc.h/cpp # Compositor UNIX-socket IPC runners and pure parsers
 │       ├── screenutils.h        # Header-only: centerDialogOnScreenAt() for multi-monitor XWayland
 │       ├── appmatcher.h         # Header-only: matchBinaryToApp() — focused-window → AudioApp lookup
 │       ├── audioapp.h           # AudioApp struct (display name, PA index, muted, volume)
@@ -899,7 +900,7 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_osdwindow` — OSD progress-row, label-preset, album-art, and mouse-drag regressions (including all eight resize grips across three height modes, scale persistence, edge anchoring, clamp, hide timer, repaint reuse, font stability, event coalescing, release/cancel handling, and seek/media-button interaction)
 - `test_osdwindow_wayland` — optional production layer-shell regression, built when LayerShellQt is available. Normal headless runs skip its compositor case. On a compositor advertising `zwlr_layer_shell_v1`, opt in with `QT_QPA_PLATFORM=wayland KVA_TEST_NATIVE_WAYLAND=1 cpp/build/tests/test_osdwindow_wayland`. It creates only an isolated OSD with temporary configuration and checks the fullscreen drag overlay (`m_dragOverlayActive`), early release before the overlay is ready, click and release with stale coordinates after it is ready, panel moves with a locked grab point, release restoring LayerShellQt margins, cancellation on hide without re-showing, volume and media refreshes during a drag, and seek/media-button interaction after drag. Add `WAYLAND_DEBUG=client` when verifying that the post-release margin path still reaches `wl_surface.commit`.
 - `test_osdlabelformat` — 9 tests (token substitution, leading/trailing/middle separator trimming, unknown tokens preserved, multi-occurrence, internal whitespace preservation, all-empty)
-- `test_windowtracker` — private-D-Bus KWin focus startup, collisions and cleanup
+- `test_windowtracker` — private-D-Bus KWin focus startup/collisions/cleanup plus Hyprland/Niri/Sway IPC parser and live UNIX-socket tests
 - `test_dbusinterface` — 6 tests (Volume/Muted property writers route to absolute `setVolume`/`setMuted` instead of relative delta/toggle, clamping, no-op when no active app, `ToggleMute()` method still toggles)
 - `test_tray_dbus` — private D-Bus session and offscreen tray menu: manual selection, Follow Focus display override, app-name validation and menu refresh. Requires `dbus-run-session`.
 - `test_inputstartup` (opt-in) — runs the production input thread and real `epoll` with pipe-backed evdev/uinput wrappers inside a private user/mount namespace. No physical nodes or desktop-visible uinput devices are opened. Covers prepare-before-grab, pre-grab backlog, normal forwarding/hotkey swallowing, passive sibling modifiers, held-key handoff, stop during preparation, overlapping discovery periods, LED descriptor reuse/moves/cancellation, desktop LED output with physical feedback, read-only fallback, and mirror/poll setup failures. Requires Linux with unprivileged user namespaces and `unshare`.

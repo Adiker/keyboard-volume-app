@@ -4,14 +4,7 @@ Stan względem `main`: 5 listopada 2026. Roadmapa zachowuje pierwotne numery poz
 
 ## Otwarte i częściowo zrealizowane
 
-Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej kolejności realizacji. Priorytety z wcześniejszego przeglądu kodu (`#37`, `#33`, `#34`, `#38` i `#22`) zostały zrealizowane i przeniesione poniżej do sekcji „Zrealizowane".
-
-### 16. Tryb "Follow Focus" (Dynamiczne śledzenie aktywnego okna)
-
-**Problem:** Konieczność ręcznej zmiany profili lub zapamiętywania wielu skrótów klawiszowych dla poszczególnych aplikacji.
-**Rekomendacja:** Rozważyć dalszą obsługę kompozytorów, które nie udostępniają używanego protokołu Wayland, zachowując obecne dopasowywanie aktywnego okna do profili.
-**Pliki:** `cpp/src/windowtracker.h/cpp`, zmiany w `cpp/src/main.cpp`, `cpp/src/config.{h,cpp}`, `cpp/src/settingsdialog.cpp`, `cpp/src/profileeditdialog.cpp`, `cpp/src/i18n.cpp`, `cpp/CMakeLists.txt`.
-**Status:** Częściowo zrealizowane. `WindowTracker` obsługuje X11/XWayland oraz Wayland na kompozytorach udostępniających `zwlr_foreign_toplevel_manager_v1` (zob. #29). Automatyczne przełączanie jest konfigurowane globalnie i per profil. Na pozostałych kompozytorach zależy od dostępności XWayland; szersza obsługa pozostaje otwarta.
+Brak otwartych pozycji — wszystkie pozycje z pierwotnej roadmapy zostały zrealizowane i przeniesione poniżej do sekcji „Zrealizowane".
 
 ## Zrealizowane
 
@@ -98,6 +91,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 15. Pozycjonowanie dialogów na właściwym monitorze (XWayland)
 
 **Status:** Zrealizowane. Header-only utility `centerDialogOnScreenAt(QWidget*, QPoint)` z fallbackiem do `primaryScreen()`. Bez event filterów, QTimer ani zmian flag Qt::Dialog.
+
+### 16. Tryb "Follow Focus" (Dynamiczne śledzenie aktywnego okna)
+
+**Status:** Zrealizowane. `WindowTracker` automatycznie dobiera natywny backend kompozytora: Hyprland IPC (`HYPRLAND_INSTANCE_SIGNATURE`), Niri IPC (`NIRI_SOCKET`), Sway/i3 IPC (`SWAYSOCK`/`I3SOCK`), KWin Scripting na KDE Plasma Wayland, `zwlr_foreign_toplevel_manager_v1` (wlroots, zob. #29) z diagnostyką dla `ext_foreign_toplevel_list_v1` oraz fallback X11/XWayland (XCB). Parsery i sockety IPC wydzielono do `cpp/src/windowtracker_ipc.{h,cpp}` i pokryto testami w `cpp/tests/test_windowtracker.cpp`.
 
 ### 17. Zaawansowane dopasowywanie aplikacji (Regex)
 
