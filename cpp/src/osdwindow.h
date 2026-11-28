@@ -6,6 +6,7 @@
 #include <QRect>
 #include <QTimer>
 #include <cstdint>
+#include <optional>
 
 #ifdef HAVE_LAYER_SHELL_QT
 #include <LayerShellQt/Window>
@@ -34,11 +35,53 @@ class Config;
 //   - Time label   — "m:ss / m:ss"  (or "LIVE" for streams)
 //
 // Hover over the OSD suspends the hide timer so the user can read / seek.
+// Compute screen-global top-left coordinates for a relative OSD anchor inside
+// `avail`. Returns std::nullopt when `anchor` is "custom" or unknown.
+std::optional<QPoint> computeAnchoredOsdPos(const QRect& avail, const QSize& osdSize,
+                                            const QString& anchor, int marginX, int marginY);
+
 class OSDWindow : public QWidget
 {
     Q_OBJECT
+    Q_PROPERTY(QColor panelBackground READ panelBackground WRITE setPanelBackground)
+    Q_PROPERTY(QColor panelBorderColor READ panelBorderColor WRITE setPanelBorderColor)
+    Q_PROPERTY(int panelBorderWidth READ panelBorderWidth WRITE setPanelBorderWidth)
+    Q_PROPERTY(int panelRadius READ panelRadius WRITE setPanelRadius)
   public:
     explicit OSDWindow(Config* config, QWidget* parent = nullptr);
+
+    QColor panelBackground() const
+    {
+        return m_panelBackground;
+    }
+    void setPanelBackground(const QColor& color)
+    {
+        m_panelBackground = color;
+    }
+    QColor panelBorderColor() const
+    {
+        return m_panelBorderColor;
+    }
+    void setPanelBorderColor(const QColor& color)
+    {
+        m_panelBorderColor = color;
+    }
+    int panelBorderWidth() const
+    {
+        return m_panelBorderWidth;
+    }
+    void setPanelBorderWidth(int width)
+    {
+        m_panelBorderWidth = std::max(0, width);
+    }
+    int panelRadius() const
+    {
+        return m_panelRadius;
+    }
+    void setPanelRadius(int radius)
+    {
+        m_panelRadius = radius;
+    }
 
     // Display OSD at configured position.  volume is 0.0–1.0.
     void showVolume(const QString& appName, double volume, bool muted = false);
@@ -174,6 +217,11 @@ class OSDWindow : public QWidget
     QLabel* m_labelPct = nullptr;
     QTimer* m_hideTimer = nullptr;
     QColor m_bgColor;
+    QColor m_panelBackground;
+    QColor m_panelBorderColor;
+    int m_panelBorderWidth = 0;
+    int m_panelRadius = -1;
+    QString m_customCss;
     QString m_cachedStyleText;
     QString m_cachedStyleBar;
     bool m_previewMode = false;

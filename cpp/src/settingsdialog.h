@@ -230,8 +230,12 @@ class SettingsDialog : public QDialog
     QCheckBox* m_exposeMpris = nullptr;
     QComboBox* m_mediaKeysOsdMode = nullptr;
 
-    // OSD scale
+    // OSD scale & theme
     QDoubleSpinBox* m_osdScale = nullptr;
+    QComboBox* m_osdAnchor = nullptr;
+    QSpinBox* m_osdMarginX = nullptr;
+    QSpinBox* m_osdMarginY = nullptr;
+    QLineEdit* m_customCssPath = nullptr;
 
     // Profiles section
     QTableWidget* m_profilesTable = nullptr;

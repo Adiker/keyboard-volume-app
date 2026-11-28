@@ -70,6 +70,15 @@ struct OsdConfig
     int screen = 0;
     int x = 50;
     int y = 1150;
+    // Relative anchor mode: "custom" uses x/y; otherwise one of
+    // "top-left", "top-center", "top-right", "center-left", "center",
+    // "center-right", "bottom-left", "bottom-center", "bottom-right".
+    QString anchor = QStringLiteral("custom");
+    int marginX = 20;
+    int marginY = 20;
+    // Optional external Qt stylesheet path (supports qproperty-panelBackground,
+    // qproperty-panelBorderColor, qproperty-panelBorderWidth, qproperty-panelRadius).
+    QString customCssPath;
     int timeoutMs = 1200;
     int opacity = 85;
     QString colorBg = QStringLiteral("#1A1A1A");
