@@ -4,6 +4,7 @@
 #include <QElapsedTimer>
 
 #include <algorithm>
+#include <cerrno>
 #include <mutex>
 
 #include <pipewire/client.h>
@@ -168,11 +169,15 @@ void PipeWireSession::onCoreDone(void* data, uint32_t id, int seq)
     }
 }
 
-void PipeWireSession::onCoreError(void* data, uint32_t, int, int, const char* message)
+void PipeWireSession::onCoreError(void* data, uint32_t id, int, int result, const char* message)
 {
     auto* self = static_cast<PipeWireSession*>(data);
-    self->coreError.store(true, std::memory_order_release);
-    qWarning() << "[pwutils] PipeWire error:" << (message ? message : "unknown");
+    if (id == PW_ID_CORE || result == -EPIPE || result == -ECONNRESET)
+        self->coreError.store(true, std::memory_order_release);
+    else if (id == self->activeProxyId)
+        self->activeProxyError = true;
+    qWarning() << "[pwutils] PipeWire error on object" << id << "(" << result
+               << ") :" << (message ? message : "unknown");
     pw_thread_loop_signal(self->loop, false);
 }
 
