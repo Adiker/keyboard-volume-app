@@ -52,7 +52,7 @@ class VolumeController : public QObject
                            double maxVol = 1.0);
     virtual void toggleMute(const QString& appName);
     virtual void setMuted(const QString& appName, bool muted);
-    void toggleDucking(const QString& keepApp, double duckVolume);
+    virtual void toggleDucking(const QString& keepApp, double duckVolume);
 
     // Async output routing — move the app's active sink-input(s) to the named
     // sink and persist the choice via stream-restore. Empty sinkName is a
@@ -77,12 +77,12 @@ class VolumeController : public QObject
     // Scenes intentionally bypass per-profile volume limits (explicit presets).
     // Single entry point shared by tray, D-Bus, hotkey, and Settings so the
     // per-target loop is not duplicated. Async → results arrive via volumeChanged().
-    void applyScene(const AudioScene& scene);
+    virtual void applyScene(const AudioScene& scene);
 
     // Async read of the app's current volume — result arrives via volumeChanged().
     // Does NOT modify any volume. Falls back to cached value when PA is unavailable.
-    void queryVolume(const QString& appName);
-    void queryVolumeSilently(const QString& appName);
+    virtual void queryVolume(const QString& appName);
+    virtual void queryVolumeSilently(const QString& appName);
 
     // Re-emit startup detections that may have arrived before the tray connected.
     // This is notification-only and never changes the audio graph.

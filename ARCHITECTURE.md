@@ -44,7 +44,8 @@ keyboard-volume-app/
 │   ├── protocols/               # Wayland protocol XML definitions for window-tracker
 │   │   └── wlr-foreign-toplevel-management-unstable-v1.xml
 │   └── src/
-│       ├── main.cpp             # Entry point; App class wires all modules
+│       ├── main.cpp             # Entry point (Wayland/XCB probe, CLI, singleton, first-run)
+│       ├── app.h/cpp            # Root coordinator App class wiring all modules
 │       ├── config.h/cpp         # JSON config r/w (XDG config dir via QStandardPaths)
 │       ├── i18n.h/cpp           # PL/EN translations; tr() lookup function
 │       ├── volumecontroller.h/cpp  # Per-app volume/mute via libpulse + libpipewire
@@ -90,11 +91,12 @@ keyboard-volume-app/
 
 ## Module Reference
 
-### `cpp/src/main.cpp` — `App`, `main()`
+### `cpp/src/main.cpp` & `cpp/src/app.h/cpp` — `main()`, `App`
 
-The root coordinator. `App` uses **two-phase initialization**:
-- **Constructor** creates only `Config`
-- **`init()`** creates all remaining components, connects signals, starts evdev, and registers D-Bus interfaces
+`main.cpp` handles process bootstrap (Wayland/XCB `QT_QPA_PLATFORM` probe, Unix signal self-pipe, CLI `--version`/`--help` via `QCommandLineParser`, D-Bus singleton guard, `FirstRunWizard`, and restart-after-import). `App` lives in `cpp/src/app.h/cpp` as the root coordinator using **two-phase initialization**:
+- **Constructor** takes an optional `std::unique_ptr<Config>` (creating a default `Config` in production)
+- **`init(AppInitOptions)`** creates all remaining components, connects signals, starts evdev, registers D-Bus/MPRIS interfaces, and starts `WindowTracker` when enabled. `AppInitOptions` lets tests inject a mock `VolumeController` and opt out of hardware evdev/WindowTracker/default D-Bus names without changing production startup.
+- `init()` is single-use for each `App`, including after `cleanup()`; a repeated call logs a warning and leaves existing components unchanged. Create a new `App` for a new lifecycle.
 
 On first run (`Config::isFirstRun()`), a `FirstRunWizard` is shown before `App::init()` to guide the user through language, input device, and default application selection. If the wizard is cancelled the app exits immediately.
 
@@ -265,7 +267,7 @@ Shared utility for listing idle PipeWire audio clients and controlling PipeWire 
 - **`inspectPipeWire()` / `findPipeWireNodesForApp()` / `readPipeWireNode()`** — take read-only snapshots and read `SPA_PARAM_Props` without spawning `pw-cli`. The snapshot includes every output stream so active PA sink inputs can be joined exactly through their `object.id` property.
 - **Visible-volume write contract** — PipeWire stores `SPA_PROP_volume` and `SPA_PROP_channelVolumes` as separate linear DSP gains, while PulseAudio-compatible mixers expose the cubic-root channel scale. `setPipeWireNodeVisibleVolume()` / `setPipeWireNodeVisibleChannelVolumes()` therefore write `rawVolume = 1.0` and cube each user-visible channel value. Never write a requested percentage to `SPA_PROP_volume`: WirePlumber persists that hidden multiplier even though KDE Plasma, pavucontrol, and `wpctl` continue to show the unchanged channels.
 - **Exact non-volume restore** — `restorePipeWireNodeVolumeState()` is restricted to sink moves and restores the exact pre-move raw/channel representation. Startup, refresh, reconnect, focus/profile switching, routing, and discovery must remain read-only with respect to volume. A pre-existing non-unity raw multiplier is reported through `hiddenVolumeDetected` and normalized only by an explicit volume-changing action, preserving its effective gain.
-- **Persistent hot-path backend** — `PaWorker` owns one `PipeWireVolumeBackend` for its lifetime. Reads, visible writes, ducking, pending replay, and routing reuse that connection instead of creating a thread loop/context/registry round-trip per hotkey event. Registry removals are tracked, a failed core is discarded and reconnected lazily on the next operation, and `PaWorker::cleanup()` closes the connection explicitly before its thread exits. The compatibility free functions remain short-lived for non-worker callers.
+- **Persistent hot-path backend** — `PaWorker` owns one `PipeWireVolumeBackend` for its lifetime. Reads, visible writes, ducking, pending replay, and routing reuse that connection instead of creating a thread loop/context/registry round-trip per hotkey event. Registry removals are tracked, a failed core is discarded and reconnected lazily on the next operation, and `PaWorker::cleanup()` closes the connection explicitly before its thread exits. Errors from an individual proxy fail its current read or write without invalidating the connection; core and broken-connection errors still trigger reconnection. The compatibility free functions remain short-lived for non-worker callers.
 
 ### `cpp/src/applistwidget.h/cpp` — `AppListWidget`
 
@@ -310,7 +312,7 @@ inline void centerDialogOnScreenAt(QWidget *window, const QPoint &globalPos,
 
 **Call sites:** All 4 parentless dialogs capture `QCursor::pos()` before construction and call `centerDialogOnScreenAt()` before `exec()`:
 - `SettingsDialog` and `AppSelectorDialog` in `cpp/src/trayapp.cpp`
-- `DeviceSelectorDialog` and `FirstRunWizard` in `cpp/src/main.cpp`
+- `DeviceSelectorDialog` in `cpp/src/app.cpp` and `FirstRunWizard` in `cpp/src/main.cpp`
 
 ### `cpp/src/appmatcher.h` — `matchBinaryToApp()`
 
@@ -451,7 +453,7 @@ Album art. `m_albumArt` is a square `QLabel` (`scaled(36)`) placed to the left o
 Media controls row (inside `m_progressRow`, below the progress bar):
 - `setMediaControlsEnabled(bool)` — shows/hides `m_controlsRow` (⏮ prev / ⏵⏸ play-pause / ⏭ next buttons) and calls `applySize()` to resize the window. Called from `reloadStyles()`.
 - `updatePlaybackStatus(status)` — switches the play/pause button glyph: `\u23F5` (▶) when Paused/Stopped, `\u23F8` (⏸) when Playing. Connected from `MprisClient::playbackStatusChanged`.
-- Clicking the buttons emits `playPauseRequested()`, `previousRequested()`, `nextRequested()` — wired to `MprisClient::playPause`, `previous`, `next` in `main.cpp`.
+- Clicking the buttons emits `playPauseRequested()`, `previousRequested()`, `nextRequested()` — wired to `MprisClient::playPause`, `previous`, `next` in `app.cpp`.
 - Button styling: transparent background, OSD text color, hover = bar color; applied in `applyColorStyles()`.
 - `applySize()` uses three-way logic: base / progress / progress+controls.
 
@@ -871,6 +873,7 @@ Unit tests are in `cpp/tests/`, integrated with CTest:
 - `test_aboutdialog` — 3 offscreen GUI tests (EN/PL content, author/project links, version, close action, and byte-identical embedded GPL text)
 - `test_kvctlcommand` — 10 tests (subcommand parser, profile option, get/set fields, per-profile set volume, show command, invalid input)
 - `test_pwutils` — PipeWire client filtering/ownership plus raw, mixer-visible, and effective volume regressions
+- `test_pwerrors` — PipeWire object-local versus fatal connection error handling
 - `test_appmatcher` — 11 tests (focused-window → AudioApp lookup, including empty-field regression)
 - `test_volumecontroller` — smoke tests run with private, unreachable PulseAudio and PipeWire sockets, including when the binary is invoked directly. A private D-Bus session alone does not isolate audio.
 - `test_inputhandler` — API and capability tests (API, evdev device listing, modifier normalize, `resolveProfile` / ducking action / scroll binding / show volume action specificity)
