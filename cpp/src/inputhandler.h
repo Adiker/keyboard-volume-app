@@ -263,6 +263,10 @@ class InputHandler : public QThread
     // OSD layout — snap/scale while the overlay is visible (visible-gated).
     void osdLayoutAction(OsdLayoutAction action);
 
+    // Input device lifecycle (initial attach, hot-plug attach, disconnect).
+    void deviceConnected(const QString& path, const QString& name);
+    void deviceDisconnected(const QString& path, const QString& name);
+
   protected:
     void run() override;
 

@@ -526,6 +526,10 @@ void App::initDbus()
 {
     m_dbus = new DbusInterface(m_config.get(), m_volumeCtrl, this);
     m_dbus->setMprisClient(m_mpris);
+    connect(m_input, &InputHandler::deviceConnected, m_dbus, &DbusInterface::notifyDeviceConnected,
+            Qt::QueuedConnection);
+    connect(m_input, &InputHandler::deviceDisconnected, m_dbus,
+            &DbusInterface::notifyDeviceDisconnected, Qt::QueuedConnection);
     m_tray->connectDbus(m_dbus);
     connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProfiles);
     connect(m_tray, &TrayApp::settingsChanged, m_dbus, &DbusInterface::reloadProgressEnabled);

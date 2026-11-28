@@ -782,6 +782,42 @@ TEST(PaWorkerUnit, DuckingFadeOutCompletesAndFadeInContextLossParksRestore)
     worker.cleanup();
 }
 
+TEST(PaWorkerUnit, AppLifecycleSignalsEmitAfterInitialDiscovery)
+{
+    auto fakePtr = std::make_unique<FakePaBackend>();
+    auto* fake = fakePtr.get();
+    fake->allowConnect = true;
+    fake->sinkInputs = {
+        makeSinkInput(10, QStringLiteral("Spotify"), QStringLiteral("spotify"), 0.80, false)};
+
+    PaWorker worker(std::move(fakePtr));
+    QSignalSpy startedSpy(&worker, &PaWorker::appStarted);
+    QSignalSpy stoppedSpy(&worker, &PaWorker::appStopped);
+
+    // Initial seed must not spam appStarted for already-running apps.
+    worker.init();
+    EXPECT_EQ(startedSpy.count(), 0);
+    EXPECT_EQ(stoppedSpy.count(), 0);
+
+    // Firefox appears -> appStarted("Firefox", "firefox").
+    fake->sinkInputs.append(
+        makeSinkInput(20, QStringLiteral("Firefox"), QStringLiteral("firefox"), 0.70, false));
+    worker.doListApps(/*forceRefresh=*/true);
+    ASSERT_EQ(startedSpy.count(), 1);
+    EXPECT_EQ(startedSpy.first().at(0).toString(), QStringLiteral("Firefox"));
+    EXPECT_EQ(startedSpy.first().at(1).toString(), QStringLiteral("firefox"));
+    EXPECT_EQ(stoppedSpy.count(), 0);
+
+    // Spotify stops -> appStopped("Spotify", "spotify").
+    fake->sinkInputs.removeFirst();
+    worker.doListApps(/*forceRefresh=*/true);
+    ASSERT_EQ(stoppedSpy.count(), 1);
+    EXPECT_EQ(stoppedSpy.first().at(0).toString(), QStringLiteral("Spotify"));
+    EXPECT_EQ(stoppedSpy.first().at(1).toString(), QStringLiteral("spotify"));
+
+    worker.cleanup();
+}
+
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);

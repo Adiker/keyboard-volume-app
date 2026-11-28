@@ -34,6 +34,10 @@ class DbusInterface : public QObject
     // the app is built/run without MPRIS support). Caller retains ownership.
     void setMprisClient(MprisClient* client);
 
+    // Relay evdev device hot-plug events from InputHandler (queued onto main thread).
+    void notifyDeviceConnected(const QString& path, const QString& name);
+    void notifyDeviceDisconnected(const QString& path, const QString& name);
+
     double volume() const
     {
         return m_volume;
@@ -133,6 +137,12 @@ class DbusInterface : public QObject
     void progressEnabledChanged(bool on);
     void autoProfileSwitchChanged(bool on);
     void manualAppSelected(const QString& name);
+
+    // Lifecycle signals exported on org.keyboardvolumeapp.VolumeControl.
+    Q_SCRIPTABLE void deviceConnected(const QString& path, const QString& name);
+    Q_SCRIPTABLE void deviceDisconnected(const QString& path, const QString& name);
+    Q_SCRIPTABLE void appStarted(const QString& name, const QString& binary);
+    Q_SCRIPTABLE void appStopped(const QString& name, const QString& binary);
 
   private:
     // Build the QVariantList wire representation from current Config profiles.

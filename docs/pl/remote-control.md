@@ -167,6 +167,20 @@ Właściwości `VolumeControl` to `Volume`, `Muted`, `ActiveApp`, `Apps`,
 `AutoProfileSwitch`. Dla zapisywalnych właściwości używaj `Get`, `Set` i
 `GetAll`; `Profiles`, `Scenes` i `Sinks` są listami tylko do odczytu.
 
+### Sygnały cyklu życia
+
+`org.keyboardvolumeapp.VolumeControl` emituje także zdarzeniowe sygnały cyklu
+życia dla zewnętrznych paneli i widgetów (bez potrzeby odpytywania `Apps`):
+
+- `deviceConnected(string path, string name)` — otwarto urządzenie wejściowe
+  evdev (przy starcie lub po hot-plug w `/dev/input`).
+- `deviceDisconnected(string path, string name)` — otwarte urządzenie evdev
+  zostało odłączone.
+- `appStarted(string name, string binary)` — po początkowym skanowaniu pojawiła
+  się nowa aplikacja audio.
+- `appStopped(string name, string binary)` — znana wcześniej aplikacja audio
+  zniknęła.
+
 ## Opcjonalny fałszywy endpoint MPRIS
 
 Po włączeniu Ustawienia → Postęp odtwarzania → **Eksponuj fałszywy endpoint

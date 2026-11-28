@@ -373,6 +373,32 @@ TEST(AppWiring, DbusProgressEnabledUpdatesConfigAndOsdWithoutCrash)
     EXPECT_FALSE(progressSpy.last().first().toBool());
 }
 
+TEST(AppWiring, LifecycleSignalsRelayFromInputHandlerAndVolumeController)
+{
+    AppHarness h(QStringLiteral("lifecycle"));
+    QSignalSpy devConnSpy(h.app->dbusInterface(), &DbusInterface::deviceConnected);
+    QSignalSpy devDiscSpy(h.app->dbusInterface(), &DbusInterface::deviceDisconnected);
+    QSignalSpy appStartSpy(h.app->dbusInterface(), &DbusInterface::appStarted);
+    QSignalSpy appStopSpy(h.app->dbusInterface(), &DbusInterface::appStopped);
+
+    emit h.app->inputHandler()->deviceConnected(QStringLiteral("/dev/input/event7"),
+                                                QStringLiteral("Test Keyboard"));
+    emit h.app->inputHandler()->deviceDisconnected(QStringLiteral("/dev/input/event7"),
+                                                   QStringLiteral("Test Keyboard"));
+    emit h.vc.appStarted(QStringLiteral("Firefox"), QStringLiteral("firefox"));
+    emit h.vc.appStopped(QStringLiteral("Firefox"), QStringLiteral("firefox"));
+    QCoreApplication::processEvents();
+
+    ASSERT_EQ(devConnSpy.count(), 1);
+    EXPECT_EQ(devConnSpy.first().at(0).toString(), QStringLiteral("/dev/input/event7"));
+    ASSERT_EQ(devDiscSpy.count(), 1);
+    EXPECT_EQ(devDiscSpy.first().at(1).toString(), QStringLiteral("Test Keyboard"));
+    ASSERT_EQ(appStartSpy.count(), 1);
+    EXPECT_EQ(appStartSpy.first().at(0).toString(), QStringLiteral("Firefox"));
+    ASSERT_EQ(appStopSpy.count(), 1);
+    EXPECT_EQ(appStopSpy.first().at(1).toString(), QStringLiteral("firefox"));
+}
+
 int main(int argc, char** argv)
 {
     qputenv("QT_QPA_PLATFORM", QByteArrayLiteral("offscreen"));

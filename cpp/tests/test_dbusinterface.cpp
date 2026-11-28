@@ -16,6 +16,7 @@
 
 #include <QCoreApplication>
 #include <QMetaMethod>
+#include <QSignalSpy>
 #include <QTemporaryDir>
 
 #include "config.h"
@@ -375,4 +376,30 @@ TEST(DbusInterface, SilentResultsFollowCurrentTargetAndManualSelectionPersists)
     EXPECT_EQ(h.config.defaultProfile().primaryApp(), QStringLiteral("firefox"));
     h.dbus.setFocusedApp({});
     EXPECT_EQ(h.dbus.activeApp(), QStringLiteral("firefox"));
+}
+
+TEST(DbusInterface, RelaysDeviceAndAppLifecycleSignals)
+{
+    Harness h;
+    QSignalSpy appStartSpy(&h.dbus, &DbusInterface::appStarted);
+    QSignalSpy appStopSpy(&h.dbus, &DbusInterface::appStopped);
+    QSignalSpy devConnSpy(&h.dbus, &DbusInterface::deviceConnected);
+    QSignalSpy devDiscSpy(&h.dbus, &DbusInterface::deviceDisconnected);
+
+    emit h.vc.appStarted(QStringLiteral("Spotify"), QStringLiteral("spotify"));
+    emit h.vc.appStopped(QStringLiteral("Spotify"), QStringLiteral("spotify"));
+    h.dbus.notifyDeviceConnected(QStringLiteral("/dev/input/event3"), QStringLiteral("USB Keypad"));
+    h.dbus.notifyDeviceDisconnected(QStringLiteral("/dev/input/event3"),
+                                    QStringLiteral("USB Keypad"));
+
+    ASSERT_EQ(appStartSpy.count(), 1);
+    EXPECT_EQ(appStartSpy.first().at(0).toString(), QStringLiteral("Spotify"));
+    EXPECT_EQ(appStartSpy.first().at(1).toString(), QStringLiteral("spotify"));
+    ASSERT_EQ(appStopSpy.count(), 1);
+    EXPECT_EQ(appStopSpy.first().at(1).toString(), QStringLiteral("spotify"));
+    ASSERT_EQ(devConnSpy.count(), 1);
+    EXPECT_EQ(devConnSpy.first().at(0).toString(), QStringLiteral("/dev/input/event3"));
+    EXPECT_EQ(devConnSpy.first().at(1).toString(), QStringLiteral("USB Keypad"));
+    ASSERT_EQ(devDiscSpy.count(), 1);
+    EXPECT_EQ(devDiscSpy.first().at(0).toString(), QStringLiteral("/dev/input/event3"));
 }

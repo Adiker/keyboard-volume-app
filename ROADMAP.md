@@ -20,13 +20,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Pliki:** `cpp/src/config.cpp`, `cpp/src/osdwindow.cpp`, `cpp/src/settingsdialog.cpp`.
 **Status:** Planowane.
 
-### 40. D-Bus sygnały device/app lifecycle
-
-**Problem:** Klienci D-Bus muszą polować `Apps` lub łapać `appsChanged`, żeby zorientować się że aplikacja audio się pojawiła/zniknęła. Dla zewnętrznych wskaźników (panel, widget) brakuje wyraźnych sygnałów `deviceConnected`/`deviceDisconnected` (evdev) i `appStarted`/`appStopped` (PipeWire) z metadanymi.
-**Rekomendacja:** Dodać sygnały do `org.keyboardvolumeapp.VolumeControl` z minimum payload (`name`, `binary`). Emisja z `InputHandler` (evdev hot-plug) i `PaWatcherThread` (sink-input add/remove) przez async signal queued na main thread.
-**Pliki:** `cpp/src/dbusinterface.{h,cpp}`, `cpp/src/inputhandler.{h,cpp}`, `cpp/src/volumecontroller.{h,cpp}`, `cpp/tests/test_dbusinterface.cpp`.
-**Status:** Planowane.
-
 ### 41. Skróty „następna / poprzednia aplikacja"
 
 **Problem:** Aby przełączyć cel głośności (active app), trzeba kliknąć w tray menu albo zawołać `kv-ctl set active-app NAME`. Dla power usera bez tray menu (tiling WM) nie ma natywnego skrótu.
@@ -207,6 +200,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 39. File / journald logging z `--log-level`
 
 **Status:** Zrealizowane. Dodano wątkowo bezpieczny moduł `cpp/src/logging.{h,cpp}` z flagami CLI `--log-level` (`off|warn|info|debug|trace`), `--log-file` (w tym `default` w `XDG_STATE_HOME/keyboard-volume-app/keyboard-volume-app.log` z rotacją 5 MB) oraz `--log-journal` / `--no-journal` z opcjonalnym wsparciem `libsystemd` (`sd_journal_send`) i testami `test_logging`.
+
+### 40. D-Bus sygnały device/app lifecycle
+
+**Status:** Zrealizowane. `InputHandler` obserwuje `/dev/input` przez `inotify` w pętli `epoll` (stabilne adresy `std::deque<PollSource>`) i emituje `deviceConnected(path, name)` / `deviceDisconnected(path, name)` przy otwarciu, hot-plugu i odłączeniu. `PaWorker::doListApps()` diffuje listę aplikacji po pierwszym skanowaniu i emituje `appStarted(name, binary)` / `appStopped(name, binary)` przez `VolumeController`. `DbusInterface` wystawia wszystkie 4 sygnały jako `Q_SCRIPTABLE` na `org.keyboardvolumeapp.VolumeControl`; pokryte testami `test_paworker`, `test_dbusinterface` i `test_app`.
 
 ### 42. Globalne skróty multimedialne (MPRIS dispatch)
 

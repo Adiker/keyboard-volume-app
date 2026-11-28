@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/epoll.h>
+#include <sys/inotify.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <linux/input.h>
@@ -21,6 +22,7 @@
 #include <array>
 #include <cerrno>
 #include <cstring>
+#include <deque>
 #include <memory>
 #include <vector>
 
@@ -938,10 +940,36 @@ void InputHandler::run()
 
     std::vector<std::unique_ptr<EvdevDevice>> devices;
     QMap<EvdevDevice*, qint64> mirrorReadyAfter;
+    QMap<EvdevDevice*, QPair<QString, QString>> deviceMeta; // dev -> {path, name}
+    QSet<QString> openPaths;
 
-    for (const auto& [path, exclusive] : candidates)
+    int epfd = epoll_create1(EPOLL_CLOEXEC);
+    // std::deque keeps PollSource addresses stable across hot-plug push_back().
+    std::deque<PollSource> pollSources;
+
+    // Modifier state — tracked per device across grabbed hotkey devices,
+    // passive siblings, and independent passive modifier-bearing keyboards.
+    QMap<const void*, QSet<int>> heldModifiersByDevice;
+
+    auto registerPollSource = [&](PollSource source) -> bool
     {
-        if (!m_running) break;
+        if (epfd < 0) return false;
+        pollSources.push_back(source);
+        epoll_event evnt{};
+        evnt.events = EPOLLIN;
+        evnt.data.ptr = &pollSources.back();
+        if (epoll_ctl(epfd, EPOLL_CTL_ADD, source.fd, &evnt) < 0)
+        {
+            qWarning() << "[InputHandler] Cannot register input polling:" << strerror(errno);
+            pollSources.pop_back();
+            return false;
+        }
+        return true;
+    };
+
+    auto attachDevice = [&](const QString& path, bool exclusive) -> bool
+    {
+        if (!m_running || openPaths.contains(path)) return false;
         // Open writable once for LED-capable keyboards instead of reopening
         // after libevdev initialization (evdev close can wait for kernel RCU).
         auto dev = std::make_unique<EvdevDevice>();
@@ -950,7 +978,7 @@ void InputHandler::run()
         if (!dev->open(path, mode) && (!exclusive || !dev->open(path)))
         {
             qDebug() << "[InputHandler] Cannot open" << path;
-            continue;
+            return false;
         }
 
         if (exclusive)
@@ -959,7 +987,7 @@ void InputHandler::run()
             {
                 qDebug() << "[InputHandler] Cannot create uinput for" << path
                          << "— leaving physical input untouched";
-                continue;
+                return false;
             }
             if (dev->hasEventType(EV_LED) && dev->isWritable())
             {
@@ -978,54 +1006,85 @@ void InputHandler::run()
             mirrorReadyAfter.insert(dev.get(), startupTimer.elapsed() + kMirrorWarmupMs);
             qDebug() << "[InputHandler] Created uinput for" << path;
         }
-        qDebug() << "[InputHandler] Opened" << path
-                 << (dev->uinput() ? "[prepared uinput]" : "[passive]");
-        devices.push_back(std::move(dev));
-    }
 
-    if (devices.empty()) return;
-
-    int epfd = epoll_create1(0);
-    std::vector<PollSource> pollSources;
-    pollSources.reserve(devices.size() * 2);
-    if (epfd >= 0)
-    {
-        for (auto& dev : devices)
+        if (!registerPollSource({PollSource::Type::EvdevInput, dev.get(), dev->fd()}))
         {
-            pollSources.push_back({PollSource::Type::EvdevInput, dev.get(), dev->fd()});
-
-            const int uinputFd = dev->uinputFd();
-            if (dev->isWritable() && dev->hasEventType(EV_LED) && uinputFd >= 0 &&
-                setFdNonBlocking(uinputFd))
-            {
-                pollSources.push_back({PollSource::Type::UinputOutput, dev.get(), uinputFd});
-            }
+            mirrorReadyAfter.remove(dev.get());
+            return false;
         }
-        for (auto& source : pollSources)
+        const int uinputFd = dev->uinputFd();
+        if (dev->isWritable() && dev->hasEventType(EV_LED) && uinputFd >= 0 &&
+            setFdNonBlocking(uinputFd))
         {
-            epoll_event evnt{};
-            evnt.events = EPOLLIN;
-            evnt.data.ptr = &source;
-            if (epoll_ctl(epfd, EPOLL_CTL_ADD, source.fd, &evnt) < 0)
-            {
-                qWarning() << "[InputHandler] Cannot register input polling:" << strerror(errno);
-                ::close(epfd);
-                epfd = -1;
-                break;
-            }
+            (void)registerPollSource({PollSource::Type::UinputOutput, dev.get(), uinputFd});
         }
-    }
 
-    // Modifier state — tracked per device across grabbed hotkey devices,
-    // passive siblings, and independent passive modifier-bearing keyboards.
-    QMap<const void*, QSet<int>> heldModifiersByDevice;
-    for (const auto& dev : devices)
-    {
         QSet<int> initialMods;
         for (int code : {KEY_LEFTCTRL, KEY_RIGHTCTRL, KEY_LEFTSHIFT, KEY_RIGHTSHIFT})
             if (libevdev_get_event_value(dev->dev(), EV_KEY, code) != 0) initialMods.insert(code);
         if (!initialMods.isEmpty()) heldModifiersByDevice.insert(dev.get(), initialMods);
+
+        const QString devName = QString::fromUtf8(dev->name());
+        qDebug() << "[InputHandler] Opened" << path
+                 << (dev->uinput() ? "[prepared uinput]" : "[passive]");
+        openPaths.insert(path);
+        deviceMeta.insert(dev.get(), {path, devName});
+        devices.push_back(std::move(dev));
+        emit deviceConnected(path, devName);
+        return true;
+    };
+
+    auto detachDevice = [&](EvdevDevice* dev)
+    {
+        if (!dev) return;
+        retirePollSources(epfd, pollSources, dev);
+        mirrorReadyAfter.remove(dev);
+        heldModifiersByDevice.remove(dev);
+        dev->close();
+        const auto meta = deviceMeta.take(dev);
+        if (!meta.first.isEmpty())
+        {
+            openPaths.remove(meta.first);
+            emit deviceDisconnected(meta.first, meta.second);
+        }
+    };
+
+    for (const auto& [path, exclusive] : candidates)
+    {
+        if (!m_running) break;
+        attachDevice(path, exclusive);
     }
+
+    int inotifyFd = -1;
+    int inotifyWd = -1;
+    if (epfd >= 0)
+    {
+        inotifyFd = inotify_init1(static_cast<int>(static_cast<unsigned int>(IN_NONBLOCK) |
+                                                   static_cast<unsigned int>(IN_CLOEXEC)));
+        if (inotifyFd >= 0)
+        {
+            const uint32_t mask = static_cast<uint32_t>(IN_CREATE) |
+                                  static_cast<uint32_t>(IN_ATTRIB) |
+                                  static_cast<uint32_t>(IN_MOVED_TO);
+            inotifyWd = inotify_add_watch(inotifyFd, "/dev/input", mask);
+            if (inotifyWd < 0 ||
+                !registerPollSource({PollSource::Type::Inotify, nullptr, inotifyFd}))
+            {
+                ::close(inotifyFd);
+                inotifyFd = -1;
+                inotifyWd = -1;
+            }
+        }
+    }
+
+    if (devices.empty() && inotifyFd < 0)
+    {
+        if (epfd >= 0) ::close(epfd);
+        return;
+    }
+
+    qint64 hotplugRescanAtMs = 0;
+
     // Mirrors created early can settle while later nodes are prepared.
     // Drain pre-grab input without replay, then activate each ready mirror.
     qint64 startupLedSyncUntilMs = QDateTime::currentMSecsSinceEpoch() + 2000;
@@ -1056,29 +1115,61 @@ void InputHandler::run()
             break;
         }
         syncStartupLedsIfDue();
+        if (hotplugRescanAtMs > 0 && QDateTime::currentMSecsSinceEpoch() >= hotplugRescanAtMs)
+        {
+            hotplugRescanAtMs = 0;
+            for (const auto& [path, exclusive] : findHotkeyDevices(m_devicePath, hotkeys))
+            {
+                if (!m_running) break;
+                attachDevice(path, exclusive);
+            }
+        }
         for (int i = 0; i < n; ++i)
         {
             auto* source = static_cast<PollSource*>(events[i].data.ptr);
-            if (!source || !source->dev) continue;
+            if (!source) continue;
+            if (source->type == PollSource::Type::Inotify)
+            {
+                alignas(inotify_event) char buf[4096];
+                bool sawEventNode = false;
+                while (true)
+                {
+                    const ssize_t len = ::read(source->fd, buf, sizeof(buf));
+                    if (len <= 0) break;
+                    ssize_t offset = 0;
+                    while (offset + static_cast<ssize_t>(sizeof(inotify_event)) <= len)
+                    {
+                        inotify_event evnt{};
+                        std::memcpy(&evnt, buf + offset, sizeof(evnt));
+                        if (evnt.len > 0 && offset + static_cast<ssize_t>(sizeof(inotify_event)) +
+                                                    static_cast<ssize_t>(evnt.len) <=
+                                                len)
+                        {
+                            const char* namePtr = buf + offset + sizeof(inotify_event);
+                            if (std::strncmp(namePtr, "event", 5) == 0) sawEventNode = true;
+                        }
+                        offset += static_cast<ssize_t>(sizeof(inotify_event) + evnt.len);
+                    }
+                }
+                if (sawEventNode)
+                {
+                    // Delay briefly so udev finishes setting /dev/input permissions.
+                    hotplugRescanAtMs = QDateTime::currentMSecsSinceEpoch() + 150;
+                }
+                continue;
+            }
+            if (!source->dev) continue;
             if (events[i].events & (EPOLLERR | EPOLLHUP))
             {
                 auto* dev = source->dev;
                 qWarning()
                     << "[InputHandler] Input source disconnected or failed; releasing device";
-                retirePollSources(epfd, pollSources, dev);
-                dev->close();
-                heldModifiersByDevice.remove(dev);
+                detachDevice(dev);
                 continue;
             }
             if (source->type == PollSource::Type::UinputOutput)
             {
-                if (!drainUinputOutput(source->dev))
-                {
-                    auto* dev = source->dev;
-                    retirePollSources(epfd, pollSources, dev);
-                    dev->close();
-                    heldModifiersByDevice.remove(dev);
-                }
+                if (!drainUinputOutput(source->dev)) detachDevice(source->dev);
                 continue;
             }
 
@@ -1268,9 +1359,7 @@ void InputHandler::run()
             if (rc < 0 && rc != -EAGAIN && rc != -EINTR)
             {
                 qWarning() << "[InputHandler] Cannot read input device:" << strerror(-rc);
-                retirePollSources(epfd, pollSources, e);
-                e->close();
-                heldModifiersByDevice.remove(e);
+                detachDevice(e);
             }
         }
 
@@ -1308,6 +1397,8 @@ void InputHandler::run()
         }
     }
 
+    if (inotifyWd >= 0 && inotifyFd >= 0) inotify_rm_watch(inotifyFd, inotifyWd);
+    if (inotifyFd >= 0) ::close(inotifyFd);
     if (epfd >= 0) ::close(epfd);
 
     if (!devices.empty())
