@@ -399,7 +399,7 @@ TEST(Startup, SingleCapabilityScanKeepsUnboundSiblingsPassive)
     reset();
     const auto candidates = findHotkeyDevices("/dev/input/event0", {KEY_VOLUMEUP});
     ASSERT_EQ(candidates.size(), 3);
-    EXPECT_EQ(opens, 4); // primary identity plus one scan of the three nodes
+    EXPECT_EQ(opens, 3); // a single capability scan of the three nodes
     EXPECT_TRUE(candidates[0].second);
     EXPECT_FALSE(candidates[1].second);
     EXPECT_TRUE(candidates[2].second);

@@ -34,10 +34,29 @@ std::optional<QBitArray> parseInputCapabilityBitmap(const QByteArray& text, int 
 // True if the device exposes at least one assigned key/relative binding.
 bool deviceHasConfiguredHotkey(const libevdev* dev, const QSet<HotkeyBinding>& hotkeys);
 
+// True if the device exposes any tracked modifier key (Left/Right Ctrl or Shift).
+bool deviceHasTrackedModifier(const libevdev* dev);
+
+struct HotkeyDeviceCandidate
+{
+    QString path;
+    QString phys;
+    bool usefulInput = false;
+    bool hasHotkey = false;
+    bool hasModifiers = false;
+};
+
+// Pure device selection helper shared by findHotkeyDevices() and unit tests:
+//   - devices with configured hotkeys → exclusive grab + uinput mirror
+//   - siblings without configured hotkeys → passive modifier observation
+//   - independent keyboards with tracked modifiers → passive read-only observation
+QList<std::pair<QString, bool>> selectHotkeyDevices(const QString& primaryPath,
+                                                    const QList<HotkeyDeviceCandidate>& candidates);
+
 // Returns (path, exclusiveGrab) pairs for runtime hotkey handling:
-//   siblings without configured bindings → passive modifier observation
-//   other devices exposing at least one configured hotkey binding → exclusive
-//   grab + uinput re-injection, so global hotkeys are swallowed everywhere.
+//   - devices exposing any configured hotkey binding → exclusive grab + uinput
+//   - siblings without configured bindings → passive observation
+//   - independent modifier-bearing devices → passive read-only observation
 QList<std::pair<QString, bool>> findHotkeyDevices(const QString& primaryPath,
                                                   const QSet<HotkeyBinding>& hotkeys);
 
@@ -126,6 +145,11 @@ QString resolveSceneHotkey(int code, const QList<AudioScene>& scenes);
 // profile matching. L/R variants collapse.
 QSet<Modifier> normalizeHeldModifiers(const QSet<int>& heldRaw);
 
+// Aggregate raw held modifier codes tracked per open device into the canonical
+// Modifier set. Keeping per-device state prevents a disconnect or release on
+// one keyboard from wiping modifiers still held on another.
+QSet<Modifier> aggregateHeldModifiers(const QMap<const void*, QSet<int>>& heldByDevice);
+
 // Find the most specific profile whose hotkey set contains `binding` and whose
 // required modifiers are a subset of `held`. Specificity = number of required
 // modifiers; ties broken by first-in-list. Returns the profile id, or "" if no
@@ -172,20 +196,18 @@ class KeyCaptureThread : public QThread
 };
 
 // ─── InputHandler ─────────────────────────────────────────────────────────────
-// Reads evdev events from the selected device and its siblings.
+// Reads evdev events from the selected device, its siblings, any other device
+// exposing configured hotkey bindings (exclusive grab + uinput mirror), and
+// independent modifier-bearing keyboards (passive read-only, no grab/uinput).
 // Hotkey events from any configured profile are intercepted and dispatched
 // as Qt signals carrying the matched profile id. Modifier keys are tracked
-// internally for profile selection. Captured events are forwarded to uinput;
-// passive sibling events reach the desktop directly. Mirrors are prepared
-// before grabbing, and nodes with held keys/buttons defer their handoff. Supports key repeat
-// (ev.value == 2). Debounce is per-(code, profileId) — Ctrl+VolUp and bare VolUp don't suppress
+// per device for profile selection so a modifier held on an independent
+// keyboard qualifies hotkeys pressed on a separate multimedia keypad. Captured
+// events are forwarded to uinput; passive device events reach the desktop
+// directly. Mirrors are prepared before grabbing, and nodes with held
+// keys/buttons defer their handoff. Supports key repeat (ev.value == 2).
+// Debounce is per-(code, profileId) — Ctrl+VolUp and bare VolUp don't suppress
 // each other.
-//
-// v1 limitation: modifier state is observed only on devices that InputHandler
-// already reads (siblings of the primary device + devices exposing any
-// configured hotkey binding). A modifier held on a separate keyboard with no
-// matching hotkey is NOT tracked. TODO(v2): passive read-only open of
-// modifier-bearing devices.
 class InputHandler : public QThread
 {
     Q_OBJECT

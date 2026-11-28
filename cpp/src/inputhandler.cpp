@@ -123,6 +123,16 @@ bool deviceHasConfiguredHotkey(const libevdev* dev, const QSet<HotkeyBinding>& h
     return false;
 }
 
+bool deviceHasTrackedModifier(const libevdev* dev)
+{
+    if (!dev) return false;
+    for (int code : {KEY_LEFTCTRL, KEY_RIGHTCTRL, KEY_LEFTSHIFT, KEY_RIGHTSHIFT})
+    {
+        if (libevdev_has_event_code(dev, EV_KEY, static_cast<unsigned int>(code))) return true;
+    }
+    return false;
+}
+
 std::optional<QBitArray> parseInputCapabilityBitmap(const QByteArray& text, int wordBits)
 {
     if (wordBits != 32 && wordBits != 64) return std::nullopt;
@@ -150,12 +160,6 @@ std::optional<QBitArray> parseInputCapabilityBitmap(const QByteArray& text, int 
 
 namespace
 {
-struct RuntimeDeviceInfo
-{
-    QString phys;
-    bool usefulInput;
-    bool exclusive;
-};
 
 std::optional<QByteArray> readInputAttribute(const QString& path)
 {
@@ -166,8 +170,8 @@ std::optional<QByteArray> readInputAttribute(const QString& path)
     return data;
 }
 
-std::optional<RuntimeDeviceInfo> runtimeDeviceInfo(const QString& path,
-                                                   const QSet<HotkeyBinding>& hotkeys)
+std::optional<HotkeyDeviceCandidate> runtimeDeviceInfo(const QString& path,
+                                                       const QSet<HotkeyBinding>& hotkeys)
 {
     if (::access(path.toLocal8Bit().constData(), R_OK) != 0) return std::nullopt;
     struct stat st = {};
@@ -207,10 +211,24 @@ std::optional<RuntimeDeviceInfo> runtimeDeviceInfo(const QString& path,
                             break;
                         }
                     }
+                    bool hasModifiers = false;
+                    if (has(*types, EV_KEY))
+                    {
+                        for (int code :
+                             {KEY_LEFTCTRL, KEY_RIGHTCTRL, KEY_LEFTSHIFT, KEY_RIGHTSHIFT})
+                        {
+                            if (has(*keys, code))
+                            {
+                                hasModifiers = true;
+                                break;
+                            }
+                        }
+                    }
                     QByteArray physical = *phys;
                     if (physical.endsWith('\n')) physical.chop(1);
-                    return RuntimeDeviceInfo{QString::fromLocal8Bit(physical),
-                                             has(*types, EV_KEY) || has(*types, EV_REL), exclusive};
+                    return HotkeyDeviceCandidate{path, QString::fromLocal8Bit(physical),
+                                                 has(*types, EV_KEY) || has(*types, EV_REL),
+                                                 exclusive, hasModifiers};
                 }
             }
         }
@@ -218,34 +236,51 @@ std::optional<RuntimeDeviceInfo> runtimeDeviceInfo(const QString& path,
     EvdevDevice dev(path);
     if (!dev.isOpen()) return std::nullopt;
     const char* phys = dev.phys();
-    return RuntimeDeviceInfo{phys ? QString::fromLocal8Bit(phys) : QString{},
-                             dev.hasEventType(EV_KEY) || dev.hasEventType(EV_REL),
-                             deviceHasConfiguredHotkey(dev.dev(), hotkeys)};
+    return HotkeyDeviceCandidate{path, phys ? QString::fromLocal8Bit(phys) : QString{},
+                                 dev.hasEventType(EV_KEY) || dev.hasEventType(EV_REL),
+                                 deviceHasConfiguredHotkey(dev.dev(), hotkeys),
+                                 deviceHasTrackedModifier(dev.dev())};
 }
 } // namespace
+
+QList<std::pair<QString, bool>> selectHotkeyDevices(const QString& primaryPath,
+                                                    const QList<HotkeyDeviceCandidate>& candidates)
+{
+    QString physPrefix;
+    for (const HotkeyDeviceCandidate& candidate : candidates)
+    {
+        if (candidate.path == primaryPath)
+        {
+            physPrefix = candidate.phys;
+            break;
+        }
+    }
+    const qsizetype slash = physPrefix.lastIndexOf(QLatin1String("/input"));
+    if (slash >= 0) physPrefix.truncate(slash);
+
+    QList<std::pair<QString, bool>> result;
+    for (const HotkeyDeviceCandidate& info : candidates)
+    {
+        const bool sibling =
+            info.path == primaryPath ||
+            (!physPrefix.isEmpty() && !info.phys.isEmpty() && info.phys.startsWith(physPrefix));
+        if (info.hasHotkey || (sibling && info.usefulInput) || info.hasModifiers)
+            result.emplace_back(info.path, info.hasHotkey);
+    }
+    return result;
+}
 
 QList<std::pair<QString, bool>> findHotkeyDevices(const QString& primaryPath,
                                                   const QSet<HotkeyBinding>& hotkeys)
 {
-    QString physPrefix;
-    if (const auto primary = runtimeDeviceInfo(primaryPath, hotkeys)) physPrefix = primary->phys;
-    const qsizetype slash = physPrefix.lastIndexOf(QLatin1String("/input"));
-    if (slash >= 0) physPrefix.truncate(slash);
-
     // Read static sysfs metadata without opening/closing every evdev node.
-    // Useful siblings still contribute modifiers without an exclusive mirror.
-    QList<std::pair<QString, bool>> result;
+    // Useful siblings and independent modifier keyboards stay passive readers.
+    QList<HotkeyDeviceCandidate> candidates;
     for (const QString& path : listEvdevDevices())
     {
-        const auto info = runtimeDeviceInfo(path, hotkeys);
-        if (!info) continue;
-        const bool sibling =
-            path == primaryPath ||
-            (!physPrefix.isEmpty() && !info->phys.isEmpty() && info->phys.startsWith(physPrefix));
-        if (info->exclusive || (sibling && info->usefulInput))
-            result.append({path, info->exclusive});
+        if (auto info = runtimeDeviceInfo(path, hotkeys)) candidates.append(std::move(*info));
     }
-    return result;
+    return selectHotkeyDevices(primaryPath, candidates);
 }
 
 QList<std::pair<QString, QString>> getVolumeDevices()
@@ -502,6 +537,16 @@ QSet<Modifier> normalizeHeldModifiers(const QSet<int>& heldRaw)
         if (c == KEY_LEFTSHIFT || c == KEY_RIGHTSHIFT) out.insert(Modifier::Shift);
     }
     return out;
+}
+
+QSet<Modifier> aggregateHeldModifiers(const QMap<const void*, QSet<int>>& heldByDevice)
+{
+    QSet<int> combined;
+    for (auto it = heldByDevice.cbegin(); it != heldByDevice.cend(); ++it)
+    {
+        combined.unite(it.value());
+    }
+    return normalizeHeldModifiers(combined);
 }
 
 namespace
@@ -971,11 +1016,16 @@ void InputHandler::run()
         }
     }
 
-    // Modifier state — observed on hotkey devices and passive siblings.
-    QSet<int> heldModifiers;
+    // Modifier state — tracked per device across grabbed hotkey devices,
+    // passive siblings, and independent passive modifier-bearing keyboards.
+    QMap<const void*, QSet<int>> heldModifiersByDevice;
     for (const auto& dev : devices)
+    {
+        QSet<int> initialMods;
         for (int code : {KEY_LEFTCTRL, KEY_RIGHTCTRL, KEY_LEFTSHIFT, KEY_RIGHTSHIFT})
-            if (libevdev_get_event_value(dev->dev(), EV_KEY, code) != 0) heldModifiers.insert(code);
+            if (libevdev_get_event_value(dev->dev(), EV_KEY, code) != 0) initialMods.insert(code);
+        if (!initialMods.isEmpty()) heldModifiersByDevice.insert(dev.get(), initialMods);
+    }
     // Mirrors created early can settle while later nodes are prepared.
     // Drain pre-grab input without replay, then activate each ready mirror.
     qint64 startupLedSyncUntilMs = QDateTime::currentMSecsSinceEpoch() + 2000;
@@ -1017,7 +1067,7 @@ void InputHandler::run()
                     << "[InputHandler] Input source disconnected or failed; releasing device";
                 retirePollSources(epfd, pollSources, dev);
                 dev->close();
-                heldModifiers.clear();
+                heldModifiersByDevice.remove(dev);
                 continue;
             }
             if (source->type == PollSource::Type::UinputOutput)
@@ -1027,7 +1077,7 @@ void InputHandler::run()
                     auto* dev = source->dev;
                     retirePollSources(epfd, pollSources, dev);
                     dev->close();
-                    heldModifiers.clear();
+                    heldModifiersByDevice.remove(dev);
                 }
                 continue;
             }
@@ -1050,12 +1100,12 @@ void InputHandler::run()
 
                     if (isTrackedModifierCode(code))
                     {
-                        // Update modifier state, then forward — the desktop
-                        // must still see Ctrl/Shift presses for normal use.
+                        // Update modifier state for this device, then forward —
+                        // the desktop must still see Ctrl/Shift presses.
                         if (ev.value == 1)
-                            heldModifiers.insert(code);
+                            heldModifiersByDevice[e].insert(code);
                         else if (ev.value == 0)
-                            heldModifiers.remove(code);
+                            heldModifiersByDevice[e].remove(code);
                         // value == 2 (repeat) leaves state unchanged
                         forwardUinputEvent(e, ev);
                         continue;
@@ -1081,7 +1131,7 @@ void InputHandler::run()
                                 }
                             }
                             const ProfileHotkeyMatch match = resolveProfileHotkey(
-                                binding, normalizeHeldModifiers(heldModifiers), profiles);
+                                binding, aggregateHeldModifiers(heldModifiersByDevice), profiles);
                             if (!match.profileId.isEmpty())
                             {
                                 dispatchProfile(binding, match);
@@ -1148,7 +1198,8 @@ void InputHandler::run()
                             {
                                 if (!matchesInputEvent(binding, companion)) continue;
                                 if (!resolveProfileHotkey(
-                                         binding, normalizeHeldModifiers(heldModifiers), profiles)
+                                         binding, aggregateHeldModifiers(heldModifiersByDevice),
+                                         profiles)
                                          .profileId.isEmpty() ||
                                     !resolveSceneHotkey(binding, scenes).isEmpty() ||
                                     resolveMediaHotkey(binding, mediaCfg) != MediaAction::None ||
@@ -1189,7 +1240,8 @@ void InputHandler::run()
                                 }
                             }
                             const ProfileHotkeyMatch match = resolveProfileHotkey(
-                                matchedBinding, normalizeHeldModifiers(heldModifiers), profiles);
+                                matchedBinding, aggregateHeldModifiers(heldModifiersByDevice),
+                                profiles);
                             if (!match.profileId.isEmpty())
                             {
                                 dispatchProfile(matchedBinding, match);
@@ -1218,7 +1270,7 @@ void InputHandler::run()
                 qWarning() << "[InputHandler] Cannot read input device:" << strerror(-rc);
                 retirePollSources(epfd, pollSources, e);
                 e->close();
-                heldModifiers.clear();
+                heldModifiersByDevice.remove(e);
             }
         }
 

@@ -20,13 +20,6 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 **Pliki:** `cpp/src/config.cpp`, `cpp/src/osdwindow.cpp`, `cpp/src/settingsdialog.cpp`.
 **Status:** Planowane.
 
-### 23. Pasywne śledzenie modyfikatorów z niezależnych klawiatur (v2)
-
-**Problem:** `InputHandler` śledzi stan modyfikatorów (Ctrl, Shift) na przechwytywanych urządzeniach oraz ich pasywnych urządzeniach siostrzanych. Użytkownik z osobną klawiaturą multimedialną i osobną klawiaturą alfanumeryczną nie może kwalifikować profili modyfikatorami z tej drugiej. Ograniczenie udokumentowane jako `TODO(v2)` w `inputhandler.h`.
-**Rekomendacja:** Rozszerzyć `findHotkeyDevices()` o trzecią kategorię: urządzenia EV_KEY bez skonfigurowanych hotkeyów, lecz posiadające `KEY_LEFTCTRL`/`KEY_RIGHTCTRL`/`KEY_LEFTSHIFT`/`KEY_RIGHTSHIFT`. Otwierać je w trybie nieekskluzywnym (bez `EVIOCGRAB`, bez uinput) — wyłącznie do odczytu modyfikatorów. W pętli epoll odczytywać zdarzenia EV_KEY dla tych kodów i aktualizować `heldModifiers`, nie przechwytując ani nie przekierowując innych zdarzeń.
-**Pliki:** `cpp/src/inputhandler.h`, `cpp/src/inputhandler.cpp`, `cpp/tests/test_inputhandler.cpp`
-**Status:** Częściowo zrealizowane. Modyfikatory są odczytywane także z pasywnych urządzeń siostrzanych wybranego urządzenia. Niezależna klawiatura bez własnego przypisanego hotkeya nadal nie jest obserwowana; dalsze rozszerzenie pozostaje planowane.
-
 ### 26. Stopniowe wyciszanie ducking (fade in/out)
 
 **Problem:** `ToggleDucking` zmienia głośność ściszanych aplikacji natychmiastowo — skok z np. 80% do 20% jest słyszalny jako nagłe tąpnięcie. Profesjonalne implementacje duckingu stosują płynne przejścia z konfigurowalnym czasem.
@@ -153,6 +146,10 @@ Kolejność poniżej zachowuje numery pozycji, nie oznacza terminów ani nowej k
 ### 22. clang-tidy w CI
 
 **Status:** Zrealizowane. Wyczyszczono zaległe ostrzeżenia `clang-tidy` w całym `cpp/src` i `cpp/tests`, wyłączono eksport `compile_commands.json` dla `EXCLUDE_FROM_ALL` targetu `kwin_tracker_live`, naprawiono budowanie nagłówków/autogen w jobie CI, włączono `WarningsAsErrors: "*"` w `.clang-tidy` i usunięto `continue-on-error: true` w `.github/workflows/ci.yml`.
+
+### 23. Pasywne śledzenie modyfikatorów z niezależnych klawiatur (v2)
+
+**Status:** Zrealizowane. `findHotkeyDevices()` / `selectHotkeyDevices()` obejmują jako trzecią kategorię niezależne klawiatury posiadające `KEY_LEFTCTRL`/`KEY_RIGHTCTRL`/`KEY_LEFTSHIFT`/`KEY_RIGHTSHIFT` otwierane pasywnie (read-only, bez `EVIOCGRAB` i bez uinput). Stan modyfikatorów jest śledzony per urządzenie (`heldModifiersByDevice`) i agregowany przez `aggregateHeldModifiers()`, więc rozłączenie jednego urządzenia nie zeruje modyfikatorów trzymanych na innym. Dodano testy jednostkowe w `cpp/tests/test_inputhandler.cpp`.
 
 ### 24. Hotkey „Pokaż głośność" (OSD bez zmiany głośności)
 
